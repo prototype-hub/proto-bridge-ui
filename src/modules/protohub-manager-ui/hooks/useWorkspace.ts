@@ -1,15 +1,31 @@
 import { ref, computed, watch, onMounted, onScopeDispose, type Ref } from 'vue'
 import type { WorkspaceContext, InspectElement } from '@/modules/protohub-manager-ui/types'
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
+import { firstAccessiblePagePath } from '@/modules/protohub-manager-ui/utils/pages'
 import { isFrameSource, isInspectElement } from '@/modules/protohub-manager-ui/utils/inspect'
 import { t } from '@/shared/i18n'
+
+/** Prefer the first valid page from the visible menu and retain the archive entry as a fallback. */
+function initialPage(context: WorkspaceContext): string {
+  return (
+    firstAccessiblePagePath(context.pages, (path) => {
+      try {
+        runtimePageUrl(context.runtimeBaseUrl, path)
+        return true
+      } catch {
+        return false
+      }
+    }) || context.entryFile
+  )
+}
+
 export function useWorkspace(context: Ref<WorkspaceContext>) {
   const mode = ref<'preview' | 'inspect'>('preview')
   const navVisible = ref(true)
   const isNarrow = ref(false)
   const inspectorOpen = ref(false)
   const frame = ref<HTMLIFrameElement>()
-  const currentPage = ref(context.value.entryFile)
+  const currentPage = ref(initialPage(context.value))
   const url = ref('')
   const loading = ref(true)
   const error = ref('')
@@ -76,12 +92,9 @@ export function useWorkspace(context: Ref<WorkspaceContext>) {
       if (isNarrow.value) inspectorOpen.value = true
     }
   }
-  watch(
-    () => context.value.entryFile,
-    (value) => {
-      currentPage.value = value
-    },
-  )
+  watch(context, (value) => {
+    currentPage.value = initialPage(value)
+  })
   watch([currentPage, () => context.value.runtimeBaseUrl], load, { immediate: true })
   watch(mode, () => {
     element.value = null

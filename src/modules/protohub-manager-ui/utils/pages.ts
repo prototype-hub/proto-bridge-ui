@@ -28,6 +28,20 @@ export function pageNodes(
     }
   })
 }
+
+/** Return the first page accepted by the runtime, preserving the server's depth-first menu order. */
+export function firstAccessiblePagePath(
+  pages: PrototypePage[],
+  canAccess: (path: string) => boolean = () => true,
+): string | undefined {
+  for (const page of pages) {
+    if (page.folder !== true && page.path && canAccess(page.path)) return page.path
+    const child = firstAccessiblePagePath(page.children || [], canAccess)
+    if (child) return child
+  }
+  return undefined
+}
+
 export const expandedPageKeys = (nodes: PageNode[]): string[] =>
   nodes.flatMap((node) => [
     ...(node.children?.length ? [node.key] : []),

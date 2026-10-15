@@ -1,15 +1,14 @@
 #!/bin/sh
 set -eu
 
-: "${API_BASE_PATH:?Set API_BASE_PATH to the backend URL reachable from this container}"
-SERVER_NAME=${SERVER_NAME:-}
+API_BASE_PATH=$API_BASE_PATH;
+SERVER_NAME=$SERVER_NAME;
 
 #NAMESERVERS=$(cat /etc/resolv.conf | grep "nameserver" | awk '{print $2}' | tr '\n' ' ')
 NAMESERVERS=$(grep "^nameserver" /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')
-case "$API_BASE_PATH" in
-    http://*|https://*) ;;
-    *) echo "API_BASE_PATH must be an http(s) URL" >&2; exit 1 ;;
-esac
+if [ -z "$API_BASE_PATH" ]; then
+    API_BASE_PATH="http://127.0.0.1:8844/";
+fi
 
 apiUrl="proxy_pass  $API_BASE_PATH\$1;"
 resolver="resolver $NAMESERVERS ipv6=off;"

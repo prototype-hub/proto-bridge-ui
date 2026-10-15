@@ -57,28 +57,29 @@ test('project detail returns to the real default project menu under tools and pr
   await expect(page.getByText('页面不存在', { exact: true })).toHaveCount(0)
 })
 
-test('version preview and public share retain Chinese page order, folder title toggling and duplicate-link selection', async ({
+test('version preview and public share open the first accessible menu page and retain tree interactions', async ({
   page,
 }, testInfo) => {
   const pages: PrototypePage[] = [
+    { name: '空目录', folder: true, children: [] },
     {
       name: '业务目录',
       folder: true,
       children: [
         {
           name: '总览',
-          path: 'index.html',
+          path: 'overview.html',
           children: [{ name: "客户's详情", path: 'child.html' }],
         },
         { name: '详情别名', path: 'child.html' },
       ],
     },
-    { name: '空目录', folder: true, children: [] },
   ]
-  for (const path of [
+  const pageEndpoints = [
     '**/api/prototype-hub/versions/v1/pages',
     '**/api/prototype-hub/public/shares/open/access-key/pages',
-  ])
+  ]
+  for (const path of pageEndpoints)
     await page.route(path, (route) =>
       route.fulfill({ json: { success: true, status: 200, result: pages } }),
     )
@@ -92,15 +93,16 @@ test('version preview and public share retain Chinese page order, folder title t
     page.on('request', record)
     await page.goto(path)
     const frame = page.locator('iframe')
-    await expect(frame).toHaveAttribute('src', /\/index\.html$/)
+    await expect(frame).toHaveAttribute('src', /\/overview\.html$/)
     const tree = page.locator('.workspace-nav')
     await expect(tree.locator('.tree-page')).toHaveText(['总览', "客户's详情", '详情别名'])
+    await expect(tree.locator('.ant-tree-node-selected .tree-page')).toHaveText('总览')
     const folder = tree.getByRole('button', { name: '业务目录', exact: true })
     await expect(folder).toHaveAttribute('aria-expanded', 'true')
     await folder.click()
     await expect(folder).toHaveAttribute('aria-expanded', 'false')
     await expect(tree.locator('.tree-page:visible')).toHaveCount(0)
-    await expect(frame).toHaveAttribute('src', /\/index\.html$/)
+    await expect(frame).toHaveAttribute('src', /\/overview\.html$/)
     await folder.click()
     await tree.getByText("客户's详情", { exact: true }).click()
     await expect(frame).toHaveAttribute('src', /\/child\.html$/)
@@ -139,6 +141,18 @@ test('version preview and public share retain Chinese page order, folder title t
         requests.some((request) => /\/menu\/|\/user\/detail|\/authorize\/me/.test(request.url)),
       ).toBe(false)
     }
+  }
+
+  for (const endpoint of pageEndpoints) {
+    await page.unroute(endpoint)
+    await page.route(endpoint, (route) =>
+      route.fulfill({ json: { success: true, status: 200, result: [] } }),
+    )
+  }
+  for (const path of ['preview/p1/v1', 'share/open']) {
+    await page.goto(path)
+    await expect(page.locator('iframe')).toHaveAttribute('src', /\/index\.html$/)
+    await expect(page.locator('.ant-tree-node-selected')).toHaveCount(0)
   }
 })
 

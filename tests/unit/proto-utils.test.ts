@@ -5,7 +5,11 @@ import {
   runtimePageUrl,
   entryFromUrls,
 } from '@/modules/protohub-manager-ui/utils/urls'
-import { pageNodes, expandedPageKeys } from '@/modules/protohub-manager-ui/utils/pages'
+import {
+  pageNodes,
+  expandedPageKeys,
+  firstAccessiblePagePath,
+} from '@/modules/protohub-manager-ui/utils/pages'
 import {
   rgbToHex,
   inspectCss,
@@ -76,6 +80,37 @@ it('keeps folders and clickable parent pages with nested pages', () => {
   expect(nodes[0].children?.[0].selectable).toBe(true)
   expect(nodes[0].children?.[0].children?.[0].key).toBe('child.html')
   expect(expandedPageKeys(nodes)).toEqual(['folder:root-0', 'parent.html'])
+})
+it('finds the first accessible menu page depth-first and skips folders or rejected paths', () => {
+  const pages = [
+    {
+      name: 'Folder',
+      folder: true,
+      path: 'folder.html',
+      children: [
+        { name: 'Rejected', path: '../outside.html' },
+        {
+          name: 'First page',
+          path: 'nested/first.html',
+          children: [{ name: 'Child page', path: 'nested/child.html' }],
+        },
+      ],
+    },
+    { name: 'Later page', path: 'later.html' },
+  ]
+  const canAccess = (path: string) => {
+    try {
+      runtimePageUrl('/runtime', path, 'https://example.test')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  expect(firstAccessiblePagePath(pages, canAccess)).toBe('nested/first.html')
+  expect(
+    firstAccessiblePagePath([{ name: 'Empty folder', folder: true }], canAccess),
+  ).toBeUndefined()
 })
 it('formats CSS and validates Inspector messages and assets', () => {
   const element = {
