@@ -1,0 +1,56 @@
+{
+  "name": "proto-bridge-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.0.6",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build && node scripts/third-party-notices.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint . && stylelint 'src/**/*.css' && prettier --check .",
+    "format": "prettier --write .",
+    "test:unit": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "verify": "node scripts/verify-open-source.mjs && node scripts/secret-scan.mjs && node scripts/third-party-notices.mjs --check",
+    "sbom": "node scripts/sbom.mjs",
+    "rename": "node scripts/rename-project.mjs",
+    "dev:mock": "vite --host 127.0.0.1 --mode mock",
+    "licenses": "node scripts/third-party-notices.mjs --check",
+    "test:release": "node --test tests/scripts/*.test.mjs"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "7.0.1",
+    "ant-design-vue": "4.2.6",
+    "axios": "1.12.2",
+    "dayjs": "1.11.13",
+    "jsencrypt": "3.5.4",
+    "pinia": "3.0.3",
+    "vue": "3.5.22",
+    "vue-i18n": "11.1.12",
+    "vue-router": "4.5.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.36.0",
+    "@playwright/test": "1.55.1",
+    "@types/node": "22.13.9",
+    "@vitejs/plugin-vue": "5.2.4",
+    "@vue/test-utils": "2.4.6",
+    "eslint": "9.36.0",
+    "eslint-plugin-vue": "10.5.0",
+    "jsdom": "26.1.0",
+    "prettier": "3.6.2",
+    "stylelint": "16.24.0",
+    "stylelint-config-standard": "39.0.0",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.44.1",
+    "vite": "6.4.2",
+    "vitest": "3.2.4",
+    "vue-tsc": "3.0.8"
+  }
+}
