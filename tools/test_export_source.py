@@ -55,6 +55,18 @@ class SourceExportTest(unittest.TestCase):
         self.assertFalse((output / 'logs').exists())
         self.assertFalse((output / 'src/logs/.env').exists())
 
+    def test_repository_export_preserves_build_tools_and_legal_materials(self):
+        repository = Path(__file__).resolve().parent.parent
+        rules = json.loads((repository / 'open-source-export.json').read_text())
+        output = self.base / 'repository-export'
+        with contextlib.redirect_stdout(io.StringIO()):
+            exporter['export'](repository, output, rules)
+        for relative in ['tools/third-party-notices.mjs', 'tools/lib/dependencies.mjs',
+                         'tools/run-e2e.mjs', 'tests/release/release-notices.test.mjs']:
+            self.assertEqual((repository / relative).read_bytes(), (output / relative).read_bytes())
+        for material in (repository / 'third-party').iterdir():
+            self.assertEqual(material.read_bytes(), (output / 'third-party' / material.name).read_bytes())
+
     def test_rejects_internal_output(self):
         with self.assertRaises(ValueError):
             exporter['export'](self.root, self.root / 'out', self.rules)

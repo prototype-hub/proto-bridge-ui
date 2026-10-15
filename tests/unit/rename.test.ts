@@ -32,7 +32,7 @@ it('renames product/package/image/storage identity while preserving API configur
     writeFileSync(join(dir, 'compose.yaml'), composeTemplate)
     execFileSync(
       process.execPath,
-      [join(process.cwd(), 'scripts/rename-project.mjs'), 'new-product', 'New title'],
+      [join(process.cwd(), 'tools/rename-project.mjs'), 'new-product', 'New title'],
       { cwd: dir },
     )
     const project = JSON.parse(readFileSync(join(dir, 'project.config.json'), 'utf8')) as {

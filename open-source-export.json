@@ -31,7 +31,7 @@
     "docs/OPEN_SOURCE_REVIEW.md",
     "docs/ASSET_PROVENANCE.md"
   ],
-  "directories": ["src", "public", "tests", "scripts", "docs/public"],
+  "directories": ["src", "public", "tests", "tools", "third-party", "docs/public"],
   "exclude": ["**/.DS_Store", "**/__pycache__/**"],
   "sourceExtensions": [
     ".java",

@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { runtimeDependencies } from '../../scripts/lib/dependencies.mjs'
-import { licenseRecords, publishNotices } from '../../scripts/third-party-notices.mjs'
+import { runtimeDependencies } from '../../tools/lib/dependencies.mjs'
+import { licenseRecords, publishNotices } from '../../tools/third-party-notices.mjs'
 
 const text =
   'Copyright fixture contributors.\nPermission is hereby granted to reproduce this license fixture. '.repeat(
