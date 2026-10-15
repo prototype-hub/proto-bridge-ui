@@ -103,7 +103,8 @@ flowchart LR
 ```text
 .
 ├── public/                              # 原样复制到构建产物的静态资源
-├── scripts/                             # E2E、扫描、SBOM 与工程重命名脚本
+├── tools/                               # E2E、扫描、SBOM 与工程重命名工具
+├── third-party/                         # 第三方许可原文与来源元数据
 ├── src/
 │   ├── app/                             # 应用入口、布局、路由、状态和模块注册
 │   ├── modules/
@@ -115,6 +116,7 @@ flowchart LR
 │   ├── component/                       # Vue 组件测试
 │   ├── contract/                        # 请求路径、方法和参数契约测试
 │   ├── e2e/                             # Playwright 浏览器流程
+│   ├── release/                         # 发行与第三方许可测试
 │   └── fixtures/                        # 只用于开发与测试的 Mock 服务
 ├── docs/                                # 架构、兼容、组件和审查文档
 ├── Dockerfile
@@ -508,7 +510,7 @@ server {
 
 `private: true` 用于防止误发 npm，可以保留，不影响 GitHub 源码公开。来源、参考实现的可再授权范围和用户内容分发权仍由维护者确认，详见[来源审查](docs/OPEN_SOURCE_REVIEW.md)及[素材说明](docs/ASSET_PROVENANCE.md)。
 
-源码公开使用 `python3 scripts/export-source.py` 生成经过 allowlist 选择、模式扫描并附 SHA 清单的目录，不复制整个工作目录。正式构建会随 dist/镜像提供第三方许可全文与清单；具体手动门禁、已知兼容边界和分发义务见[发布指南](docs/public/RELEASE.md)。安全问题通过 [SECURITY.md](SECURITY.md) 指定的私密渠道报告。
+源码公开使用 `python3 tools/export-source.py` 生成经过 allowlist 选择、模式扫描并附 SHA 清单的目录，不复制整个工作目录。正式构建会随 dist/镜像提供第三方许可全文与清单；具体手动门禁、已知兼容边界和分发义务见[发布指南](docs/public/RELEASE.md)。安全问题通过 [SECURITY.md](SECURITY.md) 指定的私密渠道报告。
 
 ## 延伸文档
 

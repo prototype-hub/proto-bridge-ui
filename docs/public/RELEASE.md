@@ -11,9 +11,9 @@
 在仓库根目录执行：
 
 ```bash
-python3 scripts/export-source.py
+python3 tools/export-source.py
 # 或指定一个不存在、位于源目录外的新目录：
-python3 scripts/export-source.py --output /tmp/proto-source-review
+python3 tools/export-source.py --output /tmp/proto-source-review
 ```
 
 导出只选取 `open-source-export.json` 明确允许的源码、配置与公共文档，不依赖 `.git`。它拒绝符号链接、源目录内部/祖先输出位置及覆盖已有目录；不复制 `.env`、本地配置、运行数据、依赖/构建产物、IDE 文件、内部审计证据、截图或测试追踪。`SOURCE_MANIFEST.json` 记录每个文件的 SHA256 和大小，并记录有限敏感模式扫描的范围。

@@ -15,7 +15,7 @@ const scriptRoot = dirname(fileURLToPath(import.meta.url))
 const hash = (value) => createHash('sha256').update(value).digest('hex')
 
 /** Fail closed on missing/changed license text; supplement only exact reviewed package versions. */
-export function licenseRecords(root, supplementsDir = join(scriptRoot, 'licenses')) {
+export function licenseRecords(root, supplementsDir = join(scriptRoot, '..', 'third-party')) {
   const supplements = readJson(join(supplementsDir, 'supplements.json'))
   return runtimeDependencies(root).map((pkg) => {
     const name = `${pkg.name}@${pkg.version}`,

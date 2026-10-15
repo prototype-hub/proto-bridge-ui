@@ -10,19 +10,19 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vue-tsc --noEmit && vite build && node scripts/third-party-notices.mjs",
+    "build": "vue-tsc --noEmit && vite build && node tools/third-party-notices.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint . && stylelint 'src/**/*.css' && prettier --check .",
     "format": "prettier --write .",
     "test:unit": "vitest run",
-    "test:e2e": "node scripts/run-e2e.mjs",
-    "verify": "node scripts/verify-open-source.mjs && node scripts/secret-scan.mjs && node scripts/third-party-notices.mjs --check",
-    "sbom": "node scripts/sbom.mjs",
-    "rename": "node scripts/rename-project.mjs",
+    "test:e2e": "node tools/run-e2e.mjs",
+    "verify": "node tools/verify-open-source.mjs && node tools/secret-scan.mjs && node tools/third-party-notices.mjs --check",
+    "sbom": "node tools/sbom.mjs",
+    "rename": "node tools/rename-project.mjs",
     "dev:mock": "vite --host 127.0.0.1 --mode mock",
-    "licenses": "node scripts/third-party-notices.mjs --check",
-    "test:release": "node --test tests/scripts/*.test.mjs"
+    "licenses": "node tools/third-party-notices.mjs --check",
+    "test:release": "node --test tests/release/*.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons-vue": "7.0.1",
