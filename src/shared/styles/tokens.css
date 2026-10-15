@@ -1,0 +1,137 @@
+/* Shared visual tokens; Ant Design receives the same primary token. */
+:root {
+  --color-primary: #1677ff;
+  --color-text: #1f2329;
+  --color-muted: #667085;
+  --color-border: #e5e7eb;
+  --color-surface: #fff;
+  --color-background: #f5f6f8;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius: 6px;
+  --text-small: 12px;
+  --text-body: 14px;
+  --text-title: 22px;
+  --layer-overlay: 10;
+  --layout-header: 56px;
+  --layout-nav: 208px;
+  --layout-inspector: 340px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+  background: var(--color-background);
+  font-size: var(--text-body);
+}
+
+a {
+  color: var(--color-primary);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.panel {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.public-shell {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: var(--space-6);
+}
+
+.public-card {
+  width: min(400px, 100%);
+}
+
+.fullscreen {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.code {
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: var(--text-small);
+}
+
+@media (width <= 640px) {
+  .panel {
+    padding: var(--space-4);
+  }
+}
+
+.pro-master-detail {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.pro-master-detail > * {
+  min-width: 0;
+}
+
+.pro-tree-panel {
+  padding: var(--space-4);
+}
+
+.tree-toolbar {
+  margin: var(--space-4) 0;
+}
+
+@media (width <= 960px) {
+  .pro-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,7 @@
+# Only runtime files are needed by the Nginx image.
+**
+!Dockerfile
+!nginx.conf
+!docker-entrypoint.sh
+!dist/
+!dist/**

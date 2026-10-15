@@ -1,0 +1,29 @@
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+/config/
+application-local.yml
+application-local.yaml
+variables.yml
+/data/
+/logs/
+*.log
+*.hprof
+# Tooling, dependencies, builds and private test artifacts
+.idea/
+.vscode/
+.DS_Store
+**/target/
+**/node_modules/
+**/dist/
+coverage/
+playwright-report/
+test-results/
+**/__pycache__/
+*.pyc
+SOURCE_MANIFEST.json
+docs/*
+!docs/public/
+!docs/OPEN_SOURCE_REVIEW.md
+!docs/ASSET_PROVENANCE.md

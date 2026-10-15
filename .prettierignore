@@ -1,0 +1,9 @@
+node_modules
+dist
+pnpm-lock.yaml
+playwright-report
+test-results
+coverage
+docs/BASELINE_BUILD.log
+docs/sbom.json
+docs/dependency-licenses.json

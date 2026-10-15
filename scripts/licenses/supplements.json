@@ -1,0 +1,42 @@
+[
+  {
+    "package": "@ant-design/icons-vue@7.0.1",
+    "license": "MIT",
+    "file": "ant-design-icons-MIT.txt",
+    "source": "https://github.com/ant-design/ant-design-icons/blob/3f332f4bce60d691e2c07933e2cf716e02900b6b/LICENSE",
+    "sha256": "5d367fb0a07340571542eb4ee8eb1add62d37b71bad6786a57c2e9a86bf76c70",
+    "reviewRequired": false
+  },
+  {
+    "package": "@ant-design/icons-svg@4.6.0",
+    "license": "MIT",
+    "file": "ant-design-icons-MIT.txt",
+    "source": "https://github.com/ant-design/ant-design-icons/blob/3f332f4bce60d691e2c07933e2cf716e02900b6b/LICENSE",
+    "sha256": "5d367fb0a07340571542eb4ee8eb1add62d37b71bad6786a57c2e9a86bf76c70",
+    "reviewRequired": false
+  },
+  {
+    "package": "array-tree-filter@2.1.0",
+    "license": "MIT",
+    "file": "array-tree-filter-MIT.txt",
+    "source": "https://github.com/afc163/array-tree-filter/blob/f83d94de18e4444909b695d86a2592a767381dca/LICENSE",
+    "sha256": "ef0647d9e230deb32d3ee6e95e313a6bf59802bae462fa1516f22c420fdcd3b5",
+    "reviewRequired": false
+  },
+  {
+    "package": "@vue/devtools-api@6.6.4",
+    "license": "MIT",
+    "file": "vue-devtools-6-MIT.txt",
+    "source": "https://github.com/vuejs/devtools-v6/blob/v6.6.4/LICENSE",
+    "sha256": "050bbca6960784db52ff387271bf2ecc5cbed7cf8581b415d528a6ecb6585015",
+    "reviewRequired": false
+  },
+  {
+    "package": "dom-scroll-into-view@2.0.1",
+    "license": "MIT",
+    "file": "dom-scroll-into-view-MIT.txt",
+    "source": "https://github.com/yiminghe/dom-scroll-into-view/blob/e702b895e2eebeae44d844a8aa26bb02e48f0091/README.md#license",
+    "sha256": "0e46af5c6a65daf8a04eb33f802ba413f1ba7752de9f9394a24896a15d96b793",
+    "reviewRequired": true
+  }
+]

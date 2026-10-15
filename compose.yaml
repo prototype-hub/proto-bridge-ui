@@ -1,0 +1,17 @@
+services:
+  web:
+    image: ${FRONTEND_IMAGE:-proto-bridge-ui:local}
+    build: .
+    container_name: proto-bridge-ui
+    restart: unless-stopped
+    ports:
+      - '10008:80'
+    environment:
+      - 'API_BASE_PATH=${API_BASE_PATH:?Set API_BASE_PATH to the backend URL reachable from this container}'
+      - 'SERVER_NAME=${SERVER_NAME:-}'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '3g'
