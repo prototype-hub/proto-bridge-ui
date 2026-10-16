@@ -1,5 +1,5 @@
 import { systemMenus } from './system-menu'
-import { settings, stores } from './system-data'
+import { settings, stores, userTypes } from './system-data'
 import { identityResponse } from './identity-handler'
 import { systemResponse } from './system-handler'
 import { resetSystem } from './system-data'
@@ -107,7 +107,7 @@ function reset() {
       name: 'Admin',
       status: 1,
       roleList: [{ id: 'ADMIN', name: 'Administrator' }],
-      type: 'normal',
+      type: structuredClone(userTypes[1]),
       orgIdList: ['org1'],
       orgList: [{ id: 'org1', name: '研发部' }],
       positions: [],
@@ -119,7 +119,7 @@ function reset() {
     username: 'operator',
     name: 'Operator',
     status: 1,
-    type: 'normal',
+    type: structuredClone(userTypes[0]),
     roleList: [],
     orgIdList: [],
     positions: [],
@@ -318,6 +318,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       name: member ? 'Member' : 'Admin',
       username: member ? 'member' : 'admin',
       status: 1,
+      type: structuredClone(userTypes[member ? 0 : 1]),
       ...(settings.profile && typeof settings.profile === 'object' ? settings.profile : {}),
     })
   else if (path === '/user-token/reset') send(res, 200, true)

@@ -25,6 +25,7 @@ import { useRelatedRecord } from '@/modules/authentication-manager-ui/hooks/useR
 import { authPermissions as p } from '@/modules/authentication-manager-ui/views/user/permissions'
 import { enabled } from '@/modules/authentication-manager-ui/utils/identity'
 import { displayValue } from '@/modules/authentication-manager-ui/utils/model'
+import { userTypeText } from '@/modules/authentication-manager-ui/utils/user'
 import UserEditor from '@/modules/authentication-manager-ui/views/user/components/UserEditor.vue'
 import PageContainer from '@/shared/components/PageContainer.vue'
 import QueryTable from '@/shared/components/QueryTable.vue'
@@ -38,6 +39,7 @@ const {
   roles,
   context,
   positions,
+  types,
   typeOptions,
   edit,
   save,
@@ -133,9 +135,7 @@ const fields = computed(() => [
           displayValue(record[column.dataIndex]) || '--'
         }}</template>
         <template v-else-if="column.dataIndex === 'type'">{{
-          typeOptions.find((row) => row.value === (record.typeId || record.type))?.label ||
-          displayValue(record.type) ||
-          '--'
+          userTypeText(record.type, types, record.typeId) || '--'
         }}</template>
         <a-tag
           v-else-if="column.dataIndex === 'status'"

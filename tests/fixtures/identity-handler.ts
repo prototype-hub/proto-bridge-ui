@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http'
 import type { ManagedUser } from '@/modules/authentication-manager-ui/types/user'
 import type { Role } from '@/modules/authentication-manager-ui/types/role'
 import type { ServerMenu } from '../../src/shared/auth/types'
-import { object, stores } from './system-data'
+import { object, stores, userTypes } from './system-data'
 import { identityRows, identityPage } from './identity-query'
 export interface IdentityState {
   users: ManagedUser[]
@@ -25,12 +25,7 @@ export function identityResponse(
     res.end(JSON.stringify({ success: status < 400, status, result, message }))
   }
   const invalid = (message: string) => send(null, 400, message)
-  if (path === '/user/detail/types')
-    send([
-      { id: 'normal', name: '普通用户' },
-      { id: 'api-client', name: 'API客户端' },
-      { id: 'other', name: '其他' },
-    ])
+  if (path === '/user/detail/types') send(userTypes)
   else if (path === '/user/detail/_query' || path === '/user/_query/')
     send(identityPage(identityRows(state.users, input), input))
   else if (path === '/user/detail/_create' || /^\/user\/detail\/[^/]+\/_update$/.test(path)) {
@@ -56,7 +51,7 @@ export function identityResponse(
             username: String(basic.username),
             name: String(basic.name),
             status: 1,
-            type: 'normal',
+            type: structuredClone(userTypes[0]),
             createTime: Date.now(),
           }
           state.users.push(value)

@@ -14,7 +14,11 @@ import { enabled, idsOf, optionIds } from '@/modules/authentication-manager-ui/u
 import { userTerms, validPassword } from '@/modules/authentication-manager-ui/utils/user'
 import { t } from '@/shared/i18n'
 import { recordsOf } from '@/modules/authentication-manager-ui/utils/model'
-import type { ManagedUser, UserInput } from '@/modules/authentication-manager-ui/types/user'
+import type {
+  ManagedUser,
+  UserInput,
+  UserType,
+} from '@/modules/authentication-manager-ui/types/user'
 import type { Role } from '@/modules/authentication-manager-ui/types/role'
 export function useUsers() {
   const list = usePaged((query, options) =>
@@ -36,9 +40,9 @@ export function useUsers() {
   const roles = shallowRef<Role[]>([])
   const context = ref<FormContext>({})
   const positions = ref<SystemRecord[]>([])
-  const types = ref<SystemRecord[]>([])
+  const types = ref<UserType[]>([])
   const typeOptions = computed(() =>
-    types.value.map((item) => ({ value: item.id, label: item.name })),
+    types.value.map((item) => ({ value: item.value, label: item.text })),
   )
   const form = ref<UserInput>({ username: '', name: '', password: '', roleIdList: [] })
   const resetId = ref('')
