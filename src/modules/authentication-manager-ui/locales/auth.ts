@@ -2,6 +2,7 @@ export const authLocales = {
   zh: {
     auth: {
       captcha: '验证码',
+      rememberMe: '记住我',
     },
     system: {
       bind: '绑定',
@@ -15,6 +16,7 @@ export const authLocales = {
   en: {
     auth: {
       captcha: 'Verification code',
+      rememberMe: 'Remember me',
     },
     system: {
       bind: 'Bind',

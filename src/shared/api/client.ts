@@ -17,7 +17,7 @@ export function normalize<T>(data: unknown, status = 200): ApiResponse<T> {
   return { success: true, status, result: data as T }
 }
 let unauthorized: () => Promise<void> = async () => {}
-let unauthorizedFlight: Promise<void> | undefined
+let unauthorizedFlight: { token: string | null; promise: Promise<void> } | undefined
 let notify: (error: ApiError) => void = () => {}
 const shown = new Map<string, number>()
 export function configureClient(callbacks: {
@@ -90,7 +90,14 @@ export function filenameFromHeader(header?: string): string {
 }
 export function createClient(authenticated: boolean, transport?: AxiosInstance) {
   const http =
-    transport || axios.create({ baseURL: config.apiBase, timeout: 30000, withCredentials: false })
+    transport ||
+    axios.create({
+      baseURL: config.apiBase,
+      timeout: 30000,
+      withCredentials: false,
+      // Same-origin XHR still sends cookies; Axios fetch maps false to credentials: 'omit'.
+      ...(!authenticated ? { adapter: 'fetch' } : {}),
+    })
   const pending = new Map<string, AbortController>()
   const active = new Set<AbortController>()
   async function run<T>(
@@ -111,8 +118,9 @@ export function createClient(authenticated: boolean, transport?: AxiosInstance) 
       pending.set(options.requestKey, controller)
     }
     const headers = AxiosHeaders.from(options.headers)
+    const accessToken = authenticated ? token.get() : null
     headers.delete(config.tokenHeader)
-    if (authenticated && token.get()) headers.set(config.tokenHeader, token.get())
+    if (accessToken) headers.set(config.tokenHeader, accessToken)
     headers.set(config.languageHeader, i18n.global.locale.value === 'zh' ? 'zh-CN' : 'en-US')
     if (data instanceof FormData) headers.delete('Content-Type')
     try {
@@ -158,9 +166,18 @@ export function createClient(authenticated: boolean, transport?: AxiosInstance) 
           cancelled,
         )
       } else error = new ApiError(t('common.unknown'))
-      if (authenticated && error.status === 401) {
-        unauthorizedFlight ||= Promise.resolve().then(unauthorized)
-        await unauthorizedFlight
+      // A late failure from a replaced session must not revoke the current user's credential.
+      if (authenticated && error.status === 401 && accessToken === token.get()) {
+        // Another tab can replace its cookie without resetting this tab's request state.
+        if (!unauthorizedFlight || unauthorizedFlight.token !== accessToken)
+          unauthorizedFlight = {
+            token: accessToken,
+            promise: Promise.resolve().then(async () => {
+              // Login can finish between queuing this callback and executing it.
+              if (accessToken === token.get()) await unauthorized()
+            }),
+          }
+        await unauthorizedFlight.promise
       }
       show(error, options)
       throw error

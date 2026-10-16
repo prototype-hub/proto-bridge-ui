@@ -70,10 +70,16 @@ export const useSession = defineStore('session', () => {
       await menuFlight
     }
   }
-  async function login(input: Parameters<typeof sessionApi.login>[0]) {
+  async function login(
+    input: Parameters<typeof sessionApi.login>[0],
+    options: { rememberMe?: boolean } = {},
+  ) {
     clear()
+    const epoch = generation
     const result = await sessionApi.login(input)
-    token.set(result.token)
+    // Logout or a newer login invalidates an earlier response, including persistent credentials.
+    if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
+    token.set(result.token, options.rememberMe)
     resetUnauthorized()
   }
   async function refreshMenus() {

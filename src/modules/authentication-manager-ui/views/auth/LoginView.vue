@@ -7,6 +7,7 @@ import {
   InputPassword as AInputPassword,
   Button as AButton,
   Alert as AAlert,
+  Checkbox as ACheckbox,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import { useLogin } from '@/modules/authentication-manager-ui/views/auth/hooks/useLogin'
@@ -73,6 +74,10 @@ const policeRecordUrl = computed(
                 @click="refreshCaptcha"
                 ><img :src="captcha.base64" :alt="t('auth.captcha')" width="160" height="40"
               /></a-button></div></a-form-item
+          ><a-form-item class="login-remember">
+            <a-checkbox v-model:checked="form.rememberMe" :disabled="busy || loading">{{
+              t('auth.rememberMe')
+            }}</a-checkbox></a-form-item
           ><a-button
             type="primary"
             html-type="submit"

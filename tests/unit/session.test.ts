@@ -2,6 +2,7 @@ import { it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSession } from '@/app/stores/session'
 import { sessionApi } from '@/modules/authentication-manager-ui'
+import { token } from '@/shared/auth/token'
 vi.mock('@/modules/authentication-manager-ui', () => ({
   sessionApi: {
     user: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock('@/modules/authentication-manager-ui', () => ({
   },
 }))
 beforeEach(() => {
+  token.clear()
   setActivePinia(createPinia())
   vi.mocked(sessionApi.user).mockResolvedValue({ id: 'u', name: 'User', username: 'user' })
   vi.mocked(sessionApi.authorization).mockResolvedValue({
@@ -49,4 +51,35 @@ it('does not restore a stale session after logout', async () => {
   resolve({ id: 'u', name: 'User', username: 'user' })
   await expect(pending).rejects.toThrow()
   expect(session.user).toBeUndefined()
+})
+it('persists the backend credential only when requested and clears it even if logout fails', async () => {
+  const session = useSession()
+  vi.mocked(sessionApi.login).mockResolvedValue({ token: 'remembered' })
+  await session.login({ username: 'user', password: 'password', expires: -1 }, { rememberMe: true })
+  expect(token.getRemembered()).toBe('remembered')
+  expect(localStorage.getItem('proto-bridge-ui:token')).toBeNull()
+  vi.mocked(sessionApi.logout).mockRejectedValueOnce(new Error('offline'))
+  await expect(session.logout()).rejects.toThrow('offline')
+  expect(token.get()).toBeNull()
+})
+it('does not persist failed login credentials or revive a token from a late login after logout', async () => {
+  const session = useSession()
+  vi.mocked(sessionApi.login).mockRejectedValueOnce(new Error('Rejected'))
+  await expect(
+    session.login({ username: 'user', password: 'wrong', expires: -1 }, { rememberMe: true }),
+  ).rejects.toThrow('Rejected')
+  expect(token.get()).toBeNull()
+  let complete!: (value: { token: string }) => void
+  vi.mocked(sessionApi.login).mockImplementationOnce(
+    () => new Promise((resolve) => (complete = resolve)),
+  )
+  const pending = session.login(
+    { username: 'user', password: 'password', expires: -1 },
+    { rememberMe: true },
+  )
+  vi.mocked(sessionApi.logout).mockResolvedValueOnce({ success: true, status: 200, result: true })
+  await session.logout()
+  complete({ token: 'too-late' })
+  await expect(pending).rejects.toMatchObject({ status: 401 })
+  expect(token.get()).toBeNull()
 })
