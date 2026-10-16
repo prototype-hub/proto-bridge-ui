@@ -2,11 +2,9 @@ import { expect, test, type Locator } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { expectDefaultBrandingAsset } from './branding-helpers'
 
-const defaultBackgroundWidth = Number(
-  readFileSync('src/modules/authentication-manager-ui/assets/login/login.svg', 'utf8').match(
-    /width="(\d+)"/,
-  )![1],
-)
+const defaultBackgroundWidth = readFileSync(
+  'src/modules/authentication-manager-ui/assets/login/login.png',
+).readUInt32BE(16)
 
 async function bounds(locator: Locator) {
   await expect(locator).toBeVisible()
@@ -19,7 +17,7 @@ test.beforeEach(async ({ request }) => {
   await request.post('http://127.0.0.1:5187/__test/reset')
 })
 
-test('desktop login uses a full-height right panel with the original fallback image and configured branding', async ({
+test('login uses a full-height right panel and keeps configured filing details responsive', async ({
   page,
 }, testInfo) => {
   let configured = false
@@ -116,7 +114,27 @@ test('desktop login uses a full-height right panel with the original fallback im
       )
       await expect(police).toHaveAttribute('target', '_blank')
       await expect(police).toHaveAttribute('rel', 'noopener noreferrer')
-      await expect(police.locator('img')).toHaveCount(0)
+      const policeIcon = police.locator('img.police-filing-icon')
+      await expect(policeIcon).toBeVisible()
+      await expect(policeIcon).toHaveAttribute('src', /filing\.png(?:\?.*)?$/)
+      await expect(policeIcon).toHaveAttribute('alt', '')
+      await expect(policeIcon).toHaveAttribute('aria-hidden', 'true')
+      await expect
+        .poll(() =>
+          policeIcon.evaluate((image: HTMLImageElement) => [
+            image.complete,
+            image.naturalWidth,
+            image.naturalHeight,
+          ]),
+        )
+        .toEqual([true, 20, 20])
+      const policeBox = await bounds(police)
+      const policeIconBox = await bounds(policeIcon)
+      expect(policeIconBox.x).toBeGreaterThanOrEqual(policeBox.x)
+      expect(policeIconBox.x + policeIconBox.width).toBeLessThan(policeBox.x + policeBox.width)
+      expect(
+        Math.abs(policeIconBox.y + policeIconBox.height / 2 - (policeBox.y + policeBox.height / 2)),
+      ).toBeLessThan(2)
     } else {
       await expectDefaultBrandingAsset(picture, 'background')
       await expectDefaultBrandingAsset(page.locator('.login-brand img'), 'logo')
@@ -129,6 +147,16 @@ test('desktop login uses a full-height right panel with the original fallback im
       fullPage: true,
     })
   }
+
+  await page.setViewportSize({ width: 390, height: 620 })
+  await page.goto('login')
+  await expect(
+    page
+      .getByRole('link', { name: '沪公网安备 31010402009999 号', exact: true })
+      .locator('img.police-filing-icon'),
+  ).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
   expect(ssoDiscoveryRequests).toBe(0)
   await page.getByRole('button', { name: '语言', exact: true }).click()
   await expect(page.getByLabel('Username', { exact: true })).toBeVisible()
