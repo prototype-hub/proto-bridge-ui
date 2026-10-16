@@ -1,6 +1,6 @@
 import { expect, type Locator } from '@playwright/test'
 
-/** Vite may inline these small local SVGs; confirm their identity without depending on bundler URLs. */
+/** Confirm bundled branding assets without depending on Vite's development or build URL prefix. */
 export async function expectDefaultBrandingAsset(
   locator: Locator,
   kind: 'logo' | 'ico' | 'background',
@@ -16,6 +16,6 @@ export async function expectDefaultBrandingAsset(
     expect(svg).toMatch(new RegExp(`viewBox=["']0 0 ${dimensions}["']`))
   } else {
     const path = kind === 'background' ? 'login/login' : 'logo/logo'
-    await expect(locator).toHaveAttribute(attribute, new RegExp(`/assets/${path}\\.svg(?:\\?.*)?$`))
+    await expect(locator).toHaveAttribute(attribute, new RegExp(`/assets/${path}\\.png(?:\\?.*)?$`))
   }
 }

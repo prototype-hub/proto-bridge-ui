@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useLogin } from '@/modules/authentication-manager-ui/views/auth/hooks/useLogin'
 import { useBranding } from '@/app/stores/branding'
 import { useSettings } from '@/app/stores/settings'
+import filingIcon from '@/modules/authentication-manager-ui/assets/filing/filing.png'
 const branding = useBranding()
 const { t, locale } = useI18n()
 const settings = useSettings()
@@ -100,7 +101,9 @@ const policeRecordUrl = computed(
             :href="policeRecordUrl"
             target="_blank"
             rel="noopener noreferrer"
-            >{{ policeRecordNumber }}</a
+            ><img class="police-filing-icon" :src="filingIcon" alt="" aria-hidden="true" />{{
+              policeRecordNumber
+            }}</a
           >
         </div>
       </footer>
@@ -194,6 +197,15 @@ const policeRecordUrl = computed(
 }
 .filing-link:hover {
   color: var(--color-primary);
+}
+.police-filing-link {
+  gap: var(--space-1);
+}
+.police-filing-icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
 }
 .login-error {
   margin-bottom: 0;
