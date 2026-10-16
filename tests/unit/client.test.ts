@@ -24,6 +24,7 @@ const adapter =
     return response
   }
 beforeEach(() => {
+  token.clear()
   localStorage.clear()
   resetUnauthorized()
 })
@@ -69,6 +70,59 @@ describe('request boundary', () => {
     await Promise.allSettled([client.get('/a'), client.get('/b'), client.get('/c')])
     expect(expired).toHaveBeenCalledTimes(1)
   })
+  it('clears a current remembered credential once but preserves a new token after an older request fails', async () => {
+    token.set('old-session', true)
+    const expired = vi.fn(async () => token.clear())
+    configureClient({ onUnauthorized: expired, onError: () => {} })
+    let rejectOld!: (error: ApiError) => void
+    const oldClient = createClient(
+      true,
+      axios.create({ adapter: () => new Promise((_, reject) => (rejectOld = reject)) }),
+    )
+    const oldRequest = oldClient.get('/old-session')
+    token.set('new-session', true)
+    rejectOld(new ApiError('Old session expired', 401))
+    await expect(oldRequest).rejects.toMatchObject({ status: 401 })
+    expect(expired).not.toHaveBeenCalled()
+    expect(token.getRemembered()).toBe('new-session')
+    const client = createClient(true, axios.create({ adapter: adapter(401, {}) }))
+    await Promise.allSettled([client.get('/a'), client.get('/b')])
+    expect(expired).toHaveBeenCalledOnce()
+    expect(token.getRemembered()).toBeNull()
+  })
+  it.each([true, false])(
+    'allows current 401 cleanup after skipping stale deferred cleanup (local reset: %s)',
+    async (resetState) => {
+      token.set('old-session', true)
+      const expired = vi.fn(async () => token.clear())
+      configureClient({ onUnauthorized: expired, onError: () => {} })
+      const read = token.get
+      let reads = 0
+      const currentToken = vi.spyOn(token, 'get').mockImplementation(() => {
+        const value = read()
+        if (++reads === 2) {
+          // A local login resets client state; another tab only replaces the shared cookie.
+          void Promise.resolve().then(() => {
+            token.set('new-session', true)
+            if (resetState) resetUnauthorized()
+          })
+        }
+        return value
+      })
+      try {
+        const client = createClient(true, axios.create({ adapter: adapter(401, {}) }))
+        await expect(client.get('/old-session')).rejects.toMatchObject({ status: 401 })
+        expect(expired).not.toHaveBeenCalled()
+        expect(token.getRemembered()).toBe('new-session')
+        await Promise.allSettled([client.get('/current-a'), client.get('/current-b')])
+        expect(expired).toHaveBeenCalledOnce()
+        expect(token.getRemembered()).toBeNull()
+      } finally {
+        currentToken.mockRestore()
+        token.clear()
+      }
+    },
+  )
   it('deduplicates error notifications and honors silent / hiddenError', async () => {
     const notify = vi.fn()
     configureClient({ onUnauthorized: async () => {}, onError: notify })
@@ -103,6 +157,66 @@ describe('request boundary', () => {
     ).rejects.toThrow()
     expect(captured?.has('X-Access-Token')).toBe(false)
     expect(expired).not.toHaveBeenCalled()
+  })
+  it('uses anonymous fetch with omitted cookies while preserving normalization, errors and cancellation', async () => {
+    const fetchRequest = vi.fn<typeof fetch>()
+    fetchRequest.mockResolvedValueOnce(new Response(JSON.stringify({ result: { ready: true } })))
+    vi.stubGlobal('fetch', fetchRequest)
+    token.set('management-token', true)
+    configureClient({ onUnauthorized: async () => token.clear(), onError: () => {} })
+    const options = { baseURL: 'http://localhost/api' }
+    try {
+      const client = createClient(false)
+      await expect(client.get('/public', undefined, options)).resolves.toMatchObject({
+        success: true,
+        result: { ready: true },
+      })
+      const input = fetchRequest.mock.calls[0]?.[0]
+      if (!(input instanceof Request)) throw new Error('Expected the Axios fetch Request')
+      expect(input.credentials).toBe('omit')
+      expect(input.headers.has('X-Access-Token')).toBe(false)
+      fetchRequest.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: false,
+            status: 403,
+            code: 'PUBLIC_DENIED',
+            message: 'Share unavailable',
+          }),
+          { status: 403 },
+        ),
+      )
+      await expect(client.get('/denied', undefined, options)).rejects.toMatchObject({
+        status: 403,
+        code: 'PUBLIC_DENIED',
+        message: 'Share unavailable',
+      })
+      let started!: () => void
+      const active = new Promise<void>((resolve) => (started = resolve))
+      fetchRequest.mockImplementationOnce(
+        (request) =>
+          new Promise((_, reject) => {
+            if (!(request instanceof Request)) throw new Error('Expected the Axios fetch Request')
+            request.signal.addEventListener('abort', () => reject(request.signal.reason), {
+              once: true,
+            })
+            started()
+          }),
+      )
+      const controller = new AbortController()
+      const cancelled = client.get('/cancelled', undefined, {
+        ...options,
+        signal: controller.signal,
+      })
+      const rejected = expect(cancelled).rejects.toMatchObject({ cancelled: true })
+      await active
+      controller.abort()
+      await rejected
+      expect(token.getRemembered()).toBe('management-token')
+    } finally {
+      vi.unstubAllGlobals()
+      token.clear()
+    }
   })
   it('keeps multipart boundaries automatic and honors upload timeout', async () => {
     let captured: AxiosHeaders | undefined
