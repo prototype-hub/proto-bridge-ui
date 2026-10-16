@@ -24,6 +24,31 @@ test.beforeEach(async ({ request }) => {
   await request.post('http://127.0.0.1:5187/__test/reset')
 })
 
+test('mock user type enums match list, detail, current user and identifier filters', async ({
+  request,
+}) => {
+  const headers = { 'X-Access-Token': 'mock-admin' }
+  const types = await request.get('/api/user/detail/types', { headers })
+  const { result: options } = await types.json()
+  expect(options).toEqual([
+    { value: 'normal', text: '普通用户', id: 'normal' },
+    { value: 'admin', text: '管理员', id: 'admin' },
+  ])
+  for (const option of options) {
+    const response = await request.post('/api/user/detail/_query', {
+      headers,
+      data: { terms: [{ column: 'type', termType: 'eq', value: option.value }] },
+    })
+    const { result: page } = await response.json()
+    expect(page.data).toHaveLength(1)
+    expect(page.data[0].type).toEqual(option)
+    const detail = await request.get(`/api/user/detail/${page.data[0].id}`, { headers })
+    expect((await detail.json()).result.type).toEqual(option)
+  }
+  const current = await request.get('/api/user/detail', { headers })
+  expect((await current.json()).result.type).toEqual(options[1])
+})
+
 test('user creation blocks local invalid passwords and preserves a valid 128-character raw password with empty optional contacts', async ({
   page,
 }) => {

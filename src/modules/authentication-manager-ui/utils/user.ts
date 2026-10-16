@@ -1,6 +1,32 @@
 import type { QueryTerm } from '@/shared/api/types'
-import type { UserInput } from '@/modules/authentication-manager-ui/types/user'
+import type { UserInput, UserType } from '@/modules/authentication-manager-ui/types/user'
 import { idsOf } from '@/modules/authentication-manager-ui/utils/identity'
+import {
+  displayValue,
+  isRecord,
+  stringValue,
+} from '@/modules/authentication-manager-ui/utils/model'
+
+/** Keep released string and id/name responses compatible at the user-type boundary. */
+export function normalizeUserType(input: unknown): UserType | undefined {
+  if (typeof input === 'string') return input ? { value: input, text: input } : undefined
+  if (!isRecord(input)) return undefined
+  const value = stringValue(input.value ?? input.id)
+  if (!value) return undefined
+  return {
+    value,
+    text: displayValue(input.text || input.name || value),
+    ...(typeof input.id === 'string' ? { id: input.id } : {}),
+  }
+}
+
+/** A row's server label takes precedence; only legacy identifiers need an option lookup. */
+export function userTypeText(input: unknown, types: UserType[], typeId?: unknown): string {
+  const type = normalizeUserType(input) ?? normalizeUserType(typeId)
+  if (!type) return ''
+  if (isRecord(input) && (input.text || input.name)) return type.text
+  return types.find((item) => item.value === type.value)?.text || type.text
+}
 
 export function userPayload(input: UserInput) {
   const {
@@ -10,6 +36,9 @@ export function userPayload(input: UserInput) {
     confirmPassword: _confirmation,
     orgList: _organizations,
     roleList: _roles,
+    // User types are server-managed; detail display fields are not writable account input.
+    type: _type,
+    typeId: _typeId,
     ...user
   } = input
   if (input.id) delete user.password

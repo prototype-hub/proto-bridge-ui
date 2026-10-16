@@ -9,6 +9,7 @@ import type { Role } from '@/modules/authentication-manager-ui/types/role'
 import { useRoleDetail } from '@/modules/authentication-manager-ui/views/role/hooks/useRoleDetail'
 import { useRelatedRecord } from '@/modules/authentication-manager-ui/hooks/useRelatedRecord'
 import { usersApi } from '@/modules/authentication-manager-ui/api/user/users'
+import { userIdentityApi } from '@/modules/authentication-manager-ui/api/user/user-types'
 import { rolesApi } from '@/modules/authentication-manager-ui/api/role/roles'
 import { permissionsApi } from '@/modules/authentication-manager-ui/api/permission/resources'
 import { roleIdentityApi } from '@/modules/authentication-manager-ui/api/role/role-options'
@@ -37,6 +38,32 @@ vi.mock('@/shared/api/client', () => ({
 }))
 vi.mock('@/shared/utils/feedback', () => ({ saved: vi.fn(), deleted: vi.fn() }))
 beforeEach(() => vi.clearAllMocks())
+it('reads canonical user type values/text and keeps released string and id/name options compatible', async () => {
+  const types = [
+    { value: 'normal', text: '普通用户', id: 'compat-normal', name: 'Ignored legacy label' },
+    { value: 'admin', text: '管理员', id: 'admin' },
+    'retired-type',
+    { id: 'legacy', name: '历史用户类型' },
+    null,
+  ]
+  vi.mocked(request.get).mockResolvedValueOnce({ success: true, status: 200, result: types })
+  await expect(userIdentityApi.userTypes()).resolves.toEqual([
+    { value: 'normal', text: '普通用户', id: 'compat-normal' },
+    { value: 'admin', text: '管理员', id: 'admin' },
+    { value: 'retired-type', text: 'retired-type' },
+    { value: 'legacy', text: '历史用户类型', id: 'legacy' },
+  ])
+  expect(request.get).toHaveBeenCalledWith('/user/detail/types')
+  vi.mocked(request.get).mockResolvedValueOnce({
+    success: true,
+    status: 200,
+    result: { data: ['normal', 'admin'] },
+  })
+  await expect(userIdentityApi.userTypes()).resolves.toEqual([
+    { value: 'normal', text: 'normal' },
+    { value: 'admin', text: 'admin' },
+  ])
+})
 it('sends user detail creation as the legacy nested user DTO and position IDs', async () => {
   await usersApi.save({
     username: 'operator',
@@ -84,6 +111,8 @@ it('keeps IDs at both detail update levels and excludes reset-only and derived f
     confirmPassword: 'discard',
     roleList: [{ id: 'r' }],
     orgList: [{ id: 'o' }],
+    type: { value: 'admin', text: '管理员', id: 'admin' },
+    typeId: 'admin',
     roleIdList: ['r'],
     orgIdList: ['o'],
   })

@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'node:http'
-import { stores, settings, object, page, queried } from './system-data'
+import { stores, settings, object, page, queried, userTypes } from './system-data'
 import { integrationResponse } from './system-integration'
 export function systemResponse(
   path: string,
@@ -54,7 +54,7 @@ export function systemResponse(
         },
       ]),
     )
-  else if (path === '/user/detail/types') send(['normal', 'api-client'])
+  else if (path === '/user/detail/types') send(userTypes)
   else if (path === '/user/me/password/_validate') send({ passed: true })
   else if (path === '/user/detail' && method === 'PUT') {
     settings.profile = data

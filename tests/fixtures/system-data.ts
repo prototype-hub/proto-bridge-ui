@@ -1,3 +1,10 @@
+import type { UserType } from '@/modules/authentication-manager-ui/types/user'
+
+export const userTypes: UserType[] = [
+  { value: 'normal', text: '普通用户', id: 'normal' },
+  { value: 'admin', text: '管理员', id: 'admin' },
+]
+
 export type Row = Record<string, unknown>
 export const stores: Record<string, Row[]> = {}
 export let settings: Record<string, unknown> = {}
