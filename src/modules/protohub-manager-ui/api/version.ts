@@ -1,6 +1,6 @@
 import { request } from '@/shared/api/client'
 import type { RequestOptions } from '@/shared/api/types'
-import type { Version, PrototypePage } from '../types'
+import type { Version, PrototypePage, VersionUsage } from '../types'
 const segment = encodeURIComponent
 function uploadData(name: string, description: string, file: File) {
   const data = new FormData()
@@ -12,6 +12,9 @@ function uploadData(name: string, description: string, file: File) {
 export const versionsApi = {
   list: async (projectId: string, options?: RequestOptions) =>
     (await request.get<Version[]>('/prototype-hub/versions', { projectId }, options)).result,
+  usage: async (projectId: string, options?: RequestOptions) =>
+    (await request.get<VersionUsage>('/prototype-hub/versions/_usage', { projectId }, options))
+      .result,
   get: async (id: string, options?: RequestOptions) =>
     (await request.get<Version>(`/prototype-hub/versions/${segment(id)}`, undefined, options))
       .result,

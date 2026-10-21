@@ -12,6 +12,21 @@ export interface ProjectInput {
   description?: string
   cover?: string
 }
+export interface Capacity {
+  used: number
+  limit: number
+  remaining: number
+  overLimit: boolean
+  canCreate: boolean
+}
+export interface ProjectUsage {
+  installationId: string
+  projects: Capacity
+}
+export interface VersionUsage {
+  projectId: string
+  versions: Capacity
+}
 export interface Version {
   id: string
   projectId: string

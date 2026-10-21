@@ -3,6 +3,16 @@ export const protoLocales = {
     projects: '原型项目',
     versions: '版本',
     newProject: '新建项目',
+    capacity: {
+      projects: '项目用量：{used} / {limit}',
+      versions: '当前项目版本用量：{used} / {limit}',
+      loading: '正在获取用量…',
+      unavailable: '暂时无法获取用量，可重试获取。',
+      full: '已达到免费额度',
+      overLimit: '现有数据已超过免费额度',
+      projectsRetained: '暂时无法新增项目，已有项目仍可查看、编辑和删除。',
+      versionsRetained: '暂时无法新增版本，已有版本仍可预览、更新、分享和删除。',
+    },
     projectDeleteConfirm: '确认删除该原型项目？项目下存在版本时无法删除，请先删除全部版本。',
     upload: '上传版本',
     update: '更新版本',
@@ -87,6 +97,18 @@ export const protoLocales = {
     projects: 'Prototype projects',
     versions: 'Versions',
     newProject: 'New project',
+    capacity: {
+      projects: 'Projects: {used} / {limit}',
+      versions: 'Versions in this project: {used} / {limit}',
+      loading: 'Loading usage…',
+      unavailable: 'Usage is temporarily unavailable. Retry to refresh it.',
+      full: 'Free allowance reached',
+      overLimit: 'Existing data exceeds the free allowance',
+      projectsRetained:
+        'New projects are paused. Existing projects can still be viewed, edited and deleted.',
+      versionsRetained:
+        'New versions are paused. Existing versions can still be previewed, replaced, shared and deleted.',
+    },
     projectDeleteConfirm:
       'Delete this prototype project? Projects with versions cannot be deleted. Delete all versions first.',
     upload: 'Upload version',

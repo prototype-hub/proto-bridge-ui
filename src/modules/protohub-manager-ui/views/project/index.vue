@@ -20,6 +20,7 @@ import { useI18n } from 'vue-i18n'
 import { useProjects } from '@/modules/protohub-manager-ui/views/project/hooks/useProjects'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import ProjectDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectDialog.vue'
+import CapacityNotice from '@/modules/protohub-manager-ui/views/project/components/CapacityNotice.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import PageContainer from '@/shared/components/PageContainer.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
@@ -28,7 +29,8 @@ import ActionButton from '@/shared/components/ActionButton.vue'
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
-const { resource, task, open, form, search, edit, save, remove } = useProjects()
+const { resource, usage, loadUsage, refresh, task, open, form, search, edit, save, remove } =
+  useProjects()
 const projects = computed(() =>
   resource.data.value.filter((project) =>
     project.name.toLowerCase().includes(search.value.toLowerCase()),
@@ -41,17 +43,27 @@ function openDetail(id: string) {
 <template>
   <page-container :title="t('proto.projects')"
     ><template #actions
-      ><permission-button :permission="p.project.save" type="primary" @click="edit()">{{
-        t('proto.newProject')
-      }}</permission-button></template
+      ><permission-button
+        :permission="p.project.save"
+        type="primary"
+        :disabled="usage.data.value?.projects.canCreate === false"
+        @click="edit()"
+        >{{ t('proto.newProject') }}</permission-button
+      ></template
     >
     <div class="toolbar">
       <a-input-search
         v-model:value="search"
         :placeholder="t('common.name')"
         :style="{ maxWidth: '360px' }"
-      /><a-button @click="resource.load">{{ t('common.refresh') }}</a-button>
+      /><a-button @click="refresh">{{ t('common.refresh') }}</a-button>
     </div>
+    <capacity-notice
+      :capacity="usage.data.value?.projects"
+      :loading="usage.loading.value"
+      :error="usage.error.value"
+      kind="projects"
+      @retry="loadUsage" />
     <a-alert v-if="task.error.value" type="error" :message="task.error.value" /><load-state
       :loading="resource.loading.value"
       :error="resource.error.value"

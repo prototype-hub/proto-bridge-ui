@@ -19,6 +19,7 @@ import DataTable from '@/shared/components/DataTable.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import UploadDialog from '@/modules/protohub-manager-ui/views/project/components/UploadDialog.vue'
+import CapacityNotice from '@/modules/protohub-manager-ui/views/project/components/CapacityNotice.vue'
 import ShareDialog from '@/modules/protohub-manager-ui/views/project/components/ShareDialog.vue'
 import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
 import { useSession } from '@/app/stores/session'
@@ -26,8 +27,19 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const session = useSession()
-const { resource, task, uploadOpen, uploadContext, shareVersion, upload, preview, remove } =
-  useProjectDetail()
+const {
+  resource,
+  usage,
+  loadUsage,
+  refresh,
+  task,
+  uploadOpen,
+  uploadContext,
+  shareVersion,
+  upload,
+  preview,
+  remove,
+} = useProjectDetail()
 const columns = computed(() => [
   { title: t('proto.versionName'), dataIndex: 'versionName' },
   { title: t('common.description'), dataIndex: 'description' },
@@ -45,11 +57,16 @@ const columns = computed(() => [
       ><permission-button
         :permission="p.version.save"
         type="primary"
-        :disabled="!resource.data.value.project"
+        :disabled="!resource.data.value.project || usage.data.value?.versions.canCreate === false"
         @click="upload()"
         >{{ t('proto.upload') }}</permission-button
       ></template
-    ><load-state
+    ><capacity-notice
+      :capacity="usage.data.value?.versions"
+      :loading="usage.loading.value"
+      :error="usage.error.value"
+      kind="versions"
+      @retry="loadUsage" /><load-state
       :loading="resource.loading.value"
       :error="resource.error.value"
       @retry="resource.load"
@@ -110,7 +127,7 @@ const columns = computed(() => [
       :open="uploadOpen"
       :context="uploadContext"
       @close="uploadOpen = false"
-      @uploaded="resource.load" /><share-dialog
+      @uploaded="refresh" /><share-dialog
       :project="resource.data.value.project"
       :version="shareVersion"
       @close="shareVersion = undefined"

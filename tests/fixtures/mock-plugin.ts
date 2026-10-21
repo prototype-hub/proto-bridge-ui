@@ -3,6 +3,7 @@ import { settings, stores, userTypes } from './system-data'
 import { identityResponse } from './identity-handler'
 import { systemResponse } from './system-handler'
 import { resetSystem } from './system-data'
+import { createHash } from 'node:crypto'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
@@ -12,6 +13,7 @@ import type {
   Share,
   PublicShare,
   PrototypePage,
+  Capacity,
 } from '../../src/modules/protohub-manager-ui/types'
 import type { ServerMenu } from '../../src/shared/auth/types'
 import type { ManagedUser } from '@/modules/authentication-manager-ui/types/user'
@@ -77,6 +79,7 @@ let grants: ServerMenu[] = []
 const roleGrants = new Map<string, ServerMenu[]>()
 let counter = 10
 const passwords = new Map<string, string>()
+const creationReceipts = new Map<string, { payload: string; result: Project | Version }>()
 function reset() {
   resetSystem()
   menus = structuredClone(initialMenus)
@@ -99,6 +102,7 @@ function reset() {
     { ...share('disabled', 'v1', false), enabled: false },
   ]
   passwords.clear()
+  creationReceipts.clear()
   passwords.set('locked', 'test-share-password')
   users = [
     {
@@ -188,6 +192,53 @@ function page<T>(rows: T[]) {
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
+function capacity(used: number): Capacity {
+  return {
+    used,
+    limit: 5,
+    remaining: Math.max(0, 5 - used),
+    overLimit: used > 5,
+    canCreate: used < 5,
+  }
+}
+function createOnce(
+  req: IncomingMessage,
+  res: ServerResponse,
+  path: string,
+  payload: string,
+  usage: Capacity,
+  create: () => Project | Version,
+) {
+  const key = req.headers['idempotency-key']
+  const receiptKey = typeof key === 'string' ? `${path}:${key}` : undefined
+  const receipt = receiptKey ? creationReceipts.get(receiptKey) : undefined
+  if (receipt) {
+    if (receipt.payload === payload) send(res, 200, receipt.result)
+    else send(res, 409, null, '幂等标识已用于其他创建内容，请重新发起创建')
+    return
+  }
+  if (!usage.canCreate) {
+    send(res, 409, null, '已达到免费额度，已有数据仍可查看、更新和删除')
+    return
+  }
+  const result = create()
+  if (receiptKey) creationReceipts.set(receiptKey, { payload, result })
+  send(res, 200, result)
+}
+function multipartFields(bytes: Buffer, contentType: string) {
+  const boundary = contentType
+    .match(/boundary=(?:"([^"]+)"|([^;]+))/)
+    ?.slice(1)
+    .find(Boolean)
+  const fields = new Map<string, Buffer>()
+  if (!boundary) return fields
+  for (const part of bytes.toString('latin1').split(`--${boundary}`).slice(1, -1)) {
+    const split = part.indexOf('\r\n\r\n')
+    const name = part.slice(0, split).match(/\bname="([^"]+)"/)?.[1]
+    if (name && split >= 0) fields.set(name, Buffer.from(part.slice(split + 4, -2), 'latin1'))
+  }
+  return fields
+}
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url || '/', 'http://localhost')
   const path = url.pathname.replace(/^\/api/, '')
@@ -200,7 +251,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   if (!url.pathname.startsWith('/api/')) return false
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  const raw = Buffer.concat(chunks).toString()
+  const bytes = Buffer.concat(chunks)
+  const raw = bytes.toString()
   let input: unknown
   try {
     input = JSON.parse(raw)
@@ -345,23 +397,56 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   else if (path === '/menu/code/_validate' || /\/user\/(username|password)\/_validate/.test(path))
     send(res, 200, { passed: true })
   else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
-  else if (path === '/prototype-hub/projects' && method === 'POST') {
-    const value = {
-      id: String(++counter),
-      name: String(data.name),
-      description: String(data.description || ''),
-      createdBy: 'admin',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }
-    projects.push(value)
-    send(res, 200, value)
-  } else if (/^\/prototype-hub\/projects\/[^/]+\/versions$/.test(path)) {
+  else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
+    send(res, 200, { installationId: 'contract-installation', projects: capacity(projects.length) })
+  else if (path === '/prototype-hub/versions/_usage' && method === 'GET') {
+    const projectId = url.searchParams.get('projectId')
+    send(res, 200, {
+      projectId,
+      versions: capacity(versions.filter((item) => item.projectId === projectId).length),
+    })
+  } else if (path === '/prototype-hub/projects' && method === 'POST') {
+    const name = String(data.name).trim()
+    const description = String(data.description || '').trim()
+    createOnce(
+      req,
+      res,
+      path,
+      JSON.stringify([name, description, data.cover || '']),
+      capacity(projects.length),
+      () => {
+        const value = {
+          id: String(++counter),
+          name,
+          description,
+          createdBy: 'admin',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        projects.push(value)
+        return value
+      },
+    )
+  } else if (/^\/prototype-hub\/projects\/[^/]+\/versions$/.test(path) && method === 'POST') {
     const projectId = path.split('/')[3]
-    const name = raw.match(/name="versionName"\r\n\r\n([^\r]+)/)?.[1] || 'Uploaded'
-    const value = version(String(++counter), projectId, name)
-    versions.push(value)
-    send(res, 200, value)
+    const fields = multipartFields(bytes, req.headers['content-type'] || '')
+    const name = fields.get('versionName')?.toString().trim() || 'Uploaded'
+    const description = fields.get('description')?.toString().trim() || ''
+    const fileHash = createHash('sha256')
+      .update(fields.get('file') || Buffer.alloc(0))
+      .digest('hex')
+    createOnce(
+      req,
+      res,
+      path,
+      JSON.stringify([name, description, fileHash]),
+      capacity(versions.filter((item) => item.projectId === projectId).length),
+      () => {
+        const value = { ...version(String(++counter), projectId, name), description }
+        versions.push(value)
+        return value
+      },
+    )
   } else if (/^\/prototype-hub\/projects\/[^/]+$/.test(path)) {
     const id = decodeURIComponent(path.split('/')[3])
     const value = projects.find((item) => item.id === id)
