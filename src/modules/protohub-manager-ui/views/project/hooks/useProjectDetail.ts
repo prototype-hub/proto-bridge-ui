@@ -5,7 +5,12 @@ import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { deleted } from '@/shared/utils/feedback'
-import type { Version, UploadContext, Project } from '@/modules/protohub-manager-ui/types'
+import type {
+  Version,
+  UploadContext,
+  Project,
+  VersionUsage,
+} from '@/modules/protohub-manager-ui/types'
 export function useProjectDetail() {
   const route = useRoute()
   const router = useRouter()
@@ -14,6 +19,10 @@ export function useProjectDetail() {
   const uploadOpen = ref(false)
   const uploadContext = ref<UploadContext>({ projectId: id.value })
   const shareVersion = ref<Version>()
+  const usage = useResource<VersionUsage | undefined>(
+    (signal) => versionsApi.usage(id.value, { signal, silent: true }),
+    undefined,
+  )
   const resource = useResource(
     async (signal) => {
       const [project, versions] = await Promise.all([
@@ -24,6 +33,13 @@ export function useProjectDetail() {
     },
     { project: undefined as Project | undefined, versions: [] as Version[] },
   )
+  function loadUsage() {
+    usage.data.value = undefined
+    return usage.load()
+  }
+  async function refresh() {
+    await Promise.all([resource.load(), loadUsage()])
+  }
   function upload(version?: Version) {
     uploadContext.value = { projectId: id.value, version }
     uploadOpen.value = true
@@ -45,7 +61,7 @@ export function useProjectDetail() {
     await task.run(async () => {
       await versionsApi.remove(key)
       deleted()
-      await resource.load()
+      await refresh()
     })
   }
   watch(
@@ -53,9 +69,21 @@ export function useProjectDetail() {
     () => {
       shareVersion.value = undefined
       uploadOpen.value = false
-      void resource.load()
+      void refresh()
     },
     { immediate: true },
   )
-  return { resource, task, uploadOpen, uploadContext, shareVersion, upload, preview, remove }
+  return {
+    resource,
+    usage,
+    loadUsage,
+    refresh,
+    task,
+    uploadOpen,
+    uploadContext,
+    shareVersion,
+    upload,
+    preview,
+    remove,
+  }
 }

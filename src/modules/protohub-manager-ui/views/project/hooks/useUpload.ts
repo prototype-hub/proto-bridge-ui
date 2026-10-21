@@ -1,6 +1,7 @@
 import { ref, reactive, watch, onScopeDispose, type Ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { versionsApi } from '@/modules/protohub-manager-ui/api'
+import { createCreationIntent } from '@/modules/protohub-manager-ui/utils/creation-intent'
 import { t } from '@/shared/i18n'
 import { useTask } from '@/shared/composables/useTask'
 import { ApiError } from '@/shared/api/errors'
@@ -18,7 +19,9 @@ export function useUpload(
   const form = reactive({ versionName: '', description: '' })
   const file = ref<File>()
   const progress = ref(0)
+  const intent = createCreationIntent()
   let controller: AbortController | undefined
+  watch(open, () => intent.reset(), { flush: 'sync' })
   watch(open, (value) => {
     if (value) {
       form.versionName = context.value.version?.versionName || ''
@@ -61,7 +64,11 @@ export function useUpload(
       try {
         await (current.version
           ? versionsApi.update(current.version.id, ...args, options)
-          : versionsApi.upload(current.projectId, ...args, options))
+          : versionsApi.upload(current.projectId, ...args, {
+              ...options,
+              headers: { 'Idempotency-Key': intent.key([current.projectId, ...args]) },
+            }))
+        intent.reset()
         void message.success(t('proto.uploadSuccess'))
         done()
         close()

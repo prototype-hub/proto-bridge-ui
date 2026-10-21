@@ -55,6 +55,31 @@ it('keeps password reset as text and role grants in the existing menus envelope'
   expect(request.put).toHaveBeenCalledWith('/menu/role/r/_grant', { menus: [] })
 })
 
+it('queries authenticated usage independently and forwards creation idempotency headers', async () => {
+  const controller = new AbortController()
+  const options = { signal: controller.signal, silent: true }
+  await projectsApi.usage(options)
+  expect(request.get).toHaveBeenCalledWith('/prototype-hub/projects/_usage', undefined, options)
+  await versionsApi.usage('p/id', options)
+  expect(request.get).toHaveBeenCalledWith(
+    '/prototype-hub/versions/_usage',
+    { projectId: 'p/id' },
+    options,
+  )
+  const creationOptions = { headers: { 'Idempotency-Key': 'creation-intent' } }
+  await projectsApi.create({ name: 'Project' }, creationOptions)
+  expect(request.post).toHaveBeenCalledWith(
+    '/prototype-hub/projects',
+    { name: 'Project' },
+    creationOptions,
+  )
+  await versionsApi.upload('p/id', 'V2', 'Notes', new File(['zip'], 'test.zip'), creationOptions)
+  const upload = vi.mocked(request.post).mock.calls.at(-1)!
+  expect(upload[0]).toBe('/prototype-hub/projects/p%2Fid/versions')
+  expect(upload[2]).toEqual({ ...creationOptions, timeout: 1800000 })
+  expect(publicRequest.get).not.toHaveBeenCalled()
+})
+
 it('uploads personal avatars through the current-user endpoint and keeps branding uploads on the managed endpoint', async () => {
   const file = new File(['PNG bytes'], 'avatar.png', { type: 'image/png' })
   const result = { url: '/api/file/static/avatar.png', accessUrl: '/api/file/static/avatar.png' }
