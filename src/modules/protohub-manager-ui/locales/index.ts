@@ -21,6 +21,28 @@ export const protoLocales = {
     zip: 'Axure HTML ZIP',
     zipHint: '上传导出的 HTML ZIP，最大 500 MB。',
     zipInvalid: '请选择有效的 ZIP 文件（不为空且不超过 500 MB）',
+    createTarget: '新建一个版本，占用一个版本名额。选择文件后点击保存才会上传。',
+    updateTarget: '替换版本「{name}」的内容，保留已有分享链接，不新增版本名额。',
+    folder: 'HTML 文件夹',
+    selectFolder: '选择 HTML 文件夹',
+    folderHint:
+      '请选择完整导出的 HTML 文件夹。浏览器打包上限：{files} 个文件、合计 {total} MiB、单文件 {single} MiB。较大的目录请手动压缩后上传 ZIP。',
+    folderReady: '已打包「{name}」：{files} 个文件，原始大小 {size} MiB。点击保存上传。',
+    folderReading: '正在读取并压缩文件…',
+    folderPacking: '正在完成 ZIP 打包…',
+    cancelPacking: '停止打包',
+    uploadUnknown:
+      '未收到服务器的处理结果，请先刷新列表确认。需要重试时，请在此窗口保留原文件和信息，再次点击保存。',
+    uploadCancelHint: '关闭窗口只会停止等待，服务器可能已经保存。请先刷新列表确认，再重新上传。',
+    folderErrors: {
+      empty: '文件夹中没有文件，请重新选择或上传 ZIP。',
+      invalidPath: '文件夹包含无效或重复路径，请检查后重新选择；不会跳过文件。',
+      tooManyFiles: '文件数量超过浏览器打包上限，请手动压缩后上传 ZIP。',
+      tooLarge: '文件夹或单文件超过浏览器打包上限，请手动压缩后上传 ZIP。',
+      noHtml: '未找到可用的 HTML 入口，请选择完整导出文件夹。',
+      unsupported: '当前浏览器不支持文件夹打包，请使用 ZIP 上传。',
+      failed: '文件夹打包失败，请重新选择或手动压缩后上传 ZIP。',
+    },
     uploading: '上传中',
     processing: '服务器处理中',
     uploadSuccess: '版本已保存',
@@ -118,6 +140,32 @@ export const protoLocales = {
     zip: 'Axure HTML ZIP',
     zipHint: 'Upload exported HTML as ZIP, up to 500 MB.',
     zipInvalid: 'Choose a nonempty ZIP file smaller than 500 MB.',
+    createTarget: 'Create a new version using one version slot. Select files, then save to upload.',
+    updateTarget:
+      'Replace “{name}” while keeping existing share links. No new version slot is used.',
+    folder: 'HTML folder',
+    selectFolder: 'Select HTML folder',
+    folderHint:
+      'Select the complete exported HTML folder. Browser packing limits: {files} files, {total} MiB total, {single} MiB per file. For larger folders, create a ZIP and upload it.',
+    folderReady: 'Packed “{name}”: {files} files, {size} MiB original size. Save to upload.',
+    folderReading: 'Reading and compressing files…',
+    folderPacking: 'Finishing ZIP archive…',
+    cancelPacking: 'Stop packing',
+    uploadUnknown:
+      'No server result was received. Refresh the list to check first. To retry, keep the original file and details in this dialog, then save again.',
+    uploadCancelHint:
+      'Closing only stops waiting; the server may have saved the version. Refresh the list before uploading again.',
+    folderErrors: {
+      empty: 'The folder contains no files. Select another folder or upload a ZIP.',
+      invalidPath:
+        'The folder contains invalid or duplicate paths. Check the folder and try again; no files are skipped.',
+      tooManyFiles: 'Too many files for browser packing. Create a ZIP and upload it instead.',
+      tooLarge:
+        'The folder or a file exceeds browser packing limits. Create a ZIP and upload it instead.',
+      noHtml: 'No usable HTML entry was found. Select the complete exported folder.',
+      unsupported: 'Folder packing is unavailable in this browser. Upload a ZIP instead.',
+      failed: 'Could not pack the folder. Select it again or create a ZIP and upload it.',
+    },
     uploading: 'Uploading',
     processing: 'Processing on server',
     uploadSuccess: 'Version saved',
