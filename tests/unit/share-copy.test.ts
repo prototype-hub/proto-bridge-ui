@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref, type EffectScope } from 'vue'
 import {
@@ -229,6 +230,7 @@ it('submits and clears a trimmed description while remembering only the created 
     createdBy: 'ai',
     createdAt: 1,
     updatedAt: 1,
+    ...ownerProjectAccess,
   }
   const version: Version = {
     id: 'v1',
@@ -282,6 +284,7 @@ it('does not recover creation plaintext from a late response after main close an
     createdBy: 'ai',
     createdAt: 1,
     updatedAt: 1,
+    ...ownerProjectAccess,
   }
   const selected = ref<Version | undefined>(version)
   const state = scope.run(() => useShares(selected, ref(project)))!

@@ -5,6 +5,10 @@ import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { deleted } from '@/shared/utils/feedback'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+import { t } from '@/shared/i18n'
+import { usePermissions } from '@/shared/auth/provider'
+import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import type {
   Version,
   UploadContext,
@@ -16,19 +20,32 @@ export function useProjectDetail() {
   const router = useRouter()
   const id = computed(() => String(route.params.id))
   const task = useTask()
+  const permissions = usePermissions()
   const uploadOpen = ref(false)
   const uploadContext = ref<UploadContext>({ projectId: id.value })
   const shareVersion = ref<Version>()
+  const membersOpen = ref(false)
   const usage = useResource<VersionUsage | undefined>(
-    (signal) => versionsApi.usage(id.value, { signal, silent: true }),
+    (signal) =>
+      permissions.can(p.version.query)
+        ? versionsApi.usage(id.value, { signal, silent: true })
+        : Promise.resolve(undefined),
     undefined,
   )
-  const resource = useResource(
+  const resource = useResource<{ project: Project | undefined; versions: Version[] }>(
     async (signal) => {
-      const [project, versions] = await Promise.all([
-        projectsApi.get(id.value, { signal, silent: true }),
-        versionsApi.list(id.value, { signal, silent: true }),
-      ])
+      // Scope changes and failed refreshes must not leave another project's controls or content mounted.
+      resource.data.value = { project: undefined, versions: [] }
+      uploadOpen.value = false
+      shareVersion.value = undefined
+      const project = await projectsApi.get(id.value, { signal, silent: true })
+      if (signal.aborted) return { project: undefined, versions: [] }
+      // Project administration does not imply permission to query its version contents.
+      const versions = permissions.can(p.version.query)
+        ? await versionsApi.list(id.value, { signal, silent: true })
+        : []
+      if (project.id !== id.value || versions.some((version) => version.projectId !== project.id))
+        throw new Error(t('proto.projectUnavailable'))
       return { project, versions }
     },
     { project: undefined as Project | undefined, versions: [] as Version[] },
@@ -41,10 +58,13 @@ export function useProjectDetail() {
     await Promise.all([resource.load(), loadUsage()])
   }
   function upload(version?: Version) {
+    if (!projectAllows(resource.data.value.project, 'edit')) return
     uploadContext.value = { projectId: id.value, version }
     uploadOpen.value = true
   }
   function preview(version: Version) {
+    if (!projectAllows(resource.data.value.project, 'read') || version.projectId !== id.value)
+      return
     window.open(
       applicationUrl(
         router,
@@ -58,6 +78,7 @@ export function useProjectDetail() {
     )
   }
   async function remove(key: string) {
+    if (!projectAllows(resource.data.value.project, 'edit')) return
     await task.run(async () => {
       await versionsApi.remove(key)
       deleted()
@@ -69,9 +90,11 @@ export function useProjectDetail() {
     () => {
       shareVersion.value = undefined
       uploadOpen.value = false
+      membersOpen.value = false
+      resource.data.value = { project: undefined, versions: [] }
       void refresh()
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
   return {
     resource,
@@ -82,6 +105,7 @@ export function useProjectDetail() {
     uploadOpen,
     uploadContext,
     shareVersion,
+    membersOpen,
     upload,
     preview,
     remove,

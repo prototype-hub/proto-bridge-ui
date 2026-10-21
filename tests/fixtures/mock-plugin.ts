@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from './project-access'
 import { systemMenus } from './system-menu'
 import { settings, stores, userTypes } from './system-data'
 import { identityResponse } from './identity-handler'
@@ -14,6 +15,7 @@ import type {
   PublicShare,
   PrototypePage,
   Capacity,
+  ProjectMember,
 } from '../../src/modules/protohub-manager-ui/types'
 import type { ServerMenu } from '../../src/shared/auth/types'
 import type { ManagedUser } from '@/modules/authentication-manager-ui/types/user'
@@ -79,6 +81,16 @@ let grants: ServerMenu[] = []
 const roleGrants = new Map<string, ServerMenu[]>()
 let counter = 10
 const passwords = new Map<string, string>()
+const projectMembers = new Map<string, ProjectMember[]>()
+const previewSessions = new Map<
+  string,
+  { versionId: string; projectId: string; expiresAt: number }
+>()
+function revokePreviews(projectId: string, versionId?: string) {
+  for (const [key, session] of previewSessions)
+    if (session.projectId === projectId && (!versionId || session.versionId === versionId))
+      previewSessions.delete(key)
+}
 const creationReceipts = new Map<string, { payload: string; result: Project | Version }>()
 function reset() {
   resetSystem()
@@ -92,6 +104,7 @@ function reset() {
       createdBy: 'admin',
       createdAt: 1700000000000,
       updatedAt: 1700000000000,
+      ...ownerProjectAccess,
     },
   ]
   versions = [version('v1', 'p1', 'V1')]
@@ -103,6 +116,9 @@ function reset() {
   ]
   passwords.clear()
   creationReceipts.clear()
+  previewSessions.clear()
+  projectMembers.clear()
+  projectMembers.set('p1', [{ userId: 'u1', name: 'Admin', username: 'admin', role: 'owner' }])
   passwords.set('locked', 'test-share-password')
   users = [
     {
@@ -158,8 +174,8 @@ function version(id: string, projectId: string, versionName: string): Version {
     status: 'ready',
     createdBy: 'admin',
     createdAt: 1700000000000,
-    runtimeBaseUrl: `/api/prototype-hub/runtime/${id}/preview-key`,
-    previewUrl: `/api/prototype-hub/runtime/${id}/preview-key/index.html`,
+    runtimeBaseUrl: null,
+    previewUrl: null,
   }
 }
 function share(token: string, versionId: string, passwordRequired: boolean): Share {
@@ -264,6 +280,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     path.startsWith('/prototype-hub/runtime/') ||
     /^\/prototype-hub\/public\/shares\/[^/]+\/access-key\/runtime\//.test(path)
   ) {
+    if (path.startsWith('/prototype-hub/runtime/')) {
+      const [, , , versionId, key] = path.split('/')
+      const session = previewSessions.get(key)
+      if (!session || session.versionId !== versionId || session.expiresAt <= Date.now()) {
+        send(res, 404, null, 'Preview unavailable')
+        return true
+      }
+    }
     res.setHeader('Content-Type', 'text/html')
     res.end(runtimeHtml)
     return true
@@ -349,7 +373,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true
   }
   const member = token === 'mock-member'
-  if (member && method !== 'GET' && path !== '/menu/user-own/tree') {
+  if (
+    member &&
+    method !== 'GET' &&
+    path !== '/menu/user-own/tree' &&
+    !path.endsWith('/preview-session')
+  ) {
     send(res, 403, null, 'Access denied')
     return true
   }
@@ -396,7 +425,55 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   else if (path === '/menu/_all/tree') send(res, 200, systemMenus(menus))
   else if (path === '/menu/code/_validate' || /\/user\/(username|password)\/_validate/.test(path))
     send(res, 200, { passed: true })
-  else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
+  else if (/^\/prototype-hub\/projects\/[^/]+\/member-candidates$/.test(path)) {
+    const keyword = (url.searchParams.get('keyword') || '').toLowerCase()
+    send(
+      res,
+      200,
+      users
+        .filter((user) => `${user.name} ${user.username}`.toLowerCase().includes(keyword))
+        .slice(0, 20)
+        .map((user) => ({ userId: user.id, name: user.name, username: user.username })),
+    )
+  } else if (/^\/prototype-hub\/projects\/[^/]+\/members(?:\/[^/]+)?$/.test(path)) {
+    const id = decodeURIComponent(path.split('/')[3])
+    const userId = decodeURIComponent(path.split('/')[5] || '')
+    const members = projectMembers.get(id) || []
+    const existing = members.find((item) => item.userId === userId)
+    if (method !== 'GET' && existing?.role === 'owner')
+      send(res, 403, null, 'Owner cannot be changed')
+    else if (method === 'PUT') {
+      const user = users.find((item) => item.id === userId)
+      if (!user || !['editor', 'viewer'].includes(String(data.role)))
+        send(res, 400, null, 'Invalid member')
+      else {
+        const member = {
+          userId,
+          name: user.name,
+          username: user.username,
+          role: data.role as 'editor' | 'viewer',
+        }
+        projectMembers.set(id, [...members.filter((item) => item.userId !== userId), member])
+        revokePreviews(id)
+        send(res, 200, true)
+      }
+    } else if (method === 'DELETE') {
+      projectMembers.set(
+        id,
+        members.filter((item) => item.userId !== userId),
+      )
+      revokePreviews(id)
+      send(res, 200, true)
+    } else send(res, 200, members)
+  } else if (/^\/prototype-hub\/projects\/[^/]+\/claim$/.test(path) && method === 'POST') {
+    const value = projects.find((item) => item.id === path.split('/')[3])
+    if (!value?.claimRequired) send(res, 409, null, 'Claim unavailable')
+    else {
+      value.ownerId = String(data.userId)
+      value.claimRequired = false
+      send(res, 200, value)
+    }
+  } else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
   else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
     send(res, 200, { installationId: 'contract-installation', projects: capacity(projects.length) })
   else if (path === '/prototype-hub/versions/_usage' && method === 'GET') {
@@ -422,6 +499,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
           createdBy: 'admin',
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          ...ownerProjectAccess,
         }
         projects.push(value)
         return value
@@ -470,7 +548,21 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       200,
       versions.filter((item) => item.projectId === url.searchParams.get('projectId')),
     )
-  else if (/^\/prototype-hub\/versions\/[^/]+\/pages$/.test(path)) send(res, 200, pages)
+  else if (/^\/prototype-hub\/versions\/[^/]+\/preview-session$/.test(path) && method === 'POST') {
+    const id = path.split('/')[3]
+    const key = `short-preview-${++counter}`
+    const expiresAt = Date.now() + 300000
+    previewSessions.set(key, {
+      versionId: id,
+      projectId: versions.find((item) => item.id === id)?.projectId || '',
+      expiresAt,
+    })
+    send(res, 200, {
+      runtimeBaseUrl: `/api/prototype-hub/runtime/${id}/${key}`,
+      previewUrl: `/api/prototype-hub/runtime/${id}/${key}/index.html`,
+      expiresAt,
+    })
+  } else if (/^\/prototype-hub\/versions\/[^/]+\/pages$/.test(path)) send(res, 200, pages)
   else if (/^\/prototype-hub\/versions\/[^/]+\/shares$/.test(path)) {
     const id = path.split('/')[3]
     if (method === 'POST') {
@@ -491,6 +583,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const value = versions.find((item) => item.id === id)
     if (!value) send(res, 404, null, 'Version not found')
     else {
+      if (method === 'PUT' || method === 'DELETE') revokePreviews(value.projectId, value.id)
       if (method === 'PUT')
         value.versionName =
           raw.match(/name="versionName"\r\n\r\n([^\r]+)/)?.[1] || value.versionName

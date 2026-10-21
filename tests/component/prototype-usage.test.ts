@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
@@ -37,6 +38,7 @@ const project: Project = {
   createdBy: 'admin',
   createdAt: 1,
   updatedAt: 1,
+  ...ownerProjectAccess,
 }
 const mounted: VueWrapper[] = []
 
@@ -208,7 +210,7 @@ it('refreshes project usage after successful creation and deletion', async () =>
   const { projects } = await render('projects')
   projects.edit()
   await projects.save({ name: 'New project' })
-  await projects.remove('p2')
+  await projects.remove('p1')
   expect(
     vi.mocked(request.get).mock.calls.filter(([path]) => path === '/prototype-hub/projects/_usage'),
   ).toHaveLength(3)

@@ -9,6 +9,7 @@ import { useResource } from '@/shared/composables/useResource'
 import { saved, deleted } from '@/shared/utils/feedback'
 import { useShareCopy } from './useShareCopy'
 import type { Project, Version, Share } from '@/modules/protohub-manager-ui/types'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 /** Own share actions and the clock used by validity labels while this dialog is open. */
 export function useShares(version: Ref<Version | undefined>, project: Ref<Project | undefined>) {
   const router = useRouter()
@@ -18,7 +19,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   const expires = ref<Dayjs>()
   const shareCopy = useShareCopy(
     computed(() =>
-      version.value && project.value
+      version.value && project.value && projectAllows(project.value, 'manageShares')
         ? {
             projectId: project.value.id,
             projectName: project.value.name,
@@ -30,13 +31,12 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
     (share) => url(share),
   )
   let generation = 0
-  const resource = useResource(
-    (signal) =>
-      version.value
-        ? sharesApi.list(version.value.id, { signal, silent: true })
-        : Promise.resolve([]),
-    [],
-  )
+  const resource = useResource<Share[]>((signal) => {
+    resource.data.value = []
+    return version.value && projectAllows(project.value, 'manageShares')
+      ? sharesApi.list(version.value.id, { signal, silent: true })
+      : Promise.resolve([])
+  }, [])
   const now = ref(Date.now())
   let clock: ReturnType<typeof setInterval> | undefined
   const stopClock = () => {
@@ -45,16 +45,17 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   }
   // Expiry can pass while the dialog stays open; never retain a timer after closing or disposal.
   watch(
-    version,
+    () => [version.value, project.value?.id, project.value?.capabilities?.manageShares],
     () => {
       generation += 1
+      resource.data.value = []
       stopClock()
       now.value = Date.now()
       description.value = ''
       password.value = ''
       expires.value = undefined
-      if (version.value) {
-        void resource.load()
+      void resource.load()
+      if (version.value && projectAllows(project.value, 'manageShares')) {
         clock = setInterval(() => {
           now.value = Date.now()
         }, 1000)
@@ -68,7 +69,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   })
   /** Capture the submitted password before the form is cleared or a new version is selected. */
   async function create() {
-    if (!version.value) return
+    if (!version.value || !projectAllows(project.value, 'manageShares')) return
     const selectedVersion = version.value
     const rawDescription = description.value.trim()
     const rawPassword = password.value
@@ -90,6 +91,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
     })
   }
   async function remove(id: string) {
+    if (!projectAllows(project.value, 'manageShares')) return
     await task.run(async () => {
       await sharesApi.remove(id)
       shareCopy.forget(id)

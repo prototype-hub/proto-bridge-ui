@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h } from 'vue'
@@ -15,7 +16,14 @@ vi.mock('@/modules/protohub-manager-ui/api', () => ({
   sharesApi: { list: vi.fn(), create: vi.fn(), remove: vi.fn(), verifyPassword: vi.fn() },
 }))
 vi.mock('@/shared/utils/feedback', () => ({ copyText: vi.fn(), saved: vi.fn(), deleted: vi.fn() }))
-const project: Project = { id: 'p1', name: '项目', createdBy: 'admin', createdAt: 1, updatedAt: 1 }
+const project: Project = {
+  id: 'p1',
+  name: '项目',
+  createdBy: 'admin',
+  createdAt: 1,
+  updatedAt: 1,
+  ...ownerProjectAccess,
+}
 const version: Version = {
   id: 'v1',
   projectId: 'p1',

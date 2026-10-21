@@ -6,6 +6,35 @@ export interface Project {
   createdBy: string
   createdAt: number
   updatedAt: number
+  ownerId: string | null
+  role: 'owner' | 'editor' | 'viewer' | 'admin'
+  claimRequired: boolean
+  capabilities: ProjectCapabilities
+}
+/** Server-owned project scope; visible controls also require their ordinary action permission. */
+export interface ProjectCapabilities {
+  read: boolean
+  edit: boolean
+  manageMembers: boolean
+  deleteProject: boolean
+  manageShares: boolean
+}
+export interface ProjectMember {
+  userId: string
+  name: string
+  username: string
+  role: 'owner' | 'editor' | 'viewer'
+}
+export interface MemberCandidate {
+  userId: string
+  name: string
+  username: string
+}
+export interface OwnershipMigration {
+  scanned: number
+  assigned: number
+  pending: number
+  unchanged: number
 }
 export interface ProjectInput {
   name: string
@@ -36,8 +65,13 @@ export interface Version {
   status: 'ready' | 'failed'
   createdBy: string
   createdAt: number
+  runtimeBaseUrl: string | null
+  previewUrl: string | null
+}
+export interface PreviewSession {
   runtimeBaseUrl: string
   previewUrl: string
+  expiresAt: number
 }
 export interface PrototypePage {
   name: string
