@@ -43,18 +43,22 @@ pnpm licenses:release
 ## 依赖漏洞复核
 
 ```bash
-pnpm audit --prod --json --registry https://registry.npmjs.org
-pnpm audit --json --registry https://registry.npmjs.org
+pnpm audit:dependencies
 ```
 
-每次发行重新在线扫描并记录时间、锁文件摘要与命中路径。`verify` 检查来源、敏感模式和许可资料，不代替漏洞扫描；审计命中导致的非零退出也不能当作工具故障忽略。
+此命令固定使用 npm 官方 registry 和 `packageManager` 声明的 pnpm 9 版本，分别执行生产闭包和全部依赖审计，不设置忽略清单、严重性过滤或“忽略未修复”选项。它在仓库之外的私有临时目录中只复制 `package.json` 和锁文件，使用最小子进程环境、自有空 user/global npmrc，避免 `NODE_ENV`、`npm_config_production` 或本机 npmrc 将全部审计静默缩为生产范围；非空 `pnpm.auditConfig.ignoreCves` 会直接被拒绝。两个范围都会执行；完整原始 JSON 与收据位于 `node_modules/.cache/prototype-hub-audit/current/`，目录权限为 0700、报告为 0600，包含告警路径，不能随源码公开。
+
+退出码 0 表示两个范围均完成且无命中，1 表示至少一个范围有命中，2 表示网络、工具、报告格式或输入一致性失败。开始新扫描即撤销旧收据；只有两个报告均完整且 `package.json`、锁文件在扫描期间未改变，才原子发布新的一组报告。收据记录时间、官方 registry、Node/pnpm 版本及两份输入的 SHA-256；即使生产范围无命中，全部依赖有告警仍然返回 1，不把它合并成“通过”。
+
+发行时重新扫描并核对收据输入摘要，后续源码或锁文件发生变化后旧收据不再适用。网络失败不复用旧报告，进程重叠会拒绝第二次扫描。SIGINT/SIGTERM 会终止并等待本次子进程退出，清理临时输入和缓存锁，分别退出 130/143；不会留下可复用的成功收据。若进程被 SIGKILL 或机器断电等不可捕获地终止，查看固定缓存 `.running/owner.json` 的 PID 和临时目录，先确认该次进程与子进程均已结束，再人工移除该次自有临时目录及缓存锁，不按锁年龄强抢活跃实例，也不复用旧结果。`verify` 检查来源、敏感模式和许可资料，不代替在线漏洞扫描。
 
 2026-10-21 针对当前锁文件的复核已消除生产闭包和 Critical 命中：Axios 升至 1.20.0、Vue 升至 3.5.42、Vite 保持 6 系列并升至 6.4.4；Vitest 按[官方迁移路径](https://v4.vitest.dev/guide/migration.html)升至 4.1.11，移除旧 `tinypool` 依赖，不使用跨主版本强制覆盖。
 
+`eslint-plugin-vue` 已按[官方 10.11.1 依赖及 peer 声明](https://github.com/vuejs/eslint-plugin-vue/blob/v10.11.1/package.json)兼容升级，移除旧 `postcss-selector-parser@6.1.4`，由调用方正常解析到已修复的 7.1.7，不使用跨主版本强制覆盖。该变更只涉及开发工具，生产依赖与页面行为不变。
+
 开发依赖仍有以下未清项，后续扫描可能变化：
 
-- `eslint-plugin-vue`/`stylelint` 经 `micromatch` 引入的 `braces@3.0.3`：High，[上游问题](https://github.com/micromatch/braces/issues/70)描述深度嵌套的外部 glob 模式可耗尽 Node 调用栈，当前无修复版本。它不在生产依赖闭包；本项目的 lint 使用仓库维护的固定模式，仍应在隔离环境中处理不可信源码或配置，不能据此宣称漏洞已修复。
-- `eslint-plugin-vue@10.5.0` 引入的 `postcss-selector-parser@6.1.4`：Moderate，[公告](https://github.com/advisories/GHSA-rj75-hqrm-r3gf)的修复线为 7.1.6。当前调用方约束为 6 系列，不强制替换其主版本；待上游兼容更新后复核。
+- `stylelint` 经 `micromatch`/`fast-glob` 引入的 `braces@3.0.3`：High，[上游问题](https://github.com/micromatch/braces/issues/70)描述深度嵌套的外部 glob 模式可耗尽 Node 调用栈，当前无已发布修复版本。它不在生产依赖闭包；本项目的 lint 使用仓库维护的固定模式，仍应在隔离环境中处理不可信源码或配置，不能据此宣称漏洞已修复。自动审计门禁继续保留该命中并返回非零状态。
 
 这些结果是检查时点的依赖记录，不涵盖镜像、部署代理或未来新增依赖，也不能代替维护者对正式发行风险的判断。
 
