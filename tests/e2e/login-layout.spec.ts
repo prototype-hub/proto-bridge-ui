@@ -2,9 +2,11 @@ import { expect, test, type Locator } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { expectDefaultBrandingAsset } from './branding-helpers'
 
-const defaultBackgroundWidth = readFileSync(
-  'src/modules/authentication-manager-ui/assets/login/login.png',
-).readUInt32BE(16)
+const defaultBackground = readFileSync(
+  'src/modules/authentication-manager-ui/assets/login/login.svg',
+  'utf8',
+)
+const defaultBackgroundWidth = Number(defaultBackground.match(/width="(\d+)"/)?.[1])
 
 async function bounds(locator: Locator) {
   await expect(locator).toBeVisible()
@@ -114,27 +116,7 @@ test('login uses a full-height right panel and keeps configured filing details r
       )
       await expect(police).toHaveAttribute('target', '_blank')
       await expect(police).toHaveAttribute('rel', 'noopener noreferrer')
-      const policeIcon = police.locator('img.police-filing-icon')
-      await expect(policeIcon).toBeVisible()
-      await expect(policeIcon).toHaveAttribute('src', /filing\.png(?:\?.*)?$/)
-      await expect(policeIcon).toHaveAttribute('alt', '')
-      await expect(policeIcon).toHaveAttribute('aria-hidden', 'true')
-      await expect
-        .poll(() =>
-          policeIcon.evaluate((image: HTMLImageElement) => [
-            image.complete,
-            image.naturalWidth,
-            image.naturalHeight,
-          ]),
-        )
-        .toEqual([true, 20, 20])
-      const policeBox = await bounds(police)
-      const policeIconBox = await bounds(policeIcon)
-      expect(policeIconBox.x).toBeGreaterThanOrEqual(policeBox.x)
-      expect(policeIconBox.x + policeIconBox.width).toBeLessThan(policeBox.x + policeBox.width)
-      expect(
-        Math.abs(policeIconBox.y + policeIconBox.height / 2 - (policeBox.y + policeBox.height / 2)),
-      ).toBeLessThan(2)
+      await expect(police.locator('img')).toHaveCount(0)
     } else {
       await expectDefaultBrandingAsset(picture, 'background')
       await expectDefaultBrandingAsset(page.locator('.login-brand img'), 'logo')
@@ -151,9 +133,7 @@ test('login uses a full-height right panel and keeps configured filing details r
   await page.setViewportSize({ width: 390, height: 620 })
   await page.goto('login')
   await expect(
-    page
-      .getByRole('link', { name: '沪公网安备 31010402009999 号', exact: true })
-      .locator('img.police-filing-icon'),
+    page.getByRole('link', { name: '沪公网安备 31010402009999 号', exact: true }),
   ).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 

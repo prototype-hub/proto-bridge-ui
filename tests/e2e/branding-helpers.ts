@@ -16,6 +16,9 @@ export async function expectDefaultBrandingAsset(
     expect(svg).toMatch(new RegExp(`viewBox=["']0 0 ${dimensions}["']`))
   } else {
     const path = kind === 'background' ? 'login/login' : 'logo/logo'
-    await expect(locator).toHaveAttribute(attribute, new RegExp(`/assets/${path}\\.png(?:\\?.*)?$`))
+    await expect(locator).toHaveAttribute(
+      attribute,
+      new RegExp(String.raw`/assets/${path}\.svg(?:\?.*)?$`),
+    )
   }
 }

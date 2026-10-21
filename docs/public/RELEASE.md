@@ -25,15 +25,44 @@ python3 tools/export-source.py --output /tmp/proto-source-review
 ```bash
 pnpm typecheck
 pnpm verify
+pnpm test:release
 pnpm test:unit
 pnpm build
+# 正式分发构建产物前，执行严格许可门禁：
+pnpm licenses:release
 ```
 
 构建生成 `dist/THIRD_PARTY_NOTICES.txt` 完整许可文本及 `dist/third-party-manifest.json`，Docker 复制 dist 时一并提供。该清单覆盖运行依赖解析闭包，可能大于实际浏览器 bundle；缺少必要许可文本应使构建失败，不用 SPDX 标签替代全文和版权声明。
 
-`dom-scroll-into-view@2.0.1` 的上游包只声明 MIT、未提供独立 LICENSE 或作者版权原文；生成清单明确标记 `declaration-only`，该署名/来源项仍需维护者复核，不能声称第三方权属和声明已全部完成。
+`agent-base@6.0.2` 与 `https-proxy-agent@5.0.1` 将完整 MIT 文本放在 README 的 License 段，已按 npm `gitHead` 对应的官方提交核对原文，并在 `third-party/supplements.json` 记录精确版本、来源和 SHA256；新增版本缺少许可文本仍会失败，不自动套用旧版本例外。
+
+`dom-scroll-into-view@2.0.1` 的上游包和对应源码树只声明 MIT、未提供独立 LICENSE 或作者版权原文；生成清单保留 `declaration-only` 待审标签，`pnpm licenses:release` 会因此失败。开发构建可以生成带此标签的审查产物，但不能据此批准二进制发行。维护者应取得可核验的上游声明，或完成有依据的依赖替换后再解除门禁；不得臆造版权人。公开项目源码的审查与包含第三方代码的构建产物分发分别确认，项目的 Apache-2.0 不覆盖该缺口。
 
 `pnpm sbom` 是当前安装环境清单，不能证明所有目标平台可选包、实际bundle或许可证义务均已核对；发布时结合 lock、实际产物与完整文本审查。默认素材来源见 [素材说明](../ASSET_PROVENANCE.md)，外部品牌/上传内容由其提供者确认权利。
+
+## 依赖漏洞复核
+
+```bash
+pnpm audit --prod --json --registry https://registry.npmjs.org
+pnpm audit --json --registry https://registry.npmjs.org
+```
+
+每次发行重新在线扫描并记录时间、锁文件摘要与命中路径。`verify` 检查来源、敏感模式和许可资料，不代替漏洞扫描；审计命中导致的非零退出也不能当作工具故障忽略。
+
+2026-10-21 针对当前锁文件的复核已消除生产闭包和 Critical 命中：Axios 升至 1.20.0、Vue 升至 3.5.42、Vite 保持 6 系列并升至 6.4.4；Vitest 按[官方迁移路径](https://v4.vitest.dev/guide/migration.html)升至 4.1.11，移除旧 `tinypool` 依赖，不使用跨主版本强制覆盖。
+
+开发依赖仍有以下未清项，后续扫描可能变化：
+
+- `eslint-plugin-vue`/`stylelint` 经 `micromatch` 引入的 `braces@3.0.3`：High，[上游问题](https://github.com/micromatch/braces/issues/70)描述深度嵌套的外部 glob 模式可耗尽 Node 调用栈，当前无修复版本。它不在生产依赖闭包；本项目的 lint 使用仓库维护的固定模式，仍应在隔离环境中处理不可信源码或配置，不能据此宣称漏洞已修复。
+- `eslint-plugin-vue@10.5.0` 引入的 `postcss-selector-parser@6.1.4`：Moderate，[公告](https://github.com/advisories/GHSA-rj75-hqrm-r3gf)的修复线为 7.1.6。当前调用方约束为 6 系列，不强制替换其主版本；待上游兼容更新后复核。
+
+这些结果是检查时点的依赖记录，不涵盖镜像、部署代理或未来新增依赖，也不能代替维护者对正式发行风险的判断。
+
+## 干净构建与真实后端验证
+
+在新导出的源码目录执行 `pnpm install --frozen-lockfile` 与 `pnpm build`，不要复制原工作区的 `node_modules`、`dist` 或 `.env.local`。真实后端浏览器入口是 `pnpm test:e2e:live`（`playwright.live.config.ts`），与默认 Mock 测试隔离，使用不加载 `.env` 的专用配置预览生产 `dist`；由配套后端 `tools/verify-runtime.py` 的 `--frontend-dir` 参数提供随机隔离实例和临时账号，接线要求见[开发指南](DEVELOPMENT.md)。
+
+记录实际产物、浏览器和样本范围。原创 HTML 多页样本通过不能证明全部 Axure 导出能力、生产 Nginx 或其他浏览器均兼容；不公开运行时账号、令牌、分享 URL、截图或追踪。运行检查与第三方许可、安全扫描及目标部署验收分别执行。
 
 ## 手动发布门禁与兼容范围
 

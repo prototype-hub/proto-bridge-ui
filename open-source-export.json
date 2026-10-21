@@ -18,6 +18,7 @@
     "tsconfig.json",
     "eslint.config.js",
     "playwright.config.ts",
+    "playwright.live.config.ts",
     ".prettierignore",
     ".prettierrc.json",
     ".stylelintrc.json",
