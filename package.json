@@ -17,21 +17,23 @@
     "format": "prettier --write .",
     "test:unit": "vitest run",
     "test:e2e": "node tools/run-e2e.mjs",
+    "test:e2e:live": "playwright test --config playwright.live.config.ts",
     "verify": "node tools/verify-open-source.mjs && node tools/secret-scan.mjs && node tools/third-party-notices.mjs --check",
     "sbom": "node tools/sbom.mjs",
     "rename": "node tools/rename-project.mjs",
     "dev:mock": "vite --host 127.0.0.1 --mode mock",
     "licenses": "node tools/third-party-notices.mjs --check",
+    "licenses:release": "node tools/third-party-notices.mjs --check --release",
     "test:release": "node --test tests/release/*.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons-vue": "7.0.1",
     "ant-design-vue": "4.2.6",
-    "axios": "1.12.2",
+    "axios": "1.20.0",
     "dayjs": "1.11.13",
     "jsencrypt": "3.5.4",
     "pinia": "3.0.3",
-    "vue": "3.5.22",
+    "vue": "3.5.42",
     "vue-i18n": "11.1.12",
     "vue-router": "4.5.1"
   },
@@ -49,8 +51,8 @@
     "stylelint-config-standard": "39.0.0",
     "typescript": "5.8.3",
     "typescript-eslint": "8.44.1",
-    "vite": "6.4.2",
-    "vitest": "3.2.4",
+    "vite": "6.4.4",
+    "vitest": "4.1.11",
     "vue-tsc": "3.0.8"
   }
 }

@@ -61,6 +61,16 @@ export function licenseRecords(root, supplementsDir = join(scriptRoot, '..', 'th
   })
 }
 
+/** A declaration-only record is useful for review, but cannot approve a binary release. */
+export function assertReleaseLicenses(records) {
+  const pending = records.filter((pkg) => pkg.reviewRequired)
+  if (pending.length)
+    throw new Error(
+      'Unresolved attribution review blocks binary release: ' +
+        pending.map((pkg) => `${pkg.name}@${pkg.version}`).join(', '),
+    )
+}
+
 /** Publish complete notices for a conservative dependency superset, without claiming every entry is bundled. */
 export function publishNotices(root, output = join(root, 'dist')) {
   const records = licenseRecords(root)
@@ -98,10 +108,12 @@ export function publishNotices(root, output = join(root, 'dist')) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = process.cwd()
-  const records = process.argv.includes('--check') ? licenseRecords(root) : publishNotices(root)
+  const checking = process.argv.includes('--check') || process.argv.includes('--release')
+  const records = checking ? licenseRecords(root) : publishNotices(root)
   const reviews = records.filter((pkg) => pkg.reviewRequired)
+  if (process.argv.includes('--release')) assertReleaseLicenses(records)
   console.log(
-    `${records.length} dependency license texts verified; ${reviews.length} declaration-only attribution review record(s)`,
+    `${records.length} dependency license text records collected; ${reviews.length} declaration-only attribution review record(s)`,
   )
   if (reviews.length)
     console.log('Review records: ' + reviews.map((pkg) => `${pkg.name}@${pkg.version}`).join(', '))

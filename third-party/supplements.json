@@ -38,5 +38,21 @@
     "source": "https://github.com/yiminghe/dom-scroll-into-view/blob/e702b895e2eebeae44d844a8aa26bb02e48f0091/README.md#license",
     "sha256": "0e46af5c6a65daf8a04eb33f802ba413f1ba7752de9f9394a24896a15d96b793",
     "reviewRequired": true
+  },
+  {
+    "package": "agent-base@6.0.2",
+    "license": "MIT",
+    "file": "node-proxy-agents-MIT.txt",
+    "source": "https://github.com/TooTallNate/node-agent-base/blob/c4b8ea2e1a11bae023bb09b708050a50418204e9/README.md#license",
+    "sha256": "b3681ff73335c04770aa0367aa4ca72e77e5ca55007fc0bcb9d564d00cce20f4",
+    "reviewRequired": false
+  },
+  {
+    "package": "https-proxy-agent@5.0.1",
+    "license": "MIT",
+    "file": "node-proxy-agents-MIT.txt",
+    "source": "https://github.com/TooTallNate/node-https-proxy-agent/blob/d0d80cc0482f20495aa8595f802e1a9f3b1b3409/README.md#license",
+    "sha256": "b3681ff73335c04770aa0367aa4ca72e77e5ca55007fc0bcb9d564d00cce20f4",
+    "reviewRequired": false
   }
 ]
