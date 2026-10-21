@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref, type EffectScope } from 'vue'
 import { shareValidity } from '@/modules/protohub-manager-ui/utils/share'
@@ -33,6 +34,7 @@ const version: Version = {
   previewUrl: '/runtime/index.html',
 }
 const project: Project = {
+  ...ownerProjectAccess,
   id: 'p1',
   name: '项目',
   createdBy: 'admin',

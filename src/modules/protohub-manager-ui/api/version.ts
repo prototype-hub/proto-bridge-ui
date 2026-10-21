@@ -1,6 +1,6 @@
 import { request } from '@/shared/api/client'
 import type { RequestOptions } from '@/shared/api/types'
-import type { Version, PrototypePage, VersionUsage } from '../types'
+import type { Version, PrototypePage, VersionUsage, PreviewSession } from '../types'
 const segment = encodeURIComponent
 function uploadData(name: string, description: string, file: File) {
   const data = new FormData()
@@ -22,6 +22,14 @@ export const versionsApi = {
     (
       await request.get<PrototypePage[]>(
         `/prototype-hub/versions/${segment(id)}/pages`,
+        undefined,
+        options,
+      )
+    ).result,
+  previewSession: async (id: string, options?: RequestOptions) =>
+    (
+      await request.post<PreviewSession>(
+        `/prototype-hub/versions/${segment(id)}/preview-session`,
         undefined,
         options,
       )

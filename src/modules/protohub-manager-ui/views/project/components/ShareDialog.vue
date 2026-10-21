@@ -25,6 +25,7 @@ import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import ShareCopyDialog from './ShareCopyDialog.vue'
 import { usePermissions } from '@/shared/auth/provider'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 const props = defineProps({
   version: { type: Object as PropType<Version>, default: undefined },
   project: { type: Object as PropType<Project>, default: undefined },
@@ -67,13 +68,13 @@ const {
 } = useShares(toRef(props, 'version'), toRef(props, 'project'))
 // Keyboard form submission must respect the same capability as the visible creation button.
 const submitCreate = () => {
-  if (permissions.can(p.share.save)) void create()
+  if (projectAllows(props.project, 'manageShares') && permissions.can(p.share.save)) void create()
 }
 </script>
 <template>
   <a-modal
     :destroy-on-close="true"
-    :open="!!version"
+    :open="!!version && projectAllows(project, 'manageShares')"
     :title="t('proto.share')"
     :footer="null"
     :width="1120"

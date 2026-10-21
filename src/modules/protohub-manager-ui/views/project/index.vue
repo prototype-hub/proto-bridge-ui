@@ -26,6 +26,7 @@ import PageContainer from '@/shared/components/PageContainer.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -104,12 +105,14 @@ function openDetail(id: string) {
                   @action="openDetail(project.id)"
                 />
                 <action-button
+                  v-if="projectAllows(project, 'edit')"
                   :label="t('common.edit')"
                   :icon="EditOutlined"
                   :permission="p.project.save"
                   @action="edit(project)"
                 />
                 <action-button
+                  v-if="projectAllows(project, 'deleteProject')"
                   :label="t('common.delete')"
                   :icon="DeleteOutlined"
                   :permission="p.project.delete"

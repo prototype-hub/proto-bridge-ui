@@ -9,6 +9,7 @@ import {
   UploadOutlined,
   ShareAltOutlined,
   DeleteOutlined,
+  TeamOutlined,
 } from '@ant-design/icons-vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
@@ -23,6 +24,8 @@ import CapacityNotice from '@/modules/protohub-manager-ui/views/project/componen
 import ShareDialog from '@/modules/protohub-manager-ui/views/project/components/ShareDialog.vue'
 import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
 import { useSession } from '@/app/stores/session'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -36,6 +39,7 @@ const {
   uploadOpen,
   uploadContext,
   shareVersion,
+  membersOpen,
   upload,
   preview,
   remove,
@@ -54,14 +58,27 @@ const columns = computed(() => [
     back
     @back="router.push(projectListLocation(router, session.menus, route.query))"
     ><template #actions
-      ><permission-button
-        :permission="p.version.save"
-        type="primary"
-        :disabled="!resource.data.value.project || usage.data.value?.versions.canCreate === false"
-        @click="upload()"
-        >{{ t('proto.upload') }}</permission-button
+      ><a-space
+        ><permission-button
+          v-if="projectAllows(resource.data.value.project, 'manageMembers')"
+          :permission="p.project.save"
+          :aria-label="t('proto.members')"
+          @click="membersOpen = true"
+          ><team-outlined />{{ t('proto.members') }}</permission-button
+        ><permission-button
+          v-if="projectAllows(resource.data.value.project, 'edit')"
+          :permission="p.version.save"
+          type="primary"
+          :disabled="!resource.data.value.project || usage.data.value?.versions.canCreate === false"
+          @click="upload()"
+          >{{ t('proto.upload') }}</permission-button
+        ></a-space
       ></template
-    ><capacity-notice
+    ><a-alert
+      v-if="resource.data.value.project?.claimRequired"
+      type="warning"
+      show-icon
+      :message="t('proto.claimRequired')" /><capacity-notice
       :capacity="usage.data.value?.versions"
       :loading="usage.loading.value"
       :error="usage.error.value"
@@ -79,6 +96,7 @@ const columns = computed(() => [
           ><template #cell="{ column, record }"
             ><a-space v-if="column.key === 'actions'" :size="8">
               <action-button
+                v-if="projectAllows(resource.data.value.project, 'read')"
                 :label="t('proto.preview')"
                 :icon="EyeOutlined"
                 :permission="p.version.query"
@@ -86,12 +104,14 @@ const columns = computed(() => [
                 @action="preview(record)"
               />
               <action-button
+                v-if="projectAllows(resource.data.value.project, 'edit')"
                 :label="t('proto.update')"
                 :icon="UploadOutlined"
                 :permission="p.version.save"
                 @action="upload(record)"
               />
               <action-button
+                v-if="projectAllows(resource.data.value.project, 'manageShares')"
                 :label="t('proto.share')"
                 :icon="ShareAltOutlined"
                 :permission="p.share.query"
@@ -99,6 +119,7 @@ const columns = computed(() => [
                 @action="shareVersion = record"
               />
               <action-button
+                v-if="projectAllows(resource.data.value.project, 'edit')"
                 :label="t('common.delete')"
                 :icon="DeleteOutlined"
                 :permission="p.version.delete"
@@ -130,7 +151,11 @@ const columns = computed(() => [
       @uploaded="refresh" /><share-dialog
       :project="resource.data.value.project"
       :version="shareVersion"
-      @close="shareVersion = undefined"
+      @close="shareVersion = undefined" /><project-members-dialog
+      :open="membersOpen"
+      :project="resource.data.value.project"
+      @close="membersOpen = false"
+      @changed="refresh"
   /></page-container>
 </template>
 <style scoped>

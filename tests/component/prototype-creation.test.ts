@@ -1,3 +1,4 @@
+import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref, toRef, type PropType } from 'vue'
@@ -98,7 +99,16 @@ it('reuses a project creation key after a network failure, renews it for changed
 
 it('does not attach a creation key to editing an existing project', async () => {
   const state = await renderProjects()
-  state.edit({ id: 'p1', name: 'Existing', createdBy: 'admin', createdAt: 1, updatedAt: 1 })
+  const editable = {
+    id: 'p1',
+    name: 'Existing',
+    createdBy: 'admin',
+    createdAt: 1,
+    updatedAt: 1,
+    ...ownerProjectAccess,
+  }
+  state.resource.data.value = [editable]
+  state.edit(editable)
   await state.save({ name: 'Renamed' })
   expect(request.post).not.toHaveBeenCalled()
   expect(request.put).toHaveBeenCalledWith('/prototype-hub/projects/p1', {

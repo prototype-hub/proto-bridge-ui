@@ -5,8 +5,16 @@ import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { saved, deleted } from '@/shared/utils/feedback'
 import type { ProjectInput, Project, ProjectUsage } from '@/modules/protohub-manager-ui/types'
+import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 export function useProjects() {
-  const resource = useResource((signal) => projectsApi.list({ signal, silent: true }), [])
+  const resource = useResource<Project[]>(async (signal) => {
+    if (editId.value) {
+      open.value = false
+      editId.value = ''
+    }
+    resource.data.value = []
+    return projectsApi.list({ signal, silent: true })
+  }, [] as Project[])
   const usage = useResource<ProjectUsage | undefined>(
     (signal) => projectsApi.usage({ signal, silent: true }),
     undefined,
@@ -25,6 +33,7 @@ export function useProjects() {
     await Promise.all([resource.load(), loadUsage()])
   }
   function edit(project?: Project) {
+    if (project && !projectAllows(project, 'edit')) return
     intent.reset()
     task.error.value = ''
     editId.value = project?.id || ''
@@ -32,6 +41,14 @@ export function useProjects() {
     open.value = true
   }
   async function save(draft: ProjectInput = form.value) {
+    if (
+      editId.value &&
+      !projectAllows(
+        resource.data.value.find((project) => project.id === editId.value),
+        'edit',
+      )
+    )
+      return
     await task.run(async () => {
       const input = { ...draft, name: draft.name.trim(), description: draft.description?.trim() }
       await (editId.value
@@ -47,6 +64,13 @@ export function useProjects() {
     })
   }
   async function remove(id: string) {
+    if (
+      !projectAllows(
+        resource.data.value.find((project) => project.id === id),
+        'deleteProject',
+      )
+    )
+      return
     await task.run(async () => {
       await projectsApi.remove(id)
       deleted()
