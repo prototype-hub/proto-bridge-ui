@@ -73,6 +73,10 @@ test('share rows distinguish permanent, temporary, expired and disabled links an
   const now = new Date('2026-10-13T04:00:00Z').valueOf()
   await page.clock.install({ time: now })
   const base: Share = {
+    revisionMode: 'fixed',
+    revisionId: 'r-v1',
+    revoked: false,
+    configVersion: 1,
     id: 'permanent',
     token: 'permanent',
     projectId: 'p1',
@@ -108,14 +112,16 @@ test('share rows distinguish permanent, temporary, expired and disabled links an
   await expect(row('temporary').locator('.share-status')).toHaveText('短期有效')
   await expect(row('temporary').locator('.share-expiry-time')).toHaveText(/2026-10-13 \d{2}:00:00/)
   for (const token of ['expired', 'disabled'])
-    await expect(row(token).locator('.share-status')).toHaveText('已失效')
+    await expect(row(token).locator('.share-status')).toHaveText(
+      token === 'disabled' ? '已暂停' : '已过期',
+    )
   await page.screenshot({
     path: testInfo.outputPath('share-validity.png'),
     animations: 'disabled',
     fullPage: true,
   })
   await page.clock.fastForward(3600000)
-  await expect(row('temporary').locator('.share-status')).toHaveText('已失效')
+  await expect(row('temporary').locator('.share-status')).toHaveText('已过期')
   await expect(row('permanent').locator('.share-status')).toHaveText('永久有效')
 })
 

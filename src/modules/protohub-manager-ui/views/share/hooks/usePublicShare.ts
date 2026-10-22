@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onScopeDispose } from 'vue'
 import { useRoute } from 'vue-router'
 import { publicApi } from '@/modules/protohub-manager-ui/api'
 import { useResource } from '@/shared/composables/useResource'
@@ -11,17 +11,29 @@ export function usePublicShare() {
   const token = computed(() => String(route.params.token))
   const password = ref('')
   const task = useTask()
+  let generation = 0
+  let verification: AbortController | undefined
   const resource = useResource<{ share?: PublicShare; context?: WorkspaceContext }>(
-    async (signal) => prepare(await publicApi.get(token.value, { signal }), signal),
+    async (signal) => {
+      resource.data.value = {}
+      return prepare(await publicApi.get(token.value, { signal }), signal)
+    },
     {},
   )
   async function prepare(share: PublicShare, signal?: AbortSignal) {
+    if (share.token !== token.value) throw new Error(t('proto.unavailable'))
     if (!share.accessKey) {
       if (!share.passwordRequired) throw new Error(t('proto.unavailable'))
       return { share }
     }
-    if (!share.runtimeBaseUrl || !share.previewUrl) throw new Error(t('proto.unavailable'))
-    const pages = await publicApi.pages(share.token, share.accessKey, { signal })
+    if (
+      !share.runtimeBaseUrl ||
+      !share.previewUrl ||
+      !share.pagesUrl ||
+      share.runtimeBaseUrl !== share.pagesUrl.replace(/\/pages$/, '/runtime')
+    )
+      throw new Error(t('proto.unavailable'))
+    const pages = await publicApi.pages(share, { signal })
     return {
       share,
       context: {
@@ -34,20 +46,35 @@ export function usePublicShare() {
     }
   }
   async function verify() {
+    if (task.busy.value) return
     if (!password.value) {
       task.error.value = t('proto.passwordRequired')
       return
     }
     const key = token.value
+    const submittedGeneration = generation
+    const request = new AbortController()
+    verification?.abort()
+    verification = request
     await task.run(async () => {
-      const result = await prepare(await publicApi.verify(key, password.value))
-      if (token.value === key) resource.data.value = result
-      password.value = ''
+      try {
+        const result = await prepare(
+          await publicApi.verify(key, password.value, { signal: request.signal }),
+          request.signal,
+        )
+        if (submittedGeneration !== generation || request.signal.aborted) return
+        resource.data.value = result
+        password.value = ''
+      } catch (cause) {
+        if (submittedGeneration === generation && !request.signal.aborted) throw cause
+      }
     })
   }
   watch(
     token,
     () => {
+      generation++
+      verification?.abort()
       resource.data.value = {}
       password.value = ''
       task.error.value = ''
@@ -55,5 +82,9 @@ export function usePublicShare() {
     },
     { immediate: true },
   )
+  onScopeDispose(() => {
+    generation++
+    verification?.abort()
+  })
   return { resource, task, password, verify }
 }

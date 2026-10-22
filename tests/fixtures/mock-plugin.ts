@@ -218,6 +218,10 @@ function revisionPages(revisionId: string): PrototypePage[] {
 }
 function share(token: string, versionId: string, passwordRequired: boolean): Share {
   return {
+    revisionMode: 'fixed',
+    revisionId: `r-${versionId}`,
+    revoked: false,
+    configVersion: 1,
     id: token,
     projectId: 'p1',
     versionId,
@@ -328,10 +332,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     input = raw
   }
   const data = object(input)
-  if (
-    path.startsWith('/prototype-hub/runtime/') ||
-    /^\/prototype-hub\/public\/shares\/[^/]+\/access-key\/runtime\//.test(path)
-  ) {
+  if (path.startsWith('/prototype-hub/runtime/')) {
     if (path.startsWith('/prototype-hub/runtime/')) {
       const [, , , versionId, key] = path.split('/')
       const session = previewSessions.get(key)
@@ -388,14 +389,44 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     }
     const record = shares.find((item) => item.token === decodeURIComponent(publicMatch[1]))
     const suffix = publicMatch[2]
-    if (!record || !record.enabled || (record.expiresAt && record.expiresAt < Date.now())) {
+    if (
+      !record ||
+      !record.enabled ||
+      record.revoked ||
+      (record.expiresAt != null && record.expiresAt <= Date.now())
+    ) {
       send(res, 403, null, 'Share unavailable', 'PROTOHUB_SHARE_UNAVAILABLE')
       return true
     }
-    if (suffix.endsWith('/pages')) {
-      send(res, 200, revisionPages(shareRevisions.get(record.token)!))
+    const canonical = suffix.match(/^\/([^/]+)\/revisions\/([^/]+)\/(pages|runtime)(?:\/.*)?$/)
+    if (canonical) {
+      const rid = decodeURIComponent(canonical[2])
+      const revision = revisions.get(rid)
+      if (
+        canonical[1] !== `access-${record.configVersion}-${rid}` ||
+        revision?.versionId !== record.versionId ||
+        (record.revisionMode !== 'latest' && rid !== record.revisionId)
+      ) {
+        send(res, 404, null, 'Grant unavailable')
+        return true
+      }
+      if (canonical[3] === 'pages') send(res, 200, revisionPages(rid))
+      else {
+        res.setHeader('Content-Type', 'text/html')
+        res.end(runtimeHtml)
+      }
       return true
     }
+    if (suffix !== '' && suffix !== '/verify') {
+      send(res, 404, null, 'Unknown share endpoint')
+      return true
+    }
+    const rid =
+      record.revisionMode === 'latest'
+        ? versions.find((version) => version.id === record.versionId)?.currentRevisionId || ''
+        : record.revisionId || shareRevisions.get(record.token) || ''
+    const grant = `access-${record.configVersion}-${rid}`
+    const grantBase = `/api/prototype-hub/public/shares/${record.token}/${grant}/revisions/${rid}`
     const access =
       !record.passwordRequired ||
       (suffix === '/verify' && data.password === passwords.get(record.token))
@@ -405,17 +436,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     }
     const info: PublicShare = {
       token: record.token,
-      revisionId: shareRevisions.get(record.token)!,
+      revisionId: rid,
+      revisionMode: record.revisionMode,
+      pagesUrl: access ? `${grantBase}/pages` : undefined,
       projectName: 'Contract project',
-      versionName: revisions.get(shareRevisions.get(record.token)!)?.versionName || 'V1',
+      versionName: revisions.get(rid)?.versionName || 'V1',
       passwordRequired: record.passwordRequired,
-      accessKey: access ? 'access-key' : undefined,
-      runtimeBaseUrl: access
-        ? `/api/prototype-hub/public/shares/${record.token}/access-key/runtime`
-        : undefined,
-      previewUrl: access
-        ? `/api/prototype-hub/public/shares/${record.token}/access-key/runtime/index.html`
-        : undefined,
+      accessKey: access ? grant : undefined,
+      runtimeBaseUrl: access ? `${grantBase}/runtime` : undefined,
+      previewUrl: access ? `${grantBase}/runtime/index.html` : undefined,
     }
     send(res, 200, info)
     return true
@@ -641,6 +670,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const id = path.split('/')[3]
     if (method === 'POST') {
       const value = share(String(++counter), id, !!data.password)
+      value.revisionMode = data.revisionMode === 'latest' ? 'latest' : 'fixed'
+      value.revisionId =
+        value.revisionMode === 'latest'
+          ? null
+          : versions.find((item) => item.id === id)?.currentRevisionId || null
       if (typeof data.description === 'string') value.description = data.description
       if (data.expiresAt) value.expiresAt = Number(data.expiresAt)
       shares.push(value)
@@ -688,10 +722,43 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const value = shares.find((item) => item.id === id)
     if (!value) send(res, 404, null, 'Share not found')
     else send(res, 200, !value.passwordRequired || passwords.get(value.token) === data.password)
-  } else if (/^\/prototype-hub\/shares\/[^/]+$/.test(path)) {
-    const id = path.split('/')[3]
-    shares = shares.filter((item) => item.id !== id)
-    send(res, 200, true)
+  } else if (/^\/prototype-hub\/shares\/[^/]+(?:\/(enabled|revoke|rotate-link))?$/.test(path)) {
+    const [, , , id, action] = path.split('/')
+    const value = shares.find((item) => item.id === id)
+    if (!value) send(res, 404, null, 'Share unavailable')
+    else if (method === 'DELETE') {
+      shares = shares.filter((item) => item.id !== id)
+      send(res, 200, true)
+    } else if (value.revoked || data.expectedVersion !== value.configVersion) {
+      send(res, 409, null, 'Share changed', 'PROTOTYPE_HUB_SHARE_CONFIG_CONFLICT')
+    } else {
+      value.configVersion++
+      if (action === 'enabled') value.enabled = data.enabled === true
+      else if (action === 'revoke') value.revoked = true
+      else if (action === 'rotate-link') {
+        const password = passwords.get(value.token)
+        passwords.delete(value.token)
+        shareRevisions.delete(value.token)
+        value.token = `rotated-${++counter}`
+        value.sharePath = `/share/${value.token}`
+        if (password !== undefined) passwords.set(value.token, password)
+      } else {
+        value.description = typeof data.description === 'string' ? data.description : null
+        value.expiresAt = typeof data.expiresAt === 'number' ? data.expiresAt : null
+        value.revisionMode = data.revisionMode === 'latest' ? 'latest' : 'fixed'
+        value.revisionId =
+          value.revisionMode === 'latest' ? null : String(data.revisionId || value.revisionId || '')
+        if (data.passwordAction === 'remove') {
+          value.passwordRequired = false
+          passwords.delete(value.token)
+        }
+        if (data.passwordAction === 'replace') {
+          value.passwordRequired = true
+          passwords.set(value.token, String(data.password))
+        }
+      }
+      send(res, 200, value)
+    }
   } else if (path === '/menu' && (method === 'POST' || method === 'PATCH')) {
     const value = data as unknown as ServerMenu
     if (method === 'POST') {

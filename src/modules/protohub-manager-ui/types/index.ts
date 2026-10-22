@@ -97,7 +97,25 @@ export interface PrototypePage {
   folder?: boolean
   children?: PrototypePage[]
 }
+export type ShareRevisionMode = 'fixed' | 'latest'
+export type SharePasswordAction = 'keep' | 'replace' | 'remove'
+export interface ShareInput {
+  description?: string | null
+  password?: string
+  expiresAt?: number | null
+  revisionMode?: ShareRevisionMode
+  revisionId?: string
+}
+export interface ShareUpdate extends ShareInput {
+  expectedVersion: number
+  revisionMode: ShareRevisionMode
+  passwordAction: SharePasswordAction
+}
 export interface Share {
+  revisionMode: ShareRevisionMode
+  revisionId: string | null
+  revoked: boolean
+  configVersion: number
   id: string
   projectId: string
   versionId: string
@@ -110,6 +128,8 @@ export interface Share {
   sharePath: string
 }
 export interface PublicShare {
+  revisionMode: ShareRevisionMode
+  pagesUrl?: string
   token: string
   revisionId: string
   projectName: string

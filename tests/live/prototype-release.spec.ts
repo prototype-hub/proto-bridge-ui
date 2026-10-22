@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { liveEnvironment } from './environment'
+import type { Share, PublicShare } from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
   id: string
@@ -441,6 +442,107 @@ liveTest(
       ).toBeVisible()
       await expect(publicPage.getByText('Browser upload', { exact: true })).toBeVisible()
       await publicPage.close()
+    })
+
+    await test.step('manage share lifecycle through real UI and invalidate old canonical grants', async () => {
+      const oldGrant = await result<PublicShare>(
+        await request.get(`/api/prototype-hub/public/shares/${shareToken}`),
+      )
+      expect(oldGrant.revisionId).toBe(firstRevisionId)
+      await page.getByRole('button', { name: '分享管理', exact: true }).click()
+      const main = page.getByRole('dialog', { name: '分享管理', exact: true })
+      const row = main.locator('tbody tr.ant-table-row').first()
+      await expect(row.locator('.share-revision-mode')).toHaveText('固定修订')
+      await row.getByRole('button', { name: '编辑', exact: true }).click()
+      const editor = page.getByRole('dialog', { name: '编辑分享', exact: true })
+      await editor.getByLabel('分享描述', { exact: true }).fill('Live lifecycle review')
+      await editor.getByText('跟随最新', { exact: true }).click()
+      await editor.getByText('保留原密码', { exact: true }).click()
+      await page.getByText('设置新密码', { exact: true }).click()
+      const password = `F03-${randomUUID()}`
+      await editor.getByLabel('分享密码', { exact: true }).fill(password)
+      const saving = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname === `/api/prototype-hub/shares/${owned.shares[0]}`,
+      )
+      await editor.getByRole('button', { name: '保存', exact: true }).click()
+      let changed = await result<Share>(await saving)
+      expect(changed).toMatchObject({
+        revisionMode: 'latest',
+        revisionId: null,
+        passwordRequired: true,
+        configVersion: 2,
+      })
+      await expect(editor).not.toBeVisible()
+      await expect(row.locator('.share-revision-mode')).toHaveText('跟随最新')
+      expect((await request.get(oldGrant.pagesUrl!)).ok()).toBe(false)
+      expect((await request.get(oldGrant.previewUrl!)).ok()).toBe(false)
+      const publicPage = await page.context().newPage()
+      let grant: PublicShare
+      try {
+        await publicPage.goto(`/share/${encodeURIComponent(shareToken)}`)
+        await expect(publicPage.locator('.frame-stage > iframe')).toHaveCount(0)
+        await publicPage.getByLabel('分享密码', { exact: true }).fill(password)
+        const verified = publicPage.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            response.url().endsWith(`/public/shares/${shareToken}/verify`),
+        )
+        await publicPage.getByRole('button', { name: '打开原型', exact: true }).click()
+        const verification = await verified
+        expect(verification.request().headers()['x-access-token']).toBeUndefined()
+        grant = await result<PublicShare>(verification)
+        expect(grant.revisionId).toBe(secondRevisionId)
+        expect(grant.pagesUrl).toContain(`/revisions/${secondRevisionId}/pages`)
+        await expect(
+          publicPage
+            .frameLocator('.frame-stage > iframe')
+            .getByRole('heading', { name: 'Runtime fixture revision two', exact: true }),
+        ).toBeVisible()
+        await expect(publicPage.locator('.frame-stage > iframe')).toHaveAttribute(
+          'sandbox',
+          'allow-scripts allow-forms',
+        )
+      } finally {
+        await publicPage.close()
+      }
+      async function action(label: string, suffix: string) {
+        await row.getByRole('button', { name: label, exact: true }).click()
+        const pending = page.waitForResponse(
+          (response) =>
+            ['PUT', 'POST'].includes(response.request().method()) &&
+            response.url().endsWith(`/shares/${changed.id}/${suffix}`),
+        )
+        await page
+          .locator('.ant-popconfirm')
+          .getByRole('button', { name: '确定', exact: true })
+          .click()
+        changed = await result<Share>(await pending)
+      }
+      await action('暂停分享', 'enabled')
+      await expect(row.locator('.share-status')).toHaveText('已暂停')
+      expect((await request.get(grant!.pagesUrl!)).ok()).toBe(false)
+      expect((await request.get(grant!.previewUrl!)).ok()).toBe(false)
+      await action('恢复分享', 'enabled')
+      expect((await request.get(grant!.pagesUrl!)).ok()).toBe(false)
+      await action('轮换链接', 'rotate-link')
+      expect(changed.token).not.toBe(shareToken)
+      expect((await request.get(`/api/prototype-hub/public/shares/${shareToken}`)).ok()).toBe(false)
+      shareToken = changed.token
+      const fresh = await result<PublicShare>(
+        await request.post(`/api/prototype-hub/public/shares/${shareToken}/verify`, {
+          data: { password },
+        }),
+      )
+      expect(fresh.revisionId).toBe(secondRevisionId)
+      await action('永久撤销', 'revoke')
+      await expect(row.locator('.share-status')).toHaveText('已撤销')
+      expect((await request.get(fresh.pagesUrl!)).ok()).toBe(false)
+      expect((await request.get(fresh.previewUrl!)).ok()).toBe(false)
+      await expect(row.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0)
+      await expect(row.getByRole('button', { name: '恢复分享', exact: true })).toHaveCount(0)
+      await main.getByRole('button', { name: 'Close', exact: true }).click()
     })
 
     await test.step('enforce version capacity while existing previews remain usable', async () => {

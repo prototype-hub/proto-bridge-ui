@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef, type PropType } from 'vue'
+import { computed, toRef, defineAsyncComponent, type PropType } from 'vue'
 import dayjs from 'dayjs'
 import {
   Modal as AModal,
@@ -11,9 +11,19 @@ import {
   Alert as AAlert,
   Space as ASpace,
   Tag as ATag,
+  RadioGroup as ARadioGroup,
+  RadioButton as ARadioButton,
 } from 'ant-design-vue'
 import type { TableColumnsType } from 'ant-design-vue'
-import { CopyOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  StopOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useShares } from '@/modules/protohub-manager-ui/views/project/hooks/useShares'
 import type { Project, Share, Version } from '@/modules/protohub-manager-ui/types'
@@ -26,6 +36,7 @@ import ActionButton from '@/shared/components/ActionButton.vue'
 import ShareCopyDialog from './ShareCopyDialog.vue'
 import { usePermissions } from '@/shared/auth/provider'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+const ShareEditDialog = defineAsyncComponent(() => import('./ShareEditDialog.vue'))
 const props = defineProps({
   version: { type: Object as PropType<Version>, default: undefined },
   project: { type: Object as PropType<Project>, default: undefined },
@@ -33,29 +44,43 @@ const props = defineProps({
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const permissions = usePermissions()
-const validityColors = { permanent: 'success', temporary: 'warning', expired: 'default' } as const
+const validityColors = {
+  permanent: 'success',
+  temporary: 'warning',
+  expired: 'default',
+  disabled: 'default',
+  revoked: 'error',
+} as const
 const columns = computed<TableColumnsType<Share>>(() => [
   {
     title: t('proto.link'),
     dataIndex: 'sharePath',
-    width: 280,
+    width: 200,
     ellipsis: { showTitle: false },
   },
   {
     title: t('proto.shareDescription'),
     dataIndex: 'description',
-    width: 170,
+    width: 130,
     ellipsis: { showTitle: false },
   },
-  { title: t('common.status'), dataIndex: 'enabled', width: 96 },
-  { title: t('proto.password'), dataIndex: 'passwordRequired', width: 100 },
-  { title: t('proto.shareTime'), dataIndex: 'createdAt', width: 160 },
-  { title: t('proto.expiryTime'), dataIndex: 'expiresAt', width: 160 },
-  { title: t('common.actions'), key: 'actions', width: 88 },
+  { title: t('common.status'), dataIndex: 'enabled', width: 80 },
+  { title: t('proto.password'), dataIndex: 'passwordRequired', width: 90 },
+  { title: t('proto.shareTime'), dataIndex: 'createdAt', width: 140 },
+  { title: t('proto.expiryTime'), dataIndex: 'expiresAt', width: 140 },
+  { title: t('common.actions'), key: 'actions', width: 248 },
 ])
 const {
   task,
   resource,
+  revisionMode,
+  editTarget,
+  edit,
+  closeEdit,
+  update,
+  setEnabled,
+  revoke,
+  rotate,
   description,
   password,
   expires,
@@ -88,7 +113,7 @@ const submitCreate = () => {
     ><a-alert type="info" show-icon :message="t('proto.shareRevisionHint')" /><a-form
       name="share-create"
       class="share-create"
-      :model="{ description, password, expires }"
+      :model="{ description, password, expires, revisionMode }"
       layout="vertical"
       @submit.prevent="submitCreate"
       ><a-form-item class="share-password" name="password" :label="t('proto.password')"
@@ -111,6 +136,13 @@ const submitCreate = () => {
           :maxlength="2000"
           :rows="2"
           show-count /></a-form-item
+      ><a-form-item class="share-mode" name="revisionMode" :label="t('proto.shareRevisionMode')">
+        <a-radio-group v-model:value="revisionMode"
+          ><a-radio-button value="fixed">{{ t('proto.shareFixed') }}</a-radio-button
+          ><a-radio-button value="latest">{{
+            t('proto.shareLatest')
+          }}</a-radio-button></a-radio-group
+        > </a-form-item
       ><permission-button
         class="share-create-button"
         :permission="p.share.save"
@@ -127,10 +159,15 @@ const submitCreate = () => {
       ><div class="share-list">
         <data-table class="share-table" :rows="resource.data.value" :columns="columns"
           ><template #cell="{ column, record }"
+            ><template v-if="column.dataIndex === 'sharePath'"
+              ><text-ellipsis class="share-url" :text="url(record)" /><span
+                class="share-revision-mode"
+                :title="record.revisionId || ''"
+                >{{
+                  t(record.revisionMode === 'latest' ? 'proto.shareLatest' : 'proto.shareFixed')
+                }}</span
+              ></template
             ><text-ellipsis
-              v-if="column.dataIndex === 'sharePath'"
-              class="share-url"
-              :text="url(record)" /><text-ellipsis
               v-else-if="column.dataIndex === 'description'"
               class="share-description-text"
               :text="record.description || ''" /><a-tag
@@ -150,10 +187,48 @@ const submitCreate = () => {
             }}</span
             ><a-space v-else-if="column.key === 'actions'" :size="4" :wrap="false">
               <action-button
-                v-if="validity(record) !== 'expired'"
+                v-if="['permanent', 'temporary'].includes(validity(record))"
                 :label="t('common.copy')"
                 :icon="CopyOutlined"
                 @action="copy(record)"
+              />
+              <action-button
+                v-if="!record.revoked"
+                :label="t('common.edit')"
+                :icon="EditOutlined"
+                :permission="p.share.save"
+                :disabled="task.busy.value"
+                @action="edit(record)"
+              />
+              <action-button
+                v-if="!record.revoked"
+                :label="t(record.enabled ? 'proto.pauseShare' : 'proto.resumeShare')"
+                :icon="record.enabled ? PauseCircleOutlined : PlayCircleOutlined"
+                :permission="p.share.save"
+                :disabled="task.busy.value"
+                :confirm="
+                  t(record.enabled ? 'proto.pauseShareConfirm' : 'proto.resumeShareConfirm')
+                "
+                @action="setEnabled(record)"
+              />
+              <action-button
+                v-if="!record.revoked"
+                :label="t('proto.rotateShare')"
+                :icon="ReloadOutlined"
+                :permission="p.share.save"
+                :disabled="task.busy.value"
+                :confirm="t('proto.rotateShareConfirm')"
+                @action="rotate(record)"
+              />
+              <action-button
+                v-if="!record.revoked"
+                :label="t('proto.revokeShare')"
+                :icon="StopOutlined"
+                :permission="p.share.save"
+                :disabled="task.busy.value"
+                danger
+                :confirm="t('proto.revokeShareConfirm')"
+                @action="revoke(record)"
               />
               <action-button
                 :label="t('common.delete')"
@@ -166,6 +241,15 @@ const submitCreate = () => {
               /> </a-space></template
         ></data-table></div></load-state
   ></a-modal>
+  <share-edit-dialog
+    v-if="editTarget && permissions.can(p.share.save) && projectAllows(project, 'manageShares')"
+    :share="editTarget"
+    :version="version"
+    :busy="task.busy.value"
+    :error="task.error.value"
+    @close="closeEdit"
+    @save="update"
+  />
   <share-copy-dialog
     v-model:password="shareCopy.enteredPassword.value"
     :open="!!shareCopy.target.value"
@@ -179,6 +263,11 @@ const submitCreate = () => {
   />
 </template>
 <style scoped>
+.share-revision-mode {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
 .share-list {
   width: 100%;
   min-width: 0;
@@ -233,6 +322,10 @@ const submitCreate = () => {
 .share-expiry :deep(.ant-picker) {
   width: 100%;
 }
+.share-mode {
+  grid-column: 1 / 3;
+  grid-row: 3;
+}
 .share-create-button {
   flex: 0 0 auto;
   grid-column: 3;
@@ -250,6 +343,7 @@ const submitCreate = () => {
   .share-description,
   .share-password,
   .share-expiry,
+  .share-mode,
   .share-create-button {
     grid-column: auto;
     grid-row: auto;

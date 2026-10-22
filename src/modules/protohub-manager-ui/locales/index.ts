@@ -35,7 +35,8 @@ export const protoLocales = {
     projectDeleteConfirm: '确认删除该原型项目？项目下存在版本时无法删除，请先删除全部版本。',
     upload: '上传版本',
     update: '上传新修订',
-    updateHint: '上传新修订，保留历史内容，已有分享仍指向原修订。',
+    updateHint:
+      '上传新修订，保留历史内容，固定分享仍指向原修订，跟随分享在下次打开时使用最新修订。',
     revision: '修订',
     revisionHistory: '历史修订',
     revisionHistoryHint: '每次上传保留独立修订，历史内容可单独预览；修订不占用新的版本名额。',
@@ -48,13 +49,15 @@ export const protoLocales = {
     revisionMigrationRequired:
       '旧版本尚未完成修订迁移，请联系管理员迁移后再预览、上传新修订或创建分享。',
     revisionConflict: '此版本已产生新的修订，请关闭窗口并刷新版本列表，确认内容后重新上传。',
-    shareRevisionHint: '新分享固定到创建时的当前修订。后续上传新修订不会改变已有分享的内容。',
+    shareRevisionHint:
+      '默认固定修订；选择跟随最新后，每次打开使用当时的最新修订，同一次预览中的内容保持一致。',
     versionName: '版本名称',
     zip: 'Axure HTML ZIP',
     zipHint: '上传导出的 HTML ZIP，最大 500 MB。',
     zipInvalid: '请选择有效的 ZIP 文件（不为空且不超过 500 MB）',
     createTarget: '新建一个版本，占用一个版本名额。选择文件后点击保存才会上传。',
-    updateTarget: '为版本「{name}」上传新修订，不新增版本名额。已有分享继续展示原修订。',
+    updateTarget:
+      '为版本「{name}」上传新修订，不新增版本名额。固定分享继续展示原修订，跟随分享在下次打开时更新。',
     folder: 'HTML 文件夹',
     selectFolder: '选择 HTML 文件夹',
     folderHint:
@@ -80,6 +83,25 @@ export const protoLocales = {
     uploadSuccess: '版本已保存',
     share: '分享管理',
     createShare: '创建分享',
+    editShare: '编辑分享',
+    shareRevisionMode: '分享内容',
+    shareFixed: '固定修订',
+    shareLatest: '跟随最新',
+    shareEditHint:
+      '保存会使已有访问授权失效。固定修订不会因修改描述而改变；跟随最新的链接在下次打开时使用最新内容。',
+    passwordPolicy: '密码设置',
+    passwordActions: { keep: '保留原密码', replace: '设置新密码', remove: '移除密码' },
+    pauseShare: '暂停分享',
+    resumeShare: '恢复分享',
+    rotateShare: '轮换链接',
+    revokeShare: '永久撤销',
+    pauseShareConfirm: '确认暂停分享？已有访问授权将失效。',
+    resumeShareConfirm: '确认恢复分享？暂停前的访问授权不会恢复。',
+    rotateShareConfirm: '确认轮换链接？原链接和已有访问授权将永久失效，请重新分发新链接。',
+    revokeShareConfirm: '确认永久撤销？此操作不可恢复，链接和已有访问授权将失效。',
+    shareConflict: '分享已被其他操作更新，请核对已刷新的列表，再重新操作。',
+    shareMutationUnknown: '未收到服务器的处理结果，请先刷新列表核对，勿直接重复操作。',
+
     shareDescription: '分享描述',
     shareDescriptionPlaceholder: '请输入分享描述',
     expiresAt: '过期时间',
@@ -116,7 +138,13 @@ export const protoLocales = {
     failed: '处理失败',
     noExpiry: '永久有效',
     noPassword: '无密码',
-    shareStatus: { permanent: '永久有效', temporary: '短期有效', expired: '已失效' },
+    shareStatus: {
+      permanent: '永久有效',
+      temporary: '短期有效',
+      expired: '已过期',
+      disabled: '已暂停',
+      revoked: '已撤销',
+    },
     shareTime: '分享时间',
     expiryTime: '失效时间',
     link: '分享链接',
@@ -187,7 +215,8 @@ export const protoLocales = {
       'Delete this prototype project? Projects with versions cannot be deleted. Delete all versions first.',
     upload: 'Upload version',
     update: 'Upload new revision',
-    updateHint: 'Upload a new revision. History and existing share contents are preserved.',
+    updateHint:
+      'Upload a new revision. History and fixed share contents are preserved; follow-latest links update when reopened.',
     revision: 'Revision',
     revisionHistory: 'Revision history',
     revisionHistoryHint:
@@ -203,14 +232,14 @@ export const protoLocales = {
     revisionConflict:
       'A newer revision was uploaded. Close this dialog and refresh the version list, then review it before uploading again.',
     shareRevisionHint:
-      'New shares keep the current revision at creation. Later uploads do not change existing share contents.',
+      'Shares keep a fixed revision by default. Follow latest resolves a fresh snapshot each time the link is opened; one preview stays consistent.',
     versionName: 'Version name',
     zip: 'Axure HTML ZIP',
     zipHint: 'Upload exported HTML as ZIP, up to 500 MB.',
     zipInvalid: 'Choose a nonempty ZIP file smaller than 500 MB.',
     createTarget: 'Create a new version using one version slot. Select files, then save to upload.',
     updateTarget:
-      'Upload a new revision of “{name}” without using another version slot. Existing shares keep their original revision.',
+      'Upload a new revision of “{name}” without using another version slot. Fixed shares keep their original revision; follow-latest shares update when reopened.',
     folder: 'HTML folder',
     selectFolder: 'Select HTML folder',
     folderHint:
@@ -239,6 +268,34 @@ export const protoLocales = {
     uploadSuccess: 'Version saved',
     share: 'Manage shares',
     createShare: 'Create share',
+    editShare: 'Edit share',
+    shareRevisionMode: 'Shared content',
+    shareFixed: 'Fixed revision',
+    shareLatest: 'Follow latest',
+    shareEditHint:
+      'Saving invalidates existing access grants. Editing a description keeps a fixed target; follow-latest links resolve new content when reopened.',
+    passwordPolicy: 'Password setting',
+    passwordActions: {
+      keep: 'Keep password',
+      replace: 'Set new password',
+      remove: 'Remove password',
+    },
+    pauseShare: 'Pause share',
+    resumeShare: 'Resume share',
+    rotateShare: 'Rotate link',
+    revokeShare: 'Revoke permanently',
+    pauseShareConfirm: 'Pause this share? Existing access grants will stop working.',
+    resumeShareConfirm:
+      'Resume this share? Access grants issued before pausing will remain invalid.',
+    rotateShareConfirm:
+      'Rotate this link? The old link and existing access grants will permanently stop working. Distribute the new link.',
+    revokeShareConfirm:
+      'Revoke permanently? This cannot be undone. The link and existing grants will stop working.',
+    shareConflict:
+      'This share changed elsewhere. Review the refreshed list before making another change.',
+    shareMutationUnknown:
+      'No server result was received. Refresh the list and check before repeating this action.',
+
     shareDescription: 'Description',
     shareDescriptionPlaceholder: 'Enter a description',
     expiresAt: 'Expires at',
@@ -276,7 +333,13 @@ export const protoLocales = {
     failed: 'Processing failed',
     noExpiry: 'Never',
     noPassword: 'No password',
-    shareStatus: { permanent: 'Permanent', temporary: 'Valid until expiry', expired: 'Expired' },
+    shareStatus: {
+      permanent: 'Permanent',
+      temporary: 'Valid until expiry',
+      expired: 'Expired',
+      disabled: 'Paused',
+      revoked: 'Revoked',
+    },
     shareTime: 'Shared at',
     expiryTime: 'Expires at',
     link: 'Share link',

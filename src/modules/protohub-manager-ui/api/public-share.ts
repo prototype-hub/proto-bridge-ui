@@ -1,3 +1,4 @@
+import { config } from '@/shared/config'
 import { publicRequest } from '@/shared/api/public-client'
 import type { RequestOptions } from '@/shared/api/types'
 import type { PublicShare, PrototypePage } from '../types'
@@ -22,12 +23,29 @@ export const publicApi = {
         { ...options, silent: true },
       )
     ).result,
-  pages: async (token: string, key: string, options?: RequestOptions) =>
-    (
+  /** Consume the server grant URL only inside this deployment's canonical anonymous API scope. */
+  pages: async (share: PublicShare, options?: RequestOptions) => {
+    const base = new URL(config.apiBase.replace(/\/$/, '') + '/', window.location.origin)
+    const url = new URL(share.pagesUrl || '', window.location.origin)
+    const expected = `${base.pathname}prototype-hub/public/shares/${segment(share.token)}/${segment(share.accessKey || '')}/revisions/${segment(share.revisionId)}/pages`
+    if (
+      !share.pagesUrl ||
+      !share.accessKey ||
+      !share.revisionId ||
+      url.origin !== window.location.origin ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname !== expected
+    )
+      throw new Error('Invalid public pages URL')
+    return (
       await publicRequest.get<PrototypePage[]>(
-        `/prototype-hub/public/shares/${segment(token)}/${segment(key)}/pages`,
+        url.pathname.slice(base.pathname.length - 1),
         undefined,
         { ...options, silent: true },
       )
-    ).result,
+    ).result
+  },
 }
