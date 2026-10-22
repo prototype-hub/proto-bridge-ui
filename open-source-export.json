@@ -56,5 +56,19 @@
     ".factories",
     ".imports",
     ".mjs"
+  ],
+  "binaryAssets": [
+    {
+      "path": "src/modules/authentication-manager-ui/assets/logo/logo.png",
+      "sha256": "b34bb192ec5d9828ffa7b1b68b357fcbd9c5a1a8026a08ce2b793e7458739763",
+      "width": 1254,
+      "height": 1254
+    },
+    {
+      "path": "src/modules/authentication-manager-ui/assets/login/login.png",
+      "sha256": "7b4066ff4e8efd5b683d7cd30e22b099c6d0688e681f3adfe35e8ef3c84ac20d",
+      "width": 1428,
+      "height": 1102
+    }
   ]
 }

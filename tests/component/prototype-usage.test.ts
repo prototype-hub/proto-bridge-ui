@@ -99,7 +99,17 @@ beforeEach(() => {
       return response({ projectId: usageProjectId(params), versions: capacity(1) })
     if (path === '/prototype-hub/versions')
       return response([
-        { id: 'v1', projectId: 'p1', versionName: 'V1', status: 'ready', createdAt: 1 },
+        {
+          id: 'v1',
+          projectId: 'p1',
+          versionName: 'V1',
+          status: 'ready',
+          createdAt: 1,
+          currentRevisionId: 'r1',
+          revisionId: 'r1',
+          revisionCount: 1,
+          migrationRequired: false,
+        },
       ])
     return response(project)
   })
@@ -177,7 +187,7 @@ it('retains version preview/replacement/deletion when no new version can be uplo
       .find((button) => button.text() === '上传版本')
       ?.attributes('disabled'),
   ).toBeDefined()
-  for (const label of ['Preview', '更新版本', '删除'])
+  for (const label of ['Preview', '上传新修订', '删除'])
     expect(wrapper.find(`button[aria-label="${label}"]`).attributes('disabled')).toBeUndefined()
 })
 

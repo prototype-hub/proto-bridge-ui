@@ -2,11 +2,14 @@
 
 import contextlib
 import io
+import hashlib
 import json
 from pathlib import Path
 import runpy
 import tempfile
+import struct
 import unittest
+import zlib
 
 exporter = runpy.run_path(str(Path(__file__).with_name('export-source.py')))
 
@@ -27,6 +30,21 @@ class SourceExportTest(unittest.TestCase):
 
     def collect(self):
         return exporter['collect'](self.root, self.rules)
+
+    def png(self):
+        def chunk(kind, payload):
+            return (struct.pack('>I', len(payload)) + kind + payload
+                    + struct.pack('>I', zlib.crc32(kind + payload) & 0xffffffff))
+        return (b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))
+                + chunk(b'IDAT', zlib.compress(b'\0\xff\0\0\xff'))
+                + chunk(b'IEND', b''))
+
+    def reviewed_png(self, content):
+        path = 'src/brand.png'
+        (self.root / path).write_bytes(content)
+        self.rules['binaryAssets'] = [{'path': path, 'sha256': hashlib.sha256(content).hexdigest(),
+                                       'width': 1, 'height': 1}]
 
     def test_exports_only_reviewed_files_with_hashes(self):
         (self.root / 'src/.env').write_text('SECRET=local-only\n')
@@ -66,6 +84,39 @@ class SourceExportTest(unittest.TestCase):
             self.assertEqual((repository / relative).read_bytes(), (output / relative).read_bytes())
         for material in (repository / 'third-party').iterdir():
             self.assertEqual(material.read_bytes(), (output / 'third-party' / material.name).read_bytes())
+        self.assertEqual(2, len(rules['binaryAssets']))
+        for record in rules['binaryAssets']:
+            path = record['path']
+            self.assertEqual((repository / path).read_bytes(), (output / path).read_bytes())
+            self.assertEqual(record['sha256'], hashlib.sha256((output / path).read_bytes()).hexdigest())
+
+    def test_exports_only_exact_reviewed_png_bytes(self):
+        content = self.png()
+        self.reviewed_png(content)
+        output = self.base / 'png-export'
+        with contextlib.redirect_stdout(io.StringIO()):
+            exporter['export'](self.root, output, self.rules)
+        self.assertEqual(content, (output / 'src/brand.png').read_bytes())
+
+    def test_rejects_forged_reviewed_png_even_with_matching_hash(self):
+        self.reviewed_png(b'not-a-png')
+        with self.assertRaisesRegex(ValueError, 'PNG signature'):
+            self.collect()
+
+    def test_rejects_png_dimensions_and_changed_reviewed_bytes(self):
+        self.reviewed_png(self.png())
+        self.rules['binaryAssets'][0]['width'] = 2
+        with self.assertRaisesRegex(ValueError, 'PNG dimensions'):
+            self.collect()
+        self.rules['binaryAssets'][0]['width'] = 1
+        self.rules['binaryAssets'][0]['sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'PNG bytes changed'):
+            self.collect()
+
+    def test_rejects_valid_but_unreviewed_png(self):
+        (self.root / 'src/unreviewed.png').write_bytes(self.png())
+        with self.assertRaisesRegex(ValueError, 'Unreviewed file type'):
+            self.collect()
 
     def test_rejects_internal_output(self):
         with self.assertRaises(ValueError):

@@ -11,6 +11,7 @@ import { protoLocales } from '@/modules/protohub-manager-ui/locales'
 import type {
   Project,
   Version,
+  Revision,
   ProjectMember,
   PreviewSession,
 } from '@/modules/protohub-manager-ui/types'
@@ -40,6 +41,10 @@ const project: Project = {
   ...ownerProjectAccess,
 }
 const version: Version = {
+  currentRevisionId: 'r1',
+  revisionId: 'r1',
+  revisionCount: 1,
+  migrationRequired: false,
   id: 'v1',
   projectId: 'p1',
   versionName: 'V1',
@@ -49,6 +54,18 @@ const version: Version = {
   createdAt: 1,
   runtimeBaseUrl: null,
   previewUrl: null,
+}
+const revision: Revision = {
+  id: 'r1',
+  projectId: 'p1',
+  versionId: 'v1',
+  versionName: 'V1',
+  entryFile: 'index.html',
+  manifestSha256: 'a'.repeat(64),
+  fileCount: 3,
+  totalBytes: 100,
+  createdBy: 'u1',
+  createdAt: 1,
 }
 const owner: ProjectMember = { userId: 'u1', username: 'owner', name: 'Owner', role: 'owner' }
 const viewer: ProjectMember = { userId: 'u2', username: 'viewer', name: 'Viewer', role: 'viewer' }
@@ -140,6 +157,11 @@ beforeEach(() => {
     .mockImplementation(async (path) => {
       if (path === '/prototype-hub/projects/p1') return response(structuredClone(project))
       if (path === '/prototype-hub/versions/v1') return response(structuredClone(version))
+      if (
+        path === '/prototype-hub/versions/v1/current-revision' ||
+        path === '/prototype-hub/versions/v1/revisions/r1'
+      )
+        return response(structuredClone(revision))
       if (path === '/prototype-hub/versions') return response([structuredClone(version)])
       if (path === '/prototype-hub/versions/_usage')
         return response({
@@ -184,7 +206,7 @@ it('fails closed without server capabilities and encodes every member and previe
   await projectsApi.saveMember('p/id', 'u/id', 'viewer')
   await projectsApi.removeMember('p/id', 'u/id')
   await projectsApi.claim('p/id', 'u/id')
-  await versionsApi.previewSession('v/id')
+  await versionsApi.revisionPreviewSession('v/id', 'r/id')
   expect(request.get).toHaveBeenCalledWith(
     '/prototype-hub/projects/p%2Fid/members',
     undefined,
@@ -211,7 +233,7 @@ it('fails closed without server capabilities and encodes every member and previe
     undefined,
   )
   expect(request.post).toHaveBeenCalledWith(
-    '/prototype-hub/versions/v%2Fid/preview-session',
+    '/prototype-hub/versions/v%2Fid/revisions/r%2Fid/preview-session',
     undefined,
     undefined,
   )
@@ -237,7 +259,7 @@ it('shows viewer preview while hiding upload, replacement, deletion, shares and 
   )
   const { wrapper } = await detailPage(() => true, true)
   expect(wrapper.find('button[aria-label="Preview"]').exists()).toBe(true)
-  for (const label of ['更新版本', '删除', '分享管理'])
+  for (const label of ['上传新修订', '删除', '分享管理'])
     expect(wrapper.find(`button[aria-label="${label}"]`).exists()).toBe(false)
   expect(wrapper.text()).not.toContain('上传版本')
   expect(wrapper.text()).not.toContain('项目成员')
@@ -279,7 +301,7 @@ it('uses only the exchanged short preview grant and never the nullable legacy ve
   expect(state.data.value?.runtimeBaseUrl).toBe(session().runtimeBaseUrl)
   expect(request.post).toHaveBeenCalledOnce()
   expect(request.post).toHaveBeenCalledWith(
-    '/prototype-hub/versions/v1/preview-session',
+    '/prototype-hub/versions/v1/revisions/r1/preview-session',
     undefined,
     expect.objectContaining({ silent: true, signal: expect.any(AbortSignal) }),
   )
@@ -436,4 +458,91 @@ it('clears old public capability links before a failed share-management refresh'
   await refreshing
   expect(state.resource.data.value).toEqual([])
   expect(state.resource.error.value).toBe('Denied')
+})
+
+it('pins current preview entry, pages and grant to one resolved revision even when version metadata differs', async () => {
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/versions/v1/current-revision'
+      ? Promise.resolve(
+          response({ ...revision, entryFile: 'old-entry.html', versionName: 'Snapshot name' }),
+        )
+      : original(path, ...args),
+  )
+  const { state } = await previewPage()
+  expect(state.data.value?.entryFile).toBe('old-entry.html')
+  expect(state.data.value?.versionName).toBe('Snapshot name')
+  expect(request.get).toHaveBeenCalledWith(
+    '/prototype-hub/versions/v1/revisions/r1/pages',
+    undefined,
+    expect.anything(),
+  )
+  expect(request.get).not.toHaveBeenCalledWith(
+    '/prototype-hub/versions/v1/pages',
+    expect.anything(),
+    expect.anything(),
+  )
+  expect(
+    vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/current-revision')),
+  ).toHaveLength(1)
+})
+
+it('opens explicit history by revision query and reloads when only the revision changes', async () => {
+  const { state, router } = await previewPage()
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get)
+    .mockClear()
+    .mockImplementation((path, ...args) =>
+      path === '/prototype-hub/versions/v1/revisions/old'
+        ? Promise.resolve(
+            response({
+              ...revision,
+              id: 'old',
+              versionName: 'Old snapshot',
+              entryFile: 'old.html',
+            }),
+          )
+        : original(path, ...args),
+    )
+  vi.mocked(request.post).mockClear()
+  await router.push('/preview/p1/v1?revisionId=old')
+  await flushPromises()
+  expect(state.data.value?.entryFile).toBe('old.html')
+  expect(state.data.value?.versionName).toBe('Old snapshot')
+  expect(request.get).not.toHaveBeenCalledWith(
+    '/prototype-hub/versions/v1/current-revision',
+    undefined,
+    expect.anything(),
+  )
+  expect(request.post).toHaveBeenCalledWith(
+    '/prototype-hub/versions/v1/revisions/old/preview-session',
+    undefined,
+    expect.anything(),
+  )
+})
+
+it('keeps legacy versions visible but disables content actions until administrator migration', async () => {
+  const original = vi.mocked(request.get).getMockImplementation()!
+  const legacy = {
+    ...version,
+    currentRevisionId: null,
+    revisionId: null,
+    migrationRequired: true,
+    revisionCount: 0,
+  }
+  vi.mocked(request.get).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/versions'
+      ? Promise.resolve(response([legacy]))
+      : path === '/prototype-hub/versions/v1'
+        ? Promise.resolve(response(legacy))
+        : original(path, ...args),
+  )
+  const { wrapper } = await detailPage(() => true, true)
+  expect(wrapper.text()).toContain(protoLocales.zh.revisionMigrationRequired)
+  for (const label of ['Preview', '上传新修订', '分享管理', '历史修订'])
+    expect(wrapper.get(`button[aria-label="${label}"]`).attributes('disabled')).toBeDefined()
+  const { state } = await previewPage()
+  expect(state.data.value).toBeUndefined()
+  expect(state.error.value).toBe(protoLocales.zh.revisionMigrationRequired)
+  expect(request.post).not.toHaveBeenCalled()
 })

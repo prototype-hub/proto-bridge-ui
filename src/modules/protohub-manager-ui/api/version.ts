@@ -1,12 +1,13 @@
 import { request } from '@/shared/api/client'
 import type { RequestOptions } from '@/shared/api/types'
-import type { Version, PrototypePage, VersionUsage, PreviewSession } from '../types'
+import type { Version, Revision, PrototypePage, VersionUsage, PreviewSession } from '../types'
 const segment = encodeURIComponent
-function uploadData(name: string, description: string, file: File) {
+function uploadData(name: string, description: string, file: File, expectedRevisionId?: string) {
   const data = new FormData()
   data.append('versionName', name)
   data.append('description', description)
   data.append('file', file)
+  if (expectedRevisionId) data.append('expectedRevisionId', expectedRevisionId)
   return data
 }
 export const versionsApi = {
@@ -18,18 +19,42 @@ export const versionsApi = {
   get: async (id: string, options?: RequestOptions) =>
     (await request.get<Version>(`/prototype-hub/versions/${segment(id)}`, undefined, options))
       .result,
-  pages: async (id: string, options?: RequestOptions) =>
+  currentRevision: async (id: string, options?: RequestOptions) =>
     (
-      await request.get<PrototypePage[]>(
-        `/prototype-hub/versions/${segment(id)}/pages`,
+      await request.get<Revision>(
+        `/prototype-hub/versions/${segment(id)}/current-revision`,
         undefined,
         options,
       )
     ).result,
-  previewSession: async (id: string, options?: RequestOptions) =>
+  revisions: async (id: string, after?: string, limit = 50, options?: RequestOptions) =>
+    (
+      await request.get<Revision[]>(
+        `/prototype-hub/versions/${segment(id)}/revisions`,
+        { after, limit },
+        options,
+      )
+    ).result,
+  revision: async (id: string, revisionId: string, options?: RequestOptions) =>
+    (
+      await request.get<Revision>(
+        `/prototype-hub/versions/${segment(id)}/revisions/${segment(revisionId)}`,
+        undefined,
+        options,
+      )
+    ).result,
+  revisionPages: async (id: string, revisionId: string, options?: RequestOptions) =>
+    (
+      await request.get<PrototypePage[]>(
+        `/prototype-hub/versions/${segment(id)}/revisions/${segment(revisionId)}/pages`,
+        undefined,
+        options,
+      )
+    ).result,
+  revisionPreviewSession: async (id: string, revisionId: string, options?: RequestOptions) =>
     (
       await request.post<PreviewSession>(
-        `/prototype-hub/versions/${segment(id)}/preview-session`,
+        `/prototype-hub/versions/${segment(id)}/revisions/${segment(revisionId)}/preview-session`,
         undefined,
         options,
       )
@@ -53,12 +78,13 @@ export const versionsApi = {
     name: string,
     description: string,
     file: File,
+    expectedRevisionId?: string,
     options?: RequestOptions,
   ) =>
     (
       await request.put<Version>(
         `/prototype-hub/versions/${segment(id)}`,
-        uploadData(name, description, file),
+        uploadData(name, description, file, expectedRevisionId),
         { ...options, timeout: 1800000 },
       )
     ).result,

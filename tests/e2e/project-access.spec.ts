@@ -37,7 +37,7 @@ test('project viewer controls intersect server scope even when platform actions 
   await page.goto('prototype-hub/projects/p1')
   await expect(page.getByRole('heading', { name: 'Viewer project', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeVisible()
-  for (const name of ['上传版本', '更新版本', '项目成员', '分享管理', '删除'])
+  for (const name of ['上传版本', '上传新修订', '项目成员', '分享管理', '删除'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
 })
 
@@ -94,13 +94,16 @@ test('short preview expiry removes the real sandbox and renews only after an exp
   page,
 }, testInfo) => {
   let exchanges = 0
-  await page.route('**/api/prototype-hub/versions/v1/preview-session', async (route) => {
-    const response = await route.fetch()
-    const result = await response.json()
-    result.result.expiresAt = Date.now() + 1600
-    exchanges++
-    await route.fulfill({ response, json: result })
-  })
+  await page.route(
+    '**/api/prototype-hub/versions/v1/revisions/r-v1/preview-session',
+    async (route) => {
+      const response = await route.fetch()
+      const result = await response.json()
+      result.result.expiresAt = Date.now() + 1600
+      exchanges++
+      await route.fulfill({ response, json: result })
+    },
+  )
   await login(page)
   await page.goto('preview/p1/v1')
   const frame = page.locator('.frame-stage > iframe')

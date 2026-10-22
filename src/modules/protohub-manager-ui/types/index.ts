@@ -67,6 +67,23 @@ export interface Version {
   createdAt: number
   runtimeBaseUrl: string | null
   previewUrl: string | null
+  currentRevisionId: string | null
+  revisionId: string | null
+  revisionCount: number
+  migrationRequired: boolean
+}
+export interface Revision {
+  id: string
+  projectId: string
+  versionId: string
+  versionName: string
+  description?: string
+  entryFile: string
+  manifestSha256: string
+  fileCount: number
+  totalBytes: number
+  createdBy: string
+  createdAt: number
 }
 export interface PreviewSession {
   runtimeBaseUrl: string
@@ -75,6 +92,7 @@ export interface PreviewSession {
 }
 export interface PrototypePage {
   name: string
+  pageId?: string | null
   path?: string
   folder?: boolean
   children?: PrototypePage[]
@@ -93,6 +111,7 @@ export interface Share {
 }
 export interface PublicShare {
   token: string
+  revisionId: string
   projectName: string
   versionName: string
   passwordRequired: boolean

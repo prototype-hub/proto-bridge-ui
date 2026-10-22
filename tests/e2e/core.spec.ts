@@ -225,7 +225,7 @@ test('version upload update preserves a share, then deletion', async ({ page }) 
   const row = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
-  await row.getByRole('button', { name: '更新版本' }).click()
+  await row.getByRole('button', { name: '上传新修订' }).click()
   const updateActions = modal.locator('.upload-actions button')
   await expect(updateActions).toHaveText(['取消', '保存'])
   const updateButtonPositions = await updateActions.evaluateAll((buttons) =>
@@ -241,7 +241,7 @@ test('version upload update preserves a share, then deletion', async ({ page }) 
   await modal.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'V1 updated', exact: true })).toBeVisible()
   await page.goto('share/open')
-  await expect(page.getByText('V1 updated', { exact: true })).toBeVisible()
+  await expect(page.getByText('V1', { exact: true })).toBeVisible()
   await page.goto('protohub/projects/p1')
   await page
     .getByRole('row')
@@ -262,7 +262,7 @@ test('failed version replacement keeps the current version and can retry', async
         })
       : route.continue(),
   )
-  await page.getByRole('button', { name: '更新版本' }).click()
+  await page.getByRole('button', { name: '上传新修订' }).click()
   const modal = page.getByRole('dialog')
   await modal.getByLabel('版本名称').fill('Replacement')
   await modal

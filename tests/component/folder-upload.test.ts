@@ -37,6 +37,10 @@ const packed: FolderArchiveResult = {
   totalBytes: 100,
 }
 const version: Version = {
+  currentRevisionId: 'r1',
+  revisionId: 'r1',
+  revisionCount: 1,
+  migrationRequired: false,
   id: 'v1',
   projectId: 'p1',
   versionName: 'V1',

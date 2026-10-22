@@ -68,7 +68,12 @@ const {
 } = useShares(toRef(props, 'version'), toRef(props, 'project'))
 // Keyboard form submission must respect the same capability as the visible creation button.
 const submitCreate = () => {
-  if (projectAllows(props.project, 'manageShares') && permissions.can(p.share.save)) void create()
+  if (
+    !props.version?.migrationRequired &&
+    projectAllows(props.project, 'manageShares') &&
+    permissions.can(p.share.save)
+  )
+    void create()
 }
 </script>
 <template>
@@ -80,7 +85,7 @@ const submitCreate = () => {
     :width="1120"
     wrap-class-name="share-management-modal"
     @cancel="emit('close')"
-    ><a-form
+    ><a-alert type="info" show-icon :message="t('proto.shareRevisionHint')" /><a-form
       name="share-create"
       class="share-create"
       :model="{ description, password, expires }"

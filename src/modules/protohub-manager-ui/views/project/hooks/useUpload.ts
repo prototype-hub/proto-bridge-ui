@@ -44,7 +44,12 @@ export function useUpload(
     phase.value = 'idle'
   }
 
-  const target = [open, () => context.value.projectId, () => context.value.version?.id] as const
+  const target = [
+    open,
+    () => context.value.projectId,
+    () => context.value.version?.id,
+    () => context.value.version?.currentRevisionId,
+  ] as const
   // A parent may switch targets without closing; discard work owned by the previous target.
   watch(
     target,
@@ -136,6 +141,10 @@ export function useUpload(
       task.error.value = t('proto.zipInvalid')
       return
     }
+    if (context.value.version?.migrationRequired) {
+      task.error.value = t('proto.revisionMigrationRequired')
+      return
+    }
     const current = ++generation
     const abort = new AbortController()
     controller = abort
@@ -162,7 +171,12 @@ export function useUpload(
     try {
       // Keep the generated File and creation key for a manual retry of an unknown POST result.
       await (target.version
-        ? versionsApi.update(target.version.id, ...args, options)
+        ? versionsApi.update(
+            target.version.id,
+            ...args,
+            target.version.currentRevisionId || undefined,
+            options,
+          )
         : versionsApi.upload(target.projectId, ...args, {
             ...options,
             headers: { 'Idempotency-Key': intent.key([target.projectId, ...args]) },
@@ -176,7 +190,12 @@ export function useUpload(
       if (generation !== current || disposed || abort.signal.aborted) return
       if (cause instanceof ApiError && cause.cancelled) return
       outcomeUnknown.value = !(cause instanceof ApiError) || cause.status === 0
-      task.error.value = cause instanceof Error ? cause.message : t('common.unknown')
+      task.error.value =
+        cause instanceof ApiError && cause.code === 'PROTOTYPE_HUB_VERSION_CONFLICT'
+          ? t('proto.revisionConflict')
+          : cause instanceof Error
+            ? cause.message
+            : t('common.unknown')
     } finally {
       if (generation === current && !disposed) {
         controller = undefined

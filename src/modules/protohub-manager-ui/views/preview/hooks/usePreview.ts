@@ -31,6 +31,7 @@ export function usePreview() {
     controller = request
     const projectId = String(route.params.projectId)
     const versionId = String(route.params.versionId)
+    const revisionId = typeof route.query.revisionId === 'string' ? route.query.revisionId : ''
     const options = { signal: request.signal, silent: true }
     loading.value = true
     error.value = ''
@@ -48,19 +49,32 @@ export function usePreview() {
         !projectAllows(project, 'read')
       )
         throw new Error(t('proto.projectUnavailable'))
+      if (version.migrationRequired) throw new Error(t('proto.revisionMigrationRequired'))
+      // Resolve the current pointer once. Every subsequent read uses that immutable identity.
+      const revision = revisionId
+        ? await versionsApi.revision(versionId, revisionId, options)
+        : await versionsApi.currentRevision(versionId, options)
+      if (current !== generation || request.signal.aborted) return
+      if (
+        !revision.id ||
+        revision.versionId !== versionId ||
+        revision.projectId !== projectId ||
+        (revisionId && revision.id !== revisionId)
+      )
+        throw new Error(t('proto.projectUnavailable'))
       const [pages, session] = await Promise.all([
-        versionsApi.pages(versionId, options),
-        versionsApi.previewSession(versionId, options),
+        versionsApi.revisionPages(versionId, revision.id, options),
+        versionsApi.revisionPreviewSession(versionId, revision.id, options),
       ])
       if (current !== generation || request.signal.aborted) return
       if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now())
         throw new Error(t('proto.previewExpired'))
-      runtimePageUrl(session.runtimeBaseUrl, version.entryFile)
+      runtimePageUrl(session.runtimeBaseUrl, revision.entryFile)
       data.value = {
         title: project.name,
-        versionName: version.versionName,
+        versionName: revision.versionName,
         runtimeBaseUrl: session.runtimeBaseUrl,
-        entryFile: version.entryFile,
+        entryFile: revision.entryFile,
         pages,
       }
       timer = setTimeout(() => {
@@ -81,7 +95,11 @@ export function usePreview() {
       if (current === generation) loading.value = false
     }
   }
-  const key = computed(() => `${route.params.projectId}/${route.params.versionId}`)
+  const key = computed(() => [
+    route.params.projectId,
+    route.params.versionId,
+    route.query.revisionId,
+  ])
   watch(key, load, { immediate: true, flush: 'sync' })
   onScopeDispose(clear)
   return { data, loading, error, expired, load }
