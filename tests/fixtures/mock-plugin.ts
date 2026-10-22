@@ -11,6 +11,7 @@ import { runtimeHtml } from './runtime'
 import type {
   Project,
   Version,
+  Revision,
   Share,
   PublicShare,
   PrototypePage,
@@ -75,6 +76,8 @@ let menus: ServerMenu[] = []
 let projects: Project[] = []
 let versions: Version[] = []
 let shares: Share[] = []
+const revisions = new Map<string, Revision>()
+const shareRevisions = new Map<string, string>()
 let users: ManagedUser[] = []
 let roles: Role[] = []
 let grants: ServerMenu[] = []
@@ -84,7 +87,7 @@ const passwords = new Map<string, string>()
 const projectMembers = new Map<string, ProjectMember[]>()
 const previewSessions = new Map<
   string,
-  { versionId: string; projectId: string; expiresAt: number }
+  { versionId: string; revisionId: string; projectId: string; expiresAt: number }
 >()
 function revokePreviews(projectId: string, versionId?: string) {
   for (const [key, session] of previewSessions)
@@ -107,13 +110,17 @@ function reset() {
       ...ownerProjectAccess,
     },
   ]
+  revisions.clear()
+  shareRevisions.clear()
   versions = [version('v1', 'p1', 'V1')]
+  saveRevision(versions[0]!, 'initial content')
   shares = [
     { ...share('open', 'v1', false), description: 'Public review link' },
     share('locked', 'v1', true),
     { ...share('expired', 'v1', false), expiresAt: 1 },
     { ...share('disabled', 'v1', false), enabled: false },
   ]
+  for (const record of shares) shareRevisions.set(record.token, 'r-v1')
   passwords.clear()
   creationReceipts.clear()
   previewSessions.clear()
@@ -176,7 +183,38 @@ function version(id: string, projectId: string, versionName: string): Version {
     createdAt: 1700000000000,
     runtimeBaseUrl: null,
     previewUrl: null,
+    currentRevisionId: `r-${id}`,
+    revisionId: `r-${id}`,
+    revisionCount: 1,
+    migrationRequired: false,
   }
+}
+function saveRevision(value: Version, content: string | Buffer) {
+  const revision: Revision = {
+    id: value.currentRevisionId!,
+    projectId: value.projectId,
+    versionId: value.id,
+    versionName: value.versionName,
+    description: value.description,
+    entryFile: value.entryFile,
+    manifestSha256: createHash('sha256').update(content).digest('hex'),
+    fileCount: 3,
+    totalBytes: Buffer.byteLength(content),
+    createdBy: value.createdBy,
+    createdAt: Date.now(),
+  }
+  revisions.set(revision.id, revision)
+}
+function revisionPages(revisionId: string): PrototypePage[] {
+  const decorate = (items: PrototypePage[]): PrototypePage[] =>
+    items.map((item) => ({
+      ...item,
+      pageId: item.folder
+        ? null
+        : createHash('sha256').update(`${revisionId}:${item.path}`).digest('hex'),
+      children: item.children ? decorate(item.children) : undefined,
+    }))
+  return decorate(pages)
 }
 function share(token: string, versionId: string, passwordRequired: boolean): Share {
   return {
@@ -229,8 +267,22 @@ function createOnce(
   const receiptKey = typeof key === 'string' ? `${path}:${key}` : undefined
   const receipt = receiptKey ? creationReceipts.get(receiptKey) : undefined
   if (receipt) {
-    if (receipt.payload === payload) send(res, 200, receipt.result)
-    else send(res, 409, null, '幂等标识已用于其他创建内容，请重新发起创建')
+    if (receipt.payload === payload) {
+      const original = receipt.result
+      const current =
+        'revisionId' in original ? versions.find((item) => item.id === original.id) : undefined
+      send(
+        res,
+        200,
+        current
+          ? {
+              ...original,
+              currentRevisionId: current.currentRevisionId,
+              revisionCount: current.revisionCount,
+            }
+          : original,
+      )
+    } else send(res, 409, null, '幂等标识已用于其他创建内容，请重新发起创建')
     return
   }
   if (!usage.canCreate) {
@@ -238,7 +290,7 @@ function createOnce(
     return
   }
   const result = create()
-  if (receiptKey) creationReceipts.set(receiptKey, { payload, result })
+  if (receiptKey) creationReceipts.set(receiptKey, { payload, result: structuredClone(result) })
   send(res, 200, result)
 }
 function multipartFields(bytes: Buffer, contentType: string) {
@@ -341,7 +393,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       return true
     }
     if (suffix.endsWith('/pages')) {
-      send(res, 200, pages)
+      send(res, 200, revisionPages(shareRevisions.get(record.token)!))
       return true
     }
     const access =
@@ -353,8 +405,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     }
     const info: PublicShare = {
       token: record.token,
+      revisionId: shareRevisions.get(record.token)!,
       projectName: 'Contract project',
-      versionName: versions.find((v) => v.id === record.versionId)?.versionName || 'V1',
+      versionName: revisions.get(shareRevisions.get(record.token)!)?.versionName || 'V1',
       passwordRequired: record.passwordRequired,
       accessKey: access ? 'access-key' : undefined,
       runtimeBaseUrl: access
@@ -522,6 +575,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       () => {
         const value = { ...version(String(++counter), projectId, name), description }
         versions.push(value)
+        saveRevision(value, fields.get('file') || Buffer.alloc(0))
         return value
       },
     )
@@ -548,28 +602,52 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       200,
       versions.filter((item) => item.projectId === url.searchParams.get('projectId')),
     )
-  else if (/^\/prototype-hub\/versions\/[^/]+\/preview-session$/.test(path) && method === 'POST') {
-    const id = path.split('/')[3]
-    const key = `short-preview-${++counter}`
-    const expiresAt = Date.now() + 300000
-    previewSessions.set(key, {
-      versionId: id,
-      projectId: versions.find((item) => item.id === id)?.projectId || '',
-      expiresAt,
-    })
-    send(res, 200, {
-      runtimeBaseUrl: `/api/prototype-hub/runtime/${id}/${key}`,
-      previewUrl: `/api/prototype-hub/runtime/${id}/${key}/index.html`,
-      expiresAt,
-    })
-  } else if (/^\/prototype-hub\/versions\/[^/]+\/pages$/.test(path)) send(res, 200, pages)
-  else if (/^\/prototype-hub\/versions\/[^/]+\/shares$/.test(path)) {
+  else if (
+    /^\/prototype-hub\/versions\/[^/]+\/(?:current-revision|revisions(?:\/[^/]+(?:\/(?:pages|preview-session))?)?)$/.test(
+      path,
+    )
+  ) {
+    const [, , , id, action, revisionId, suffix] = path.split('/')
+    const value = versions.find((item) => item.id === id)
+    const revision = revisions.get(
+      action === 'current-revision' ? value?.currentRevisionId || '' : revisionId || '',
+    )
+    if (!value) send(res, 404, null, 'Version not found')
+    else if (action === 'revisions' && !revisionId) {
+      const all = [...revisions.values()]
+        .filter((item) => item.versionId === id)
+        .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))
+      const after = url.searchParams.get('after')
+      const start = after ? all.findIndex((item) => item.id === after) + 1 : 0
+      send(res, 200, all.slice(start, start + Number(url.searchParams.get('limit') || 50)))
+    } else if (!revision || revision.versionId !== id) send(res, 404, null, 'Revision not found')
+    else if (suffix === 'pages') send(res, 200, revisionPages(revision.id))
+    else if (suffix === 'preview-session' && method === 'POST') {
+      const key = `short-preview-${++counter}`
+      const expiresAt = Date.now() + 300000
+      previewSessions.set(key, {
+        versionId: id!,
+        revisionId: revision.id,
+        projectId: value.projectId,
+        expiresAt,
+      })
+      send(res, 200, {
+        runtimeBaseUrl: `/api/prototype-hub/runtime/${id}/${key}`,
+        previewUrl: `/api/prototype-hub/runtime/${id}/${key}/${revision.entryFile}`,
+        expiresAt,
+      })
+    } else send(res, 200, revision)
+  } else if (/^\/prototype-hub\/versions\/[^/]+\/shares$/.test(path)) {
     const id = path.split('/')[3]
     if (method === 'POST') {
       const value = share(String(++counter), id, !!data.password)
       if (typeof data.description === 'string') value.description = data.description
       if (data.expiresAt) value.expiresAt = Number(data.expiresAt)
       shares.push(value)
+      shareRevisions.set(
+        value.token,
+        versions.find((item) => item.id === id)?.currentRevisionId || '',
+      )
       if (data.password) passwords.set(value.token, String(data.password))
       send(res, 200, value)
     } else
@@ -583,11 +661,26 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const value = versions.find((item) => item.id === id)
     if (!value) send(res, 404, null, 'Version not found')
     else {
-      if (method === 'PUT' || method === 'DELETE') revokePreviews(value.projectId, value.id)
-      if (method === 'PUT')
-        value.versionName =
-          raw.match(/name="versionName"\r\n\r\n([^\r]+)/)?.[1] || value.versionName
-      if (method === 'DELETE') versions = versions.filter((item) => item !== value)
+      if (method === 'PUT') {
+        const fields = multipartFields(bytes, req.headers['content-type'] || '')
+        const expected = fields.get('expectedRevisionId')?.toString()
+        if (expected && expected !== value.currentRevisionId) {
+          send(res, 409, null, 'Version has a newer revision', 'PROTOTYPE_HUB_VERSION_CONFLICT')
+          return true
+        }
+        value.versionName = fields.get('versionName')?.toString() || value.versionName
+        value.description = fields.get('description')?.toString() || ''
+        value.currentRevisionId = `r-${++counter}`
+        value.revisionId = value.currentRevisionId
+        value.revisionCount++
+        saveRevision(value, fields.get('file') || Buffer.alloc(0))
+      }
+      if (method === 'DELETE') {
+        revokePreviews(value.projectId, value.id)
+        versions = versions.filter((item) => item !== value)
+        for (const revision of revisions.values())
+          if (revision.versionId === id) revisions.delete(revision.id)
+      }
       send(res, 200, value)
     }
   } else if (/^\/prototype-hub\/shares\/[^/]+\/verify-password$/.test(path) && method === 'POST') {

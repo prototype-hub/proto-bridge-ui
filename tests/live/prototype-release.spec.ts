@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type APIResponse, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { liveEnvironment } from './environment'
 
 interface Resource {
@@ -8,6 +9,9 @@ interface Resource {
 }
 interface Version extends Resource {
   versionName: string
+  currentRevisionId: string
+  revisionId: string
+  revisionCount: number
 }
 interface Capacity {
   used: number
@@ -28,14 +32,29 @@ async function result<T>(response: Pick<APIResponse, 'ok' | 'json'>): Promise<T>
   return body.result
 }
 
-async function preview(page: Page) {
+async function preview(
+  page: Page,
+  heading = 'Runtime fixture home',
+  revisionId?: string,
+  versionName?: string,
+) {
   const opened = page.waitForEvent('popup')
-  await page.getByRole('button', { name: 'Preview', exact: true }).first().click()
+  const exchange = revisionId
+    ? page
+        .context()
+        .waitForEvent('request', (request) =>
+          request.url().endsWith(`/revisions/${encodeURIComponent(revisionId)}/preview-session`),
+        )
+    : undefined
+  const scope = versionName
+    ? page
+        .getByRole('row')
+        .filter({ has: page.getByRole('cell', { name: versionName, exact: true }) })
+    : page
+  await scope.getByRole('button', { name: 'Preview', exact: true }).first().click()
   const popup = await opened
   const frame = popup.frameLocator('.frame-stage > iframe')
-  await expect(
-    frame.getByRole('heading', { name: 'Runtime fixture home', exact: true }),
-  ).toBeVisible()
+  await expect(frame.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   await expect(frame.frameLocator('iframe').getByTestId('runtime-nested')).toHaveText(
     'Runtime fixture nested page',
   )
@@ -58,6 +77,7 @@ async function preview(page: Page) {
       }
     }),
   ).toBe(true)
+  if (exchange) await exchange
   await popup.close()
 }
 
@@ -67,11 +87,18 @@ class OwnedResources {
   projects: string[] = []
   versions: string[] = []
   users: string[] = []
+  shares: string[] = []
 
   constructor(readonly request: APIRequestContext) {}
 
   async cleanup() {
     const failures: string[] = []
+    for (const id of [...this.shares].reverse()) {
+      const response = await this.request.delete(`/api/prototype-hub/shares/${id}`, {
+        headers: this.headers,
+      })
+      if (!response.ok()) failures.push(`share cleanup returned ${response.status()}`)
+    }
     for (const id of [...this.versions].reverse()) {
       const response = await this.request.delete(`/api/prototype-hub/versions/${id}`, {
         headers: this.headers,
@@ -109,6 +136,10 @@ liveTest(
     const name = `Live verification ${randomUUID()}`
     let projectId = ''
     let versionId = ''
+    let firstRevisionId = ''
+    let secondRevisionId = ''
+    let shareToken = ''
+    let firstRuntimeUrl = ''
 
     await test.step('log in through the platform form', async () => {
       await page.goto('/login')
@@ -160,7 +191,18 @@ liveTest(
       await upload.getByRole('button', { name: '保存', exact: true }).click()
       const saved = await uploading
       expect(saved.ok(), 'ZIP upload must persist through the real backend').toBe(true)
-      versionId = ((await saved.json()) as { result: Resource }).result.id
+      const uploadedVersion = ((await saved.json()) as { result: Version }).result
+      versionId = uploadedVersion.id
+      firstRevisionId = uploadedVersion.revisionId
+      expect(firstRevisionId).toBeTruthy()
+      const shared = await result<{ id: string; token: string }>(
+        await request.post(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+          data: {},
+        }),
+      )
+      owned.shares.push(shared.id)
+      shareToken = shared.token
       owned.versions.push(versionId)
       expect(Boolean(saved.request().headers()['idempotency-key'])).toBe(true)
       await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
@@ -265,26 +307,140 @@ liveTest(
       await expect(dialog).toBeHidden()
     })
 
-    await test.step('replace the existing version without consuming another slot', async () => {
-      await page.getByRole('button', { name: '更新版本', exact: true }).click()
+    await test.step('upload a second immutable revision without consuming another slot', async () => {
+      const initialGrant = await result<{ previewUrl: string }>(
+        await request.post(
+          `/api/prototype-hub/versions/${versionId}/revisions/${firstRevisionId}/preview-session`,
+          { headers: owned.headers },
+        ),
+      )
+      firstRuntimeUrl = initialGrant.previewUrl
+      await page.getByRole('button', { name: '上传新修订', exact: true }).click()
       const editor = page.getByRole('dialog')
       await editor.getByLabel('版本名称', { exact: true }).fill('Browser replacement')
-      await editor.locator('input[type=file]').setInputFiles(environment.zipPath)
+      const files = unzipSync(readFileSync(environment.zipPath))
+      let replaced = false
+      for (const [path, bytes] of Object.entries(files)) {
+        if (!path.endsWith('.html')) continue
+        const html = strFromU8(bytes)
+        if (html.includes('Runtime fixture home')) {
+          files[path] = strToU8(
+            html.replaceAll('Runtime fixture home', 'Runtime fixture revision two'),
+          )
+          replaced = true
+        }
+      }
+      expect(replaced, 'The fixture ZIP must contain a distinguishable first revision').toBe(true)
+      await editor.locator('input[type=file]').setInputFiles({
+        name: 'revision-two.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(zipSync(files)),
+      })
       const updating = page.waitForResponse(
         (response) =>
           response.request().method() === 'PUT' &&
           new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}`,
       )
-      await editor.getByRole('button', { name: '保存', exact: true }).click()
-      const response = await updating
-      expect(response.ok(), 'Version replacement must persist through the real backend').toBe(true)
-      expect(response.request().headers()['idempotency-key']).toBeUndefined()
-      expect(((await response.json()) as { result: Resource }).result.id).toBe(versionId)
+      // CDP omits multipart bodies containing files; observe only the precondition at native send.
+      const upload = await page.evaluateHandle(() => {
+        const expectedRevisionIds: string[] = []
+        const originalSend = XMLHttpRequest.prototype.send
+        XMLHttpRequest.prototype.send = function (body) {
+          if (body instanceof FormData) {
+            const value = body.get('expectedRevisionId')
+            if (typeof value === 'string') expectedRevisionIds.push(value)
+          }
+          originalSend.call(this, body)
+        }
+        return {
+          expectedRevisionIds,
+          restore: () => {
+            XMLHttpRequest.prototype.send = originalSend
+          },
+        }
+      })
+      try {
+        await editor.getByRole('button', { name: '保存', exact: true }).click()
+        const response = await updating
+        expect(response.ok(), 'Version replacement must persist through the real backend').toBe(
+          true,
+        )
+        expect(response.request().headers()['idempotency-key']).toBeUndefined()
+        expect(await upload.evaluate((capture) => capture.expectedRevisionIds)).toEqual([
+          firstRevisionId,
+        ])
+        const updated = ((await response.json()) as { result: Version }).result
+        expect(updated.id).toBe(versionId)
+        secondRevisionId = updated.revisionId
+        expect(secondRevisionId).not.toBe(firstRevisionId)
+        expect(updated.currentRevisionId).toBe(secondRevisionId)
+        expect(updated.revisionCount).toBe(2)
+      } finally {
+        await upload.evaluate((capture) => capture.restore())
+        await upload.dispose()
+      }
       await expect(
         page.getByRole('cell', { name: 'Browser replacement', exact: true }),
       ).toBeVisible()
       await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
-      await preview(page)
+      await preview(page, 'Runtime fixture revision two', secondRevisionId)
+    })
+
+    await test.step('history opens revision one while the current pointer and old share stay independently bound', async () => {
+      const current = await result<Resource>(
+        await request.get(`/api/prototype-hub/versions/${versionId}/current-revision`, {
+          headers: owned.headers,
+        }),
+      )
+      expect(current.id).toBe(secondRevisionId)
+      const stillValid = await request.get(firstRuntimeUrl)
+      expect(stillValid.ok(), 'Uploading a revision must not revoke an existing short grant').toBe(
+        true,
+      )
+      expect(await stillValid.text()).toContain('Runtime fixture home')
+      await page.getByRole('button', { name: '历史修订', exact: true }).click()
+      const drawer = page.getByRole('dialog', { name: '历史修订', exact: true })
+      await expect(drawer.getByText('当前修订', { exact: true })).toBeVisible()
+      const old = drawer
+        .getByRole('row')
+        .filter({ has: page.getByText(firstRevisionId, { exact: true }) })
+      const opening = page.waitForEvent('popup')
+      const historyGrant = page
+        .context()
+        .waitForEvent('request', (outgoing) =>
+          outgoing.url().endsWith(`/revisions/${firstRevisionId}/preview-session`),
+        )
+      await old.getByRole('button', { name: 'Preview', exact: true }).click()
+      const historical = await opening
+      await historical.waitForURL(
+        (url) =>
+          url.origin === new URL(page.url()).origin &&
+          url.pathname ===
+            `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(versionId)}` &&
+          url.searchParams.get('revisionId') === firstRevisionId,
+      )
+      expect(new URL(historical.url()).searchParams.get('revisionId')).toBe(firstRevisionId)
+      await historyGrant
+      await expect(
+        historical
+          .frameLocator('.frame-stage > iframe')
+          .getByRole('heading', { name: 'Runtime fixture home', exact: true }),
+      ).toBeVisible()
+      await historical.close()
+      await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+      const share = await result<{ revisionId: string }>(
+        await request.get(`/api/prototype-hub/public/shares/${shareToken}`),
+      )
+      expect(share.revisionId).toBe(firstRevisionId)
+      const publicPage = await page.context().newPage()
+      await publicPage.goto(`/share/${encodeURIComponent(shareToken)}`)
+      await expect(
+        publicPage
+          .frameLocator('.frame-stage > iframe')
+          .getByRole('heading', { name: 'Runtime fixture home', exact: true }),
+      ).toBeVisible()
+      await expect(publicPage.getByText('Browser upload', { exact: true })).toBeVisible()
+      await publicPage.close()
     })
 
     await test.step('enforce version capacity while existing previews remain usable', async () => {
@@ -308,9 +464,9 @@ liveTest(
       await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
       await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeDisabled()
       await expect(
-        page.getByRole('button', { name: '更新版本', exact: true }).first(),
+        page.getByRole('button', { name: '上传新修订', exact: true }).first(),
       ).toBeEnabled()
-      await preview(page)
+      await preview(page, 'Runtime fixture revision two', secondRevisionId, 'Browser replacement')
       const usage = await result<{ versions: Capacity }>(
         await request.get(`/api/prototype-hub/versions/_usage?projectId=${projectId}`, {
           headers: owned.headers,

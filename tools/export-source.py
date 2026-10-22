@@ -12,6 +12,8 @@ import re
 import shutil
 import sys
 import tempfile
+import struct
+import zlib
 from datetime import datetime, timezone
 import uuid
 from urllib.parse import unquote
@@ -60,9 +62,56 @@ def within(path, root):
         return False
 
 
+def binary_assets(rules):
+    assets = {}
+    for record in rules.get('binaryAssets', []):
+        rel = safe_relative(record['path'])
+        if rel.suffix != '.png' or rel in assets:
+            raise ValueError(f'Invalid reviewed PNG path: {rel}')
+        assets[rel] = record
+    return assets
+
+
+def validate_png(content, record):
+    """Keep binary export limited to the exact reviewed PNG bytes and dimensions."""
+    rel = record['path']
+    if not content.startswith(b'\x89PNG\r\n\x1a\n') or len(content) > 10 * 1024 * 1024:
+        raise ValueError(f'Invalid reviewed PNG signature or size: {rel}')
+    offset, width, height, image_data = 8, None, None, False
+    ended = False
+    while offset + 12 <= len(content):
+        size = struct.unpack('>I', content[offset:offset + 4])[0]
+        kind = content[offset + 4:offset + 8]
+        end = offset + 12 + size
+        if end > len(content):
+            raise ValueError(f'Truncated reviewed PNG: {rel}')
+        payload = content[offset + 8:offset + 8 + size]
+        crc = struct.unpack('>I', content[end - 4:end])[0]
+        if zlib.crc32(kind + payload) & 0xffffffff != crc:
+            raise ValueError(f'Invalid reviewed PNG checksum: {rel}')
+        if offset == 8:
+            if kind != b'IHDR' or size != 13:
+                raise ValueError(f'Invalid reviewed PNG header: {rel}')
+            width, height = struct.unpack('>II', payload[:8])
+        elif kind == b'IHDR':
+            raise ValueError(f'Duplicate reviewed PNG header: {rel}')
+        image_data = image_data or (kind == b'IDAT' and size > 0)
+        offset = end
+        if kind == b'IEND':
+            ended = size == 0 and offset == len(content)
+            break
+    if not ended or not image_data:
+        raise ValueError(f'Incomplete reviewed PNG: {rel}')
+    if (width, height) != (record['width'], record['height']) or not (0 < width <= 8192 and 0 < height <= 8192):
+        raise ValueError(f'Unexpected reviewed PNG dimensions: {rel}')
+    if hashlib.sha256(content).hexdigest() != record['sha256']:
+        raise ValueError(f'Reviewed PNG bytes changed; review provenance before exporting: {rel}')
+
+
 def collect(root, rules):
     selected = set()
-    for value in rules['files']:
+    assets = binary_assets(rules)
+    for value in [*rules['files'], *(str(path) for path in assets)]:
         rel = safe_relative(value)
         source = root.joinpath(*rel.parts)
         if not source.is_file() or source.is_symlink():
@@ -94,7 +143,7 @@ def collect(root, rules):
     for rel in sorted(selected):
         if deny(rel) or any(fnmatch.fnmatchcase(str(rel), pattern) for pattern in rules.get('exclude', [])):
             continue
-        if str(rel) not in rules['files'] and rel.suffix not in allowed_suffixes and rel.name not in {'LICENSE', 'NOTICE', 'COPYING'}:
+        if rel not in assets and str(rel) not in rules['files'] and rel.suffix not in allowed_suffixes and rel.name not in {'LICENSE', 'NOTICE', 'COPYING'}:
             raise ValueError(f'Unreviewed file type in public source directory: {rel}')
         source = root / rel
         # Check ancestors as well as leaf paths; explicit files must not escape via links.
@@ -105,6 +154,8 @@ def collect(root, rules):
                 raise ValueError(f'Symlink rejected: {rel}')
         if not within(source.resolve(), root) or not source.is_file():
             raise ValueError(f'Invalid source file: {rel}')
+        if rel in assets:
+            validate_png(source.read_bytes(), assets[rel])
         accepted.append(rel)
     return accepted
 
@@ -156,6 +207,7 @@ def export(root, output, rules):
         raise ValueError('Output already exists; choose a new directory (nothing will be overwritten)')
     output.parent.mkdir(parents=True, exist_ok=True)
     paths = collect(root, rules)
+    assets = binary_assets(rules)
     texts = scan(root, paths)
     validate_markdown_links(root, paths)
     records = []
@@ -165,6 +217,8 @@ def export(root, output, rules):
             source, target = root / rel, staging / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             data = source.read_bytes()
+            if rel in assets:
+                validate_png(data, assets[rel])
             target.write_bytes(data)
             target.chmod(0o755 if source.stat().st_mode & 0o111 else 0o644)
             records.append({'path': str(rel), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})

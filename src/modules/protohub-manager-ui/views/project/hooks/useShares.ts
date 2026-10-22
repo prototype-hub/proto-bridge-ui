@@ -69,7 +69,12 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   })
   /** Capture the submitted password before the form is cleared or a new version is selected. */
   async function create() {
-    if (!version.value || !projectAllows(project.value, 'manageShares')) return
+    if (
+      !version.value ||
+      version.value.migrationRequired ||
+      !projectAllows(project.value, 'manageShares')
+    )
+      return
     const selectedVersion = version.value
     const rawDescription = description.value.trim()
     const rawPassword = password.value

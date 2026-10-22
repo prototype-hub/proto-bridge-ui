@@ -76,7 +76,7 @@ test('version preview and public share open the first accessible menu page and r
     },
   ]
   const pageEndpoints = [
-    '**/api/prototype-hub/versions/v1/pages',
+    '**/api/prototype-hub/versions/v1/revisions/r-v1/pages',
     '**/api/prototype-hub/public/shares/open/access-key/pages',
   ]
   for (const path of pageEndpoints)
@@ -210,7 +210,7 @@ test('management and anonymous preview keep long tree labels beside icons with e
     },
   ]
   for (const path of [
-    '**/api/prototype-hub/versions/v1/pages',
+    '**/api/prototype-hub/versions/v1/revisions/r-v1/pages',
     '**/api/prototype-hub/public/shares/open/access-key/pages',
   ])
     await page.route(path, (route) =>

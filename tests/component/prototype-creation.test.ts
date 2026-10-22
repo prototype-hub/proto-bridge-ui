@@ -164,8 +164,12 @@ it('starts a new key after a successful upload and invokes the usage refresh cal
   expect(creationKey(2)).not.toBe(first)
 })
 
-it('replaces existing versions with PUT without a creation idempotency key', async () => {
+it('uploads a revision with the expected current identity and without a creation idempotency key', async () => {
   const version: Version = {
+    currentRevisionId: 'r1',
+    revisionId: 'r1',
+    revisionCount: 1,
+    migrationRequired: false,
     id: 'v1',
     projectId: 'p1',
     versionName: 'V1',
@@ -180,12 +184,19 @@ it('replaces existing versions with PUT without a creation idempotency key', asy
   await state.submit()
   expect(request.post).not.toHaveBeenCalled()
   expect(vi.mocked(request.put).mock.calls[0]?.[2]?.headers).toBeUndefined()
+  expect((vi.mocked(request.put).mock.calls[0]?.[1] as FormData).get('expectedRevisionId')).toBe(
+    'r1',
+  )
   expect(done).toHaveBeenCalledOnce()
 })
 
 it('initializes the upload form from the new context when the parent changes context and open together', async () => {
   let state!: ReturnType<typeof useUpload>
   const version: Version = {
+    currentRevisionId: 'r1',
+    revisionId: 'r1',
+    revisionCount: 1,
+    migrationRequired: false,
     id: 'v2',
     projectId: 'p2',
     versionName: 'Another version',
@@ -230,4 +241,32 @@ it('creates a cryptographically random key on LAN HTTP browsers without randomUU
   expect(getRandomValues).toHaveBeenCalledTimes(1)
   intent.reset()
   expect(intent.key(['Project'])).not.toBe(first)
+})
+
+it('surfaces concurrent revision conflicts without retrying or treating them as an unknown upload result', async () => {
+  const version: Version = {
+    id: 'v1',
+    projectId: 'p1',
+    versionName: 'V1',
+    entryFile: 'index.html',
+    status: 'ready',
+    createdBy: 'admin',
+    createdAt: 1,
+    runtimeBaseUrl: null,
+    previewUrl: null,
+    currentRevisionId: 'r1',
+    revisionId: 'r1',
+    revisionCount: 1,
+    migrationRequired: false,
+  }
+  vi.mocked(request.put).mockRejectedValue(
+    new ApiError('Conflict', 409, 'PROTOTYPE_HUB_VERSION_CONFLICT'),
+  )
+  const { state, done, open } = await renderUpload(version)
+  await state.submit()
+  expect(request.put).toHaveBeenCalledOnce()
+  expect(state.task.error.value).toBe(protoLocales.zh.revisionConflict)
+  expect(state.outcomeUnknown.value).toBe(false)
+  expect(open.value).toBe(true)
+  expect(done).not.toHaveBeenCalled()
 })

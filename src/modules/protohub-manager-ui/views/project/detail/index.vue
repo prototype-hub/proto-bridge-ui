@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectDetailView' })
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Space as ASpace, Tag as ATag, Alert as AAlert } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +10,7 @@ import {
   ShareAltOutlined,
   DeleteOutlined,
   TeamOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
@@ -26,6 +27,9 @@ import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project
 import { useSession } from '@/app/stores/session'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
+const RevisionHistoryDrawer = defineAsyncComponent(
+  () => import('@/modules/protohub-manager-ui/views/project/components/RevisionHistoryDrawer.vue'),
+)
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -39,6 +43,7 @@ const {
   uploadOpen,
   uploadContext,
   shareVersion,
+  historyVersion,
   membersOpen,
   upload,
   preview,
@@ -48,8 +53,9 @@ const columns = computed(() => [
   { title: t('proto.versionName'), dataIndex: 'versionName' },
   { title: t('common.description'), dataIndex: 'description' },
   { title: t('common.status'), dataIndex: 'status' },
+  { title: t('proto.revision'), dataIndex: 'revisionCount' },
   { title: t('common.createdAt'), dataIndex: 'createdAt' },
-  { title: t('common.actions'), key: 'actions', width: 184 },
+  { title: t('common.actions'), key: 'actions', width: 224 },
 ])
 </script>
 <template>
@@ -92,6 +98,11 @@ const columns = computed(() => [
           v-if="task.error.value"
           type="error"
           :message="task.error.value"
+        /><a-alert
+          v-if="resource.data.value.versions.some((version) => version.migrationRequired)"
+          type="warning"
+          show-icon
+          :message="t('proto.revisionMigrationRequired')"
         /><data-table :rows="resource.data.value.versions" :columns="columns"
           ><template #cell="{ column, record }"
             ><a-space v-if="column.key === 'actions'" :size="8">
@@ -100,14 +111,23 @@ const columns = computed(() => [
                 :label="t('proto.preview')"
                 :icon="EyeOutlined"
                 :permission="p.version.query"
-                :disabled="record.status !== 'ready'"
+                :disabled="record.status !== 'ready' || record.migrationRequired"
                 @action="preview(record)"
+              />
+              <action-button
+                v-if="projectAllows(resource.data.value.project, 'read')"
+                :label="t('proto.revisionHistory')"
+                :icon="HistoryOutlined"
+                :permission="p.version.query"
+                :disabled="record.migrationRequired"
+                @action="historyVersion = record"
               />
               <action-button
                 v-if="projectAllows(resource.data.value.project, 'edit')"
                 :label="t('proto.update')"
                 :icon="UploadOutlined"
                 :permission="p.version.save"
+                :disabled="record.migrationRequired"
                 @action="upload(record)"
               />
               <action-button
@@ -115,7 +135,7 @@ const columns = computed(() => [
                 :label="t('proto.share')"
                 :icon="ShareAltOutlined"
                 :permission="p.share.query"
-                :disabled="record.status !== 'ready'"
+                :disabled="record.status !== 'ready' || record.migrationRequired"
                 @action="shareVersion = record"
               />
               <action-button
@@ -130,8 +150,18 @@ const columns = computed(() => [
               /> </a-space
             ><a-tag
               v-else-if="column.dataIndex === 'status'"
-              :color="record.status === 'ready' ? 'green' : 'red'"
-              >{{ t(`proto.${record.status}`) }}</a-tag
+              :color="
+                record.migrationRequired ? 'orange' : record.status === 'ready' ? 'green' : 'red'
+              "
+              >{{
+                t(record.migrationRequired ? 'proto.revisionMigration' : `proto.${record.status}`)
+              }}</a-tag
+            ><template v-else-if="column.dataIndex === 'revisionCount'">
+              {{
+                record.migrationRequired
+                  ? '—'
+                  : t('proto.revisionCount', { count: record.revisionCount })
+              }} </template
             ><text-ellipsis
               v-else-if="column.dataIndex === 'description'"
               :text="record.description"
@@ -155,7 +185,12 @@ const columns = computed(() => [
       :open="membersOpen"
       :project="resource.data.value.project"
       @close="membersOpen = false"
-      @changed="refresh"
+      @changed="refresh" /><revision-history-drawer
+      v-if="historyVersion"
+      :project="resource.data.value.project"
+      :version="historyVersion"
+      @close="historyVersion = undefined"
+      @preview="preview"
   /></page-container>
 </template>
 <style scoped>

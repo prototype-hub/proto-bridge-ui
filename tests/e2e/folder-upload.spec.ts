@@ -113,8 +113,8 @@ test('real directory Worker preserves every nested resource for explicit create 
     const original = page
       .getByRole('row')
       .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
-    await original.getByRole('button', { name: '更新版本', exact: true }).click()
-    await expect(dialog.getByText('替换版本「V1」', { exact: false })).toBeVisible()
+    await original.getByRole('button', { name: '上传新修订', exact: true }).click()
+    await expect(dialog.getByText('为版本「V1」上传新修订', { exact: false })).toBeVisible()
     await selectFolder(page, fixture.root)
     await expect(dialog.getByText(/已打包「中文原型 导出」：7 个文件/)).toBeVisible()
     await dialog.getByLabel('版本名称').fill('Folder replacement')

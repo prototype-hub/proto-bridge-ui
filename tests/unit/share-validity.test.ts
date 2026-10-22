@@ -23,6 +23,10 @@ vi.mock('@/shared/utils/feedback', () => ({
 i18n.global.mergeLocaleMessage('zh', { proto: protoLocales.zh })
 const now = 1791806400000
 const version: Version = {
+  currentRevisionId: 'r1',
+  revisionId: 'r1',
+  revisionCount: 1,
+  migrationRequired: false,
   id: 'v1',
   projectId: 'p1',
   versionName: 'V1',

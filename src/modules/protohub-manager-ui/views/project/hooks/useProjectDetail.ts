@@ -24,6 +24,7 @@ export function useProjectDetail() {
   const uploadOpen = ref(false)
   const uploadContext = ref<UploadContext>({ projectId: id.value })
   const shareVersion = ref<Version>()
+  const historyVersion = ref<Version>()
   const membersOpen = ref(false)
   const usage = useResource<VersionUsage | undefined>(
     (signal) =>
@@ -38,6 +39,7 @@ export function useProjectDetail() {
       resource.data.value = { project: undefined, versions: [] }
       uploadOpen.value = false
       shareVersion.value = undefined
+      historyVersion.value = undefined
       const project = await projectsApi.get(id.value, { signal, silent: true })
       if (signal.aborted) return { project: undefined, versions: [] }
       // Project administration does not imply permission to query its version contents.
@@ -58,12 +60,16 @@ export function useProjectDetail() {
     await Promise.all([resource.load(), loadUsage()])
   }
   function upload(version?: Version) {
-    if (!projectAllows(resource.data.value.project, 'edit')) return
+    if (!projectAllows(resource.data.value.project, 'edit') || version?.migrationRequired) return
     uploadContext.value = { projectId: id.value, version }
     uploadOpen.value = true
   }
-  function preview(version: Version) {
-    if (!projectAllows(resource.data.value.project, 'read') || version.projectId !== id.value)
+  function preview(version: Version, revisionId?: string) {
+    if (
+      !projectAllows(resource.data.value.project, 'read') ||
+      version.projectId !== id.value ||
+      version.migrationRequired
+    )
       return
     window.open(
       applicationUrl(
@@ -71,7 +77,8 @@ export function useProjectDetail() {
         router.resolve({
           name: 'PrototypeHub-preview-window',
           params: { projectId: id.value, versionId: version.id },
-        }).path,
+          query: revisionId ? { revisionId } : undefined,
+        }).fullPath,
       ),
       '_blank',
       'noopener,noreferrer',
@@ -89,6 +96,7 @@ export function useProjectDetail() {
     id,
     () => {
       shareVersion.value = undefined
+      historyVersion.value = undefined
       uploadOpen.value = false
       membersOpen.value = false
       resource.data.value = { project: undefined, versions: [] }
@@ -105,6 +113,7 @@ export function useProjectDetail() {
     uploadOpen,
     uploadContext,
     shareVersion,
+    historyVersion,
     membersOpen,
     upload,
     preview,

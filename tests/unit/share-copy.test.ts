@@ -233,6 +233,10 @@ it('submits and clears a trimmed description while remembering only the created 
     ...ownerProjectAccess,
   }
   const version: Version = {
+    currentRevisionId: 'r1',
+    revisionId: 'r1',
+    revisionCount: 1,
+    migrationRequired: false,
     id: 'v1',
     projectId: 'p1',
     versionName: 'V1.0',
@@ -268,6 +272,10 @@ it('submits and clears a trimmed description while remembering only the created 
 })
 it('does not recover creation plaintext from a late response after main close and reopen', async () => {
   const version: Version = {
+    currentRevisionId: 'r1',
+    revisionId: 'r1',
+    revisionCount: 1,
+    migrationRequired: false,
     id: 'v1',
     projectId: 'p1',
     versionName: 'V1.0',
