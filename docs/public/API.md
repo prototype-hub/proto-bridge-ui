@@ -43,7 +43,7 @@
 
 旧项目迁移应先联合备份数据库与文件，在副本上执行预览、应用并核对统计，重跑不会重复分配，也不会重新认领已因删除账户清理的成员/所有者关系；有效创建者可成为所有者，创建者失效/缺失的旧项目保留所有者为空的待认领状态。所有者为空时仅管理员可见；所有者账号停用或失效但归属仍在时，已有编辑者/查看者仍可按成员角色访问，同时管理员可认领。删除所有者账号会清空归属并撤销内部预览授权。管理员在项目详情进入“项目成员”指定所有者。前后端需一起升级；不要恢复旧后端的匿名 runtime 来兼容过期凭证。结构自动补齐不代替历史归属迁移，具体运维步骤以配套后端说明为准。
 
-## 不可变修订与固定分享
+## 不可变修订与分享内容
 
 逻辑版本 `id` 保持稳定。版本响应新增 `currentRevisionId`、`revisionId`、`revisionCount`、`migrationRequired`；日常列表/详情的 `revisionId` 等于当前修订。新建版本请求的幂等重放返回首次成功的 `revisionId`，`currentRevisionId` 仍是当时实际当前指针，不将后续上传伪装为首次结果。项目和版本数量仍按逻辑资源计量，不按修订计量。
 
@@ -57,7 +57,21 @@
 
 修订返回 `{id,projectId,versionId,versionName,description,entryFile,manifestSha256,fileCount,totalBytes,createdBy,createdAt}`，时间为毫秒时间戳，大小为字节。预览路由 `/preview/:projectId/:versionId?revisionId=…` 可打开历史；省略修订时先解析当前修订，再以同一 ID 读取入口、页面树和授权，避免并发上传造成内容混用。项目范围与操作权限检查同样适用于历史内容。
 
-新分享固定到创建时的当前修订，公开分享响应包含 `revisionId`；后续上传不会使旧链接切换内容。本批界面不提供回滚或删除单独修订、跟随最新修订的分享选项。
+新分享默认 `revisionMode=fixed`，固定创建时的当前修订；可显式选择 `latest` 跟随最新。固定模式下修改描述不会移动原修订，编辑时也可明确选择该版本的其他历史修订。跟随模式每次打开或验证密码时解析一次当前修订；公开响应中的 `revisionId` 总是本次已授权的快照，之后上传新修订不会使当前已打开的预览混用新旧资源。本界面不提供回滚或删除单独修订。
+
+分享管理响应包含 `revisionMode`、`revisionId`（跟随模式为 `null`）、`revoked` 和 `configVersion`，不返回密码或存储密钥。编辑、暂停/恢复、轮换和永久撤销提交所见 `configVersion` 作为 `expectedVersion`，并使用原有分享 `save` 权限与项目范围交集：
+
+| 请求                                          | 行为                                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `PUT /prototype-hub/shares/{id}`              | 完整替换描述、有效期和内容模式；密码显式选择 `keep/replace/remove`；`null` 清除描述或有效期 |
+| `PUT /prototype-hub/shares/{id}/enabled`      | `{expectedVersion,enabled}`；暂停可恢复，但不恢复暂停前的访问凭据                           |
+| `POST /prototype-hub/shares/{id}/rotate-link` | `{expectedVersion}`；返回新链接，原链接及旧访问凭据永久失效                                 |
+| `POST /prototype-hub/shares/{id}/revoke`      | `{expectedVersion}`；终态撤销，保留管理记录，不能恢复或再修改                               |
+| `DELETE /prototype-hub/shares/{id}`           | 按原删除权限永久删除记录                                                                    |
+
+所有配置变更使此前页面树、HTML 和资源授权失效；HTTP 409 表示配置已变化，界面刷新列表并要求重新核对，不能自动覆盖或重试写入。密码只保存在当前弹窗内存，关闭、切换、观察到配置变更或执行管理变更后清除旧证明；轮换后需要重新分发新链接。网络结果不明时先刷新核对，不盲目重复操作。
+
+公开客户端使用后端返回的 `pagesUrl` 与 runtime 地址，校验同源、当前 API 前缀及相同 token、派生 key 和修订 ID。规范地址包含 `/public/shares/{token}/{key}/revisions/{revisionId}/pages` 或 `/runtime/**`，不在前端重拼无修订的旧授权地址。公开请求不带平台 token 或 Cookie；页面地址和密码不进入持久存储。后端逐资源检查当前分享状态，已被浏览器收到的内容不能远程收回。
 
 旧版本仍显示在列表，但 `migrationRequired=true` 时禁用预览、上传新修订和分享入口。管理员先联合备份数据库与文件，在副本验证 `POST /prototype-hub/versions/{id}/revision-migration` 的 `{apply:false}` 检查结果，确认后 `{apply:true}` 执行迁移；旧分享绑定迁移时现存内容，已被过去替换覆盖的历史无法恢复。EasyORM 自动补齐结构不能代替该数据迁移。具体副本检查和恢复步骤以配套后端说明为准。
 

@@ -46,6 +46,10 @@ const project: Project = {
   updatedAt: now,
 }
 const share: Share = {
+  revisionMode: 'fixed',
+  revisionId: 'r-v1',
+  revoked: false,
+  configVersion: 1,
   id: 's1',
   projectId: 'p1',
   versionId: 'v1',
@@ -70,8 +74,8 @@ it.each([
   [true, now, 'expired'],
   [true, now - 1, 'expired'],
   [true, 0, 'expired'],
-  [false, undefined, 'expired'],
-  [false, now + 1, 'expired'],
+  [false, undefined, 'disabled'],
+  [false, now + 1, 'disabled'],
 ] as const)('matches backend enabled=%s expires=%s => %s', (enabled, expiresAt, expected) => {
   expect(shareValidity({ enabled, expiresAt }, now)).toBe(expected)
 })

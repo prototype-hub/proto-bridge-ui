@@ -27,6 +27,10 @@ const initialContext: ShareCopyContext = {
   versionName: 'V1.0',
 }
 const initialShare: Share = {
+  revisionMode: 'fixed',
+  revisionId: 'r-v1',
+  revoked: false,
+  configVersion: 1,
   id: 's1',
   projectId: 'p1',
   versionId: 'v1',
@@ -256,6 +260,7 @@ it('submits and clears a trimmed description while remembering only the created 
     description: '评审说明',
     password: ' created ',
     expiresAt: undefined,
+    revisionMode: 'fixed',
   })
   expect(state.description.value).toBe('')
   expect(state.password.value).toBe('')

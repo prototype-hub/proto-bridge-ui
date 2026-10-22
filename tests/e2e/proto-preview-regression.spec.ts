@@ -77,7 +77,7 @@ test('version preview and public share open the first accessible menu page and r
   ]
   const pageEndpoints = [
     '**/api/prototype-hub/versions/v1/revisions/r-v1/pages',
-    '**/api/prototype-hub/public/shares/open/access-key/pages',
+    '**/api/prototype-hub/public/shares/open/*/revisions/*/pages',
   ]
   for (const path of pageEndpoints)
     await page.route(path, (route) =>
@@ -211,7 +211,7 @@ test('management and anonymous preview keep long tree labels beside icons with e
   ]
   for (const path of [
     '**/api/prototype-hub/versions/v1/revisions/r-v1/pages',
-    '**/api/prototype-hub/public/shares/open/access-key/pages',
+    '**/api/prototype-hub/public/shares/open/*/revisions/*/pages',
   ])
     await page.route(path, (route) =>
       route.fulfill({ json: { success: true, status: 200, result: pages } }),
@@ -240,6 +240,9 @@ test('management and anonymous preview keep long tree labels beside icons with e
     await expect(frame).toHaveAttribute('src', /\/index\.html$/)
     await folder.click()
     await expect(folder).toHaveAttribute('aria-expanded', 'true')
+    await expect(child).toBeVisible()
+    // Expansion renders temporary motion nodes; wait for the real row before choosing a click point.
+    await expect(tree.locator('.ant-tree-treenode-motion')).toHaveCount(0)
     await child.click()
     await expect(frame).toHaveAttribute('src', /\/child\.html$/)
     await expect(tree.locator('.ant-tree-node-selected .tree-page')).toHaveText(childTitle)
@@ -275,6 +278,9 @@ test('management and anonymous preview keep long tree labels beside icons with e
     await expect(folder).toHaveAttribute('aria-expanded', 'false')
     await expect(child).not.toBeVisible()
     await folder.click()
+    await expect(folder).toHaveAttribute('aria-expanded', 'true')
+    await expect(child).toBeVisible()
+    await expect(tree.locator('.ant-tree-treenode-motion')).toHaveCount(0)
     await child.click()
     await expect(frame).toHaveAttribute('src', /\/child\.html$/)
     await expect(tree).not.toBeVisible()

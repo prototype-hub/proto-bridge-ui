@@ -149,7 +149,7 @@ test('share creation fields use a two-row desktop layout and status wording swit
     await shareRow
       .getByRole('button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
-  ).toEqual(['复制', '删除'])
+  ).toEqual(['复制', '编辑', '暂停分享', '轮换链接', '永久撤销', '删除'])
   const tableViewport = dialog.locator('.ant-table-content')
   const desktopTable = await tableViewport.evaluate((element) => {
     const viewport = element.getBoundingClientRect()
@@ -217,6 +217,10 @@ test('share creation fields use a two-row desktop layout and status wording swit
   await expect(expiryInput).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(descriptionInput).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('radio', { name: '固定修订', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('radio', { name: '跟随最新', exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(createButton).toBeFocused()
   await page.screenshot({

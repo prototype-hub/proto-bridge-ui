@@ -27,7 +27,7 @@ export function useShareCopy(
   const error = ref('')
   let generation = 0
   let controller: AbortController | undefined
-  const key = (share: Share) => `${share.id}\0${share.token}`
+  const key = (share: Share) => `${share.id}\0${share.token}\0${share.configVersion}`
   const matchesContext = (share: Share) =>
     context.value?.projectId === share.projectId && context.value?.versionId === share.versionId
   const format = (share: Share, password?: string) =>
@@ -78,6 +78,13 @@ export function useShareCopy(
     for (const shareKey of passwords.keys())
       if (shareKey.startsWith(`${id}\0`)) passwords.delete(shareKey)
     if (target.value?.id === id) cancel()
+  }
+
+  /** A reload can observe edits made elsewhere; stale proofs and plaintext cannot survive it. */
+  function synchronize(shares: Share[]) {
+    const valid = new Set(shares.map(key))
+    for (const shareKey of passwords.keys()) if (!valid.has(shareKey)) passwords.delete(shareKey)
+    if (target.value && !valid.has(key(target.value))) cancel()
   }
 
   /** Known passwords copy immediately; old links require a separate proof and a new copy gesture. */
@@ -162,5 +169,6 @@ export function useShareCopy(
     remember,
     forget,
     reset,
+    synchronize,
   }
 }

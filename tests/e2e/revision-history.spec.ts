@@ -18,7 +18,9 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   const originalRuntime = await current.locator('.frame-stage > iframe').getAttribute('src')
   await page.getByRole('button', { name: '上传新修订', exact: true }).click()
   const upload = page.getByRole('dialog')
-  await expect(upload.getByText('已有分享继续展示原修订。', { exact: false })).toBeVisible()
+  await expect(
+    upload.getByText('固定分享继续展示原修订，跟随分享在下次打开时更新。', { exact: false }),
+  ).toBeVisible()
   await upload.getByLabel('版本名称').fill('V1 revision two')
   await upload.locator('input[type=file]').setInputFiles({
     name: 'new.zip',

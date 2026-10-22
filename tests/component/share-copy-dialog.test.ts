@@ -40,6 +40,10 @@ const version: Version = {
   previewUrl: '',
 }
 const locked: Share = {
+  revisionMode: 'fixed',
+  revisionId: 'r-v1',
+  revoked: false,
+  configVersion: 1,
   id: 's1',
   projectId: 'p1',
   versionId: 'v1',
@@ -126,6 +130,7 @@ describe('created and protected shares', () => {
       description: undefined,
       password: ' created ',
       expiresAt: undefined,
+      revisionMode: 'fixed',
     })
     expect(modal().get<HTMLInputElement>('form input').element.value).toBe('')
     const rows = modal().findAll('tbody tr.ant-table-row')
@@ -209,6 +214,10 @@ describe('share table', () => {
     expect(rows[0]!.get('.share-url').classes()).toContain('ellipsis')
     expect(rows[0]!.findAll('button').map((button) => button.attributes('aria-label'))).toEqual([
       '复制',
+      '编辑',
+      '暂停分享',
+      '轮换链接',
+      '永久撤销',
       '删除',
     ])
     await rows[0]!.get('.share-url').trigger('mouseenter')
