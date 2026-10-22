@@ -1,4 +1,6 @@
 import { expect, type Locator } from '@playwright/test'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 
 /** Confirm bundled branding assets without depending on Vite's development or build URL prefix. */
 export async function expectDefaultBrandingAsset(
@@ -8,17 +10,11 @@ export async function expectDefaultBrandingAsset(
 ) {
   const source = await locator.getAttribute(attribute)
   expect(source).toBeTruthy()
-  if (source!.startsWith('data:image/svg+xml,')) {
-    const svg = decodeURIComponent(source!.slice('data:image/svg+xml,'.length))
-    expect(svg).toContain('Original project artwork, 2026 project contributors.')
-    expect(svg).toContain('SPDX-License-Identifier: Apache-2.0')
-    const dimensions = kind === 'background' ? '1440 1080' : '64 64'
-    expect(svg).toMatch(new RegExp(`viewBox=["']0 0 ${dimensions}["']`))
-  } else {
-    const path = kind === 'background' ? 'login/login' : 'logo/logo'
-    await expect(locator).toHaveAttribute(
-      attribute,
-      new RegExp(String.raw`/assets/${path}\.svg(?:\?.*)?$`),
-    )
-  }
+  const path = kind === 'background' ? 'login/login' : 'logo/logo'
+  const asset = readFileSync(`src/modules/authentication-manager-ui/assets/${path}.png`)
+  const response = await locator.page().request.get(new URL(source!, locator.page().url()).href)
+  expect(response.ok()).toBe(true)
+  expect(response.headers()['content-type']).toMatch(/^image\/png(?:;|$)/)
+  const digest = (content: Buffer) => createHash('sha256').update(content).digest('hex')
+  expect(digest(await response.body())).toBe(digest(asset))
 }
