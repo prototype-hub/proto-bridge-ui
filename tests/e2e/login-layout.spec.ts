@@ -3,10 +3,9 @@ import { readFileSync } from 'node:fs'
 import { expectDefaultBrandingAsset } from './branding-helpers'
 
 const defaultBackground = readFileSync(
-  'src/modules/authentication-manager-ui/assets/login/login.svg',
-  'utf8',
+  'src/modules/authentication-manager-ui/assets/login/login.png',
 )
-const defaultBackgroundWidth = Number(defaultBackground.match(/width="(\d+)"/)?.[1])
+const defaultBackgroundWidth = defaultBackground.readUInt32BE(16)
 
 async function bounds(locator: Locator) {
   await expect(locator).toBeVisible()
