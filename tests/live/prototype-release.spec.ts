@@ -615,5 +615,80 @@ liveTest(
         'PROTOTYPE_HUB_PROJECT_LIMIT_REACHED',
       )
     })
+
+    await test.step('query project and version pages through the real typed endpoints without legacy list fallback', async () => {
+      const legacy: string[] = []
+      const observe = (outgoing: import('@playwright/test').Request) => {
+        const path = new URL(outgoing.url()).pathname
+        if (
+          outgoing.method() === 'GET' &&
+          ['/api/prototype-hub/projects', '/api/prototype-hub/versions'].includes(path)
+        )
+          legacy.push(path)
+      }
+      page.on('request', observe)
+      const queryResponse = (path: string, keyword?: string) =>
+        page.waitForResponse((response) => {
+          const outgoing = response.request()
+          return (
+            outgoing.method() === 'POST' &&
+            new URL(response.url()).pathname === path &&
+            outgoing.postDataJSON().keyword === keyword
+          )
+        })
+      const projectSearch = page.getByRole('textbox', { name: '搜索名称', exact: true })
+      await projectSearch.fill(`${name} 2`)
+      const searchedProject = queryResponse('/api/prototype-hub/projects/_query', `${name} 2`)
+      await projectSearch.press('Enter')
+      const projectPage = await result<{
+        data: Resource[]
+        total: number
+        pageIndex: number
+        pageSize: number
+      }>(await searchedProject)
+      expect(projectPage).toMatchObject({ total: 1, pageIndex: 0, pageSize: 20 })
+      expect(projectPage.data.map((row) => row.id)).toEqual([owned.projects[1]])
+      await expect(page.locator('.project-card')).toHaveCount(1)
+      const resetProjects = queryResponse('/api/prototype-hub/projects/_query')
+      await page.getByRole('button', { name: '重置', exact: true }).click()
+      expect((await result<{ total: number }>(await resetProjects)).total).toBe(5)
+      await expect(page.locator('.project-card')).toHaveCount(5)
+      await page.getByRole('link', { name: `详情：${name}`, exact: true }).click()
+      await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+      const versionSearch = page.getByRole('textbox', { name: '搜索名称', exact: true })
+      await versionSearch.fill('Browser replacement')
+      const searchedVersions = queryResponse(
+        '/api/prototype-hub/versions/_query',
+        'Browser replacement',
+      )
+      await versionSearch.press('Enter')
+      const versionResponse = await searchedVersions
+      expect(new URL(versionResponse.url()).searchParams.get('projectId')).toBe(projectId)
+      const versionPage = await result<{ data: Version[]; total: number; pageIndex: number }>(
+        versionResponse,
+      )
+      expect(versionPage).toMatchObject({ total: 1, pageIndex: 0 })
+      expect(versionPage.data.map((row) => row.id)).toEqual([versionId])
+      await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(1)
+      await page.locator('.prototype-list-toolbar .ant-select-selector').click()
+      const sorted = queryResponse('/api/prototype-hub/versions/_query', 'Browser replacement')
+      await page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+        .getByText('名称升序', { exact: true })
+        .click()
+      const sortedResponse = await sorted
+      expect(sortedResponse.request().postDataJSON()).toMatchObject({
+        sortBy: 'name',
+        sortOrder: 'asc',
+        pageIndex: 0,
+      })
+      expect((await result<{ total: number }>(sortedResponse)).total).toBe(1)
+      const resetVersions = queryResponse('/api/prototype-hub/versions/_query')
+      await page.getByRole('button', { name: '重置', exact: true }).click()
+      expect((await result<{ total: number }>(await resetVersions)).total).toBe(5)
+      await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(5)
+      page.off('request', observe)
+      expect(legacy).toEqual([])
+    })
   },
 )

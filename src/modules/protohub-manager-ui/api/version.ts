@@ -1,6 +1,13 @@
 import { request } from '@/shared/api/client'
-import type { RequestOptions } from '@/shared/api/types'
-import type { Version, Revision, PrototypePage, VersionUsage, PreviewSession } from '../types'
+import type { PageResult, RequestOptions } from '@/shared/api/types'
+import type {
+  PrototypeListQuery,
+  Version,
+  Revision,
+  PrototypePage,
+  VersionUsage,
+  PreviewSession,
+} from '../types'
 const segment = encodeURIComponent
 function uploadData(name: string, description: string, file: File, expectedRevisionId?: string) {
   const data = new FormData()
@@ -11,6 +18,14 @@ function uploadData(name: string, description: string, file: File, expectedRevis
   return data
 }
 export const versionsApi = {
+  /** Keep project scope outside the typed filter body so callers cannot replace that boundary. */
+  query: async (projectId: string, query: PrototypeListQuery, options?: RequestOptions) =>
+    (
+      await request.post<PageResult<Version>>('/prototype-hub/versions/_query', query, {
+        ...options,
+        params: { projectId },
+      })
+    ).result,
   list: async (projectId: string, options?: RequestOptions) =>
     (await request.get<Version[]>('/prototype-hub/versions', { projectId }, options)).result,
   usage: async (projectId: string, options?: RequestOptions) =>

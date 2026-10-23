@@ -7,6 +7,7 @@ import { ApiError } from '@/shared/api/errors'
 import { i18n } from '@/shared/i18n'
 import { protoLocales } from '@/modules/protohub-manager-ui/locales'
 import type { UploadContext, Version } from '@/modules/protohub-manager-ui/types'
+import { projectsApi } from '@/modules/protohub-manager-ui/api'
 import { useProjects } from '@/modules/protohub-manager-ui/views/project/hooks/useProjects'
 import { useUpload } from '@/modules/protohub-manager-ui/views/project/hooks/useUpload'
 import { createCreationIntent } from '@/modules/protohub-manager-ui/utils/creation-intent'
@@ -65,6 +66,12 @@ async function renderUpload(version?: Version) {
   return { state, open, context, done }
 }
 beforeEach(() => {
+  vi.spyOn(projectsApi, 'query').mockResolvedValue({
+    data: [],
+    total: 0,
+    pageIndex: 0,
+    pageSize: 20,
+  })
   vi.mocked(request.get).mockReset().mockResolvedValue(response([]))
   vi.mocked(request.post).mockReset().mockRejectedValue(new ApiError('网络连接中断，请重试'))
   vi.mocked(request.put)
@@ -76,6 +83,7 @@ beforeEach(() => {
 afterEach(() => {
   mounted.splice(0).forEach((wrapper) => wrapper.unmount())
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 it('reuses a project creation key after a network failure, renews it for changed metadata or a new dialog', async () => {

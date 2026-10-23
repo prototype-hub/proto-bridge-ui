@@ -122,10 +122,10 @@ test('a concurrent upload shows refresh guidance and sends no automatic retry', 
 })
 
 test('legacy rows remain visible with all revision content actions disabled', async ({ page }) => {
-  await page.route('**/api/prototype-hub/versions?projectId=p1', async (route) => {
+  await page.route('**/api/prototype-hub/versions/_query?projectId=p1', async (route) => {
     const response = await route.fetch()
     const data = await response.json()
-    data.result = data.result.map((version: object) => ({
+    data.result.data = data.result.data.map((version: object) => ({
       ...version,
       currentRevisionId: null,
       revisionId: null,

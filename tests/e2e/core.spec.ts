@@ -154,17 +154,18 @@ test('project cards keep compact actions and long content inside a mobile viewpo
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.route('**/api/prototype-hub/projects', async (route) => {
-    if (route.request().method() !== 'GET') return route.continue()
+  await page.route('**/api/prototype-hub/projects/_query', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
     const response = await route.fetch()
     const body = await response.json()
-    body.result.push({
-      ...body.result[0],
+    body.result.data.push({
+      ...body.result.data[0],
       id: 'p-long',
       name: 'A very long prototype project name that must stay on one line',
       description: 'A long project summary used to verify the responsive card layout.',
       updatedAt: 1700000000001,
     })
+    body.result.total = body.result.data.length
     await route.fulfill({ response, json: body })
   })
   await login(page)

@@ -63,7 +63,7 @@ function submit() {
     :open="open && editable"
     :title="t('proto.members')"
     :footer="null"
-    :width="760"
+    :width="850"
     :destroy-on-close="true"
     @cancel="emit('close')"
   >

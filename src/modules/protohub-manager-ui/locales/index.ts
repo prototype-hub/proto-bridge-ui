@@ -1,5 +1,11 @@
 export const protoLocales = {
   zh: {
+    searchByName: '搜索名称',
+    listSort: '列表排序',
+    newestFirst: '创建时间从新到旧',
+    oldestFirst: '创建时间从旧到新',
+    nameAscending: '名称升序',
+    nameDescending: '名称降序',
     projects: '原型项目',
     versions: '版本',
     newProject: '新建项目',
@@ -176,6 +182,12 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    searchByName: 'Search by name',
+    listSort: 'List sort order',
+    newestFirst: 'Newest created first',
+    oldestFirst: 'Oldest created first',
+    nameAscending: 'Name ascending',
+    nameDescending: 'Name descending',
     projects: 'Prototype projects',
     versions: 'Versions',
     newProject: 'New project',

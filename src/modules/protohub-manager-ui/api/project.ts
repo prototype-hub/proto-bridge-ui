@@ -1,6 +1,7 @@
 import { request } from '@/shared/api/client'
-import type { RequestOptions } from '@/shared/api/types'
+import type { PageResult, RequestOptions } from '@/shared/api/types'
 import type {
+  PrototypeListQuery,
   Project,
   ProjectInput,
   ProjectUsage,
@@ -10,6 +11,10 @@ import type {
 } from '../types'
 const segment = encodeURIComponent
 export const projectsApi = {
+  /** Query only the current user's authorized projects; legacy list keeps its array contract. */
+  query: async (query: PrototypeListQuery, options?: RequestOptions) =>
+    (await request.post<PageResult<Project>>('/prototype-hub/projects/_query', query, options))
+      .result,
   list: async (options?: RequestOptions) =>
     (await request.get<Project[]>('/prototype-hub/projects', undefined, options)).result,
   usage: async (options?: RequestOptions) =>

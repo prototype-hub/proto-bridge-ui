@@ -101,3 +101,25 @@
 服务端容量冲突使用 HTTP 409 与 `PROTOTYPE_HUB_PROJECT_LIMIT_REACHED` / `PROTOTYPE_HUB_VERSION_LIMIT_REACHED`；幂等冲突为 HTTP 409 与 `PROTOTYPE_HUB_IDEMPOTENCY_CONFLICT`；无效请求键为 HTTP 400 与 `PROTOTYPE_HUB_IDEMPOTENCY_KEY_INVALID`。页面保留服务端失败原因，不把权限、网络或上传校验失败统一解释为容量不足。
 
 更改请求/DTO/错误提示时同时更新契约测试、UI失败反馈和后端兼容说明。浏览器端校验仅改善交互体验，上传文件和权限安全由后端最终负责。
+
+## 项目与版本分页检索
+
+列表页面使用 `POST /prototype-hub/projects/_query` 和 `POST /prototype-hub/versions/_query?projectId=…`，请求体示例：
+
+```json
+{
+  "pageIndex": 0,
+  "pageSize": 20,
+  "keyword": "项目名称",
+  "sortBy": "createTime",
+  "sortOrder": "desc"
+}
+```
+
+响应沿用标准信封，`result` 为 `{data,total,pageIndex,pageSize}`。`total` 只统计当前用户有权访问且符合关键词的记录。`pageIndex` 从 0 开始，范围 0–10000；`pageSize` 为 1–100，默认 20。`keyword` 最长 128 个字符，去除首尾空白后，对项目名称或版本名称进行区分大小写的字面子串匹配；`%`、`_`、反斜杠不会扩大匹配范围。空关键词不筛选。
+
+`sortBy` 仅允许 `createTime`、`name`，后者在版本列表对应版本名称；`sortOrder` 为 `asc`、`desc`。默认创建时间降序，始终附加 ID 升序以稳定相同值的顺序。超出末页返回空数组及实际总数，页面会回到有效末页重新请求。版本查询中的项目范围保留在 URL 参数，继续要求版本查询权限与项目访问权限。
+
+项目卡片和版本表格支持显式提交名称搜索、重置、四种排序及每页 10/20/50 条。输入不会逐字触发远程查询；搜索、排序或修改每页数量后回到首页。刷新保留已提交条件；切换项目时清除上一项目的筛选、分页和临时操作，迟到请求不能恢复旧数据。用量信息独立查询，不以当前页数或筛选总数代替额度。
+
+已发布的 `GET /prototype-hub/projects`、`GET /prototype-hub/versions?projectId=…` 仍保留原数组响应，供已有客户端兼容；新列表页面不回退到全量接口。

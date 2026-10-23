@@ -21,6 +21,7 @@ import DataTable from '@/shared/components/DataTable.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import UploadDialog from '@/modules/protohub-manager-ui/views/project/components/UploadDialog.vue'
+import PrototypeListToolbar from '@/modules/protohub-manager-ui/views/project/components/PrototypeListToolbar.vue'
 import CapacityNotice from '@/modules/protohub-manager-ui/views/project/components/CapacityNotice.vue'
 import ShareDialog from '@/modules/protohub-manager-ui/views/project/components/ShareDialog.vue'
 import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
@@ -40,6 +41,13 @@ const {
   loadUsage,
   refresh,
   task,
+  search,
+  submitSearch,
+  resetSearch,
+  sort,
+  changeSort,
+  pagination,
+  page,
   uploadOpen,
   uploadContext,
   shareVersion,
@@ -80,7 +88,16 @@ const columns = computed(() => [
           >{{ t('proto.upload') }}</permission-button
         ></a-space
       ></template
-    ><a-alert
+    >
+    <prototype-list-toolbar
+      v-model:keyword="search"
+      :sort="sort"
+      :loading="resource.loading.value"
+      @search="submitSearch"
+      @reset="resetSearch"
+      @sort="changeSort"
+      @refresh="refresh" />
+    <a-alert
       v-if="resource.data.value.project?.claimRequired"
       type="warning"
       show-icon
@@ -103,7 +120,11 @@ const columns = computed(() => [
           type="warning"
           show-icon
           :message="t('proto.revisionMigrationRequired')"
-        /><data-table :rows="resource.data.value.versions" :columns="columns"
+        /><data-table
+          :rows="resource.data.value.versions"
+          :columns="columns"
+          :pagination="pagination"
+          @page="page"
           ><template #cell="{ column, record }"
             ><a-space v-if="column.key === 'actions'" :size="8">
               <action-button

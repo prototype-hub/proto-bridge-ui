@@ -5,16 +5,16 @@ import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { saved, deleted } from '@/shared/utils/feedback'
 import type { ProjectInput, Project, ProjectUsage } from '@/modules/protohub-manager-ui/types'
+import { usePrototypeList } from './usePrototypeList'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 export function useProjects() {
-  const resource = useResource<Project[]>(async (signal) => {
+  const list = usePrototypeList<Project>(projectsApi.query, () => {
     if (editId.value) {
       open.value = false
       editId.value = ''
     }
-    resource.data.value = []
-    return projectsApi.list({ signal, silent: true })
-  }, [] as Project[])
+  })
+  const { resource } = list
   const usage = useResource<ProjectUsage | undefined>(
     (signal) => projectsApi.usage({ signal, silent: true }),
     undefined,
@@ -24,7 +24,6 @@ export function useProjects() {
   const open = ref(false)
   const editId = ref('')
   const form = ref<ProjectInput>({ name: '', description: '' })
-  const search = ref('')
   function loadUsage() {
     usage.data.value = undefined
     return usage.load()
@@ -94,7 +93,13 @@ export function useProjects() {
     open,
     editId,
     form,
-    search,
+    search: list.keyword,
+    submitSearch: list.search,
+    resetSearch: list.reset,
+    sort: list.sort,
+    changeSort: list.changeSort,
+    pagination: list.pagination,
+    page: list.page,
     edit,
     save,
     remove,

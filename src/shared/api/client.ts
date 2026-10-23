@@ -129,7 +129,9 @@ export function createClient(authenticated: boolean, transport?: AxiosInstance) 
         method,
         url,
         data: data === undefined ? options.data : data,
-        params,
+        // POST/PUT/PATCH have no separate query argument; preserve their public RequestOptions.params.
+        // Explicit GET/DELETE query values, including an empty object or null, still take precedence.
+        params: params === undefined ? options.params : params,
         headers,
         signal: controller.signal,
         withCredentials: false,
