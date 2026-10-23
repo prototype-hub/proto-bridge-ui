@@ -8,7 +8,12 @@ afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))
 const i18n = createI18n({
   legacy: false,
   locale: 'en',
-  messages: { en: { common: { empty: 'No pages' } } },
+  messages: {
+    en: {
+      common: { empty: 'No pages' },
+      proto: { searchPages: 'Find page', noPageMatches: 'No matches; current page retained' },
+    },
+  },
 })
 
 it('toggles an initially expanded folder by its title while preserving nested page selection and source order', async () => {
@@ -34,7 +39,9 @@ it('toggles an initially expanded folder by its title while preserving nested pa
   expect(wrapper.findAll('.tree-page').map((node) => node.text())).toEqual(['总览', '子页', '详情'])
   await folder.trigger('click')
   expect(folder.attributes('aria-expanded')).toBe('false')
-  await expect.poll(() => wrapper.find('.tree-page').isVisible()).toBe(false)
+  await expect
+    .poll(() => wrapper.find('.tree-page').exists() && wrapper.find('.tree-page').isVisible())
+    .toBe(false)
   expect(wrapper.emitted('select')).toBeUndefined()
   await folder.trigger('click')
   await wrapper.findAll('.tree-page')[1].trigger('click')
@@ -57,10 +64,78 @@ it('keeps duplicate page links as distinct selectable labels and does not turn e
   })
   wrappers.push(wrapper)
   await wrapper.findAll('.tree-page')[1].trigger('click')
-  expect(wrapper.emitted('select')).toEqual([['same.html']])
+  expect(wrapper.emitted('select')).toEqual([
+    ['same.html', undefined, { name: '别名页面', path: 'same.html' }],
+  ])
   expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('别名页面')
   await wrapper.setProps({ selected: 'other.html' })
   expect(wrapper.find('.ant-tree-node-selected').exists()).toBe(false)
   await wrapper.get('button.tree-folder').trigger('click')
   expect(wrapper.emitted('select')).toHaveLength(1)
+})
+
+it('finds names and paths literally, retains the active page and opens its ancestors on route selection', async () => {
+  const wrapper = mount(PageTree, {
+    props: {
+      pages: [
+        {
+          name: 'Group',
+          folder: true,
+          children: [
+            { name: 'Home', path: 'home.html', pageId: 'home' },
+            { name: 'Details', path: 'nested/DETAIL.html', pageId: 'detail' },
+          ],
+        },
+      ],
+      selected: 'home.html',
+      selectedId: 'home',
+    },
+    global: { plugins: [i18n] },
+  })
+  wrappers.push(wrapper)
+  const input = wrapper.get('input')
+  await input.setValue('nested/detail')
+  expect(wrapper.findAll('.tree-page').map((node) => node.text())).toEqual(['Home', 'Details'])
+  await input.setValue('.*')
+  expect(wrapper.text()).toContain('No matches')
+  expect(wrapper.findAll('.tree-page').map((node) => node.text())).toEqual(['Home'])
+  await input.setValue('')
+  await wrapper.get('button.tree-folder').trigger('click')
+  expect(wrapper.get('button.tree-folder').attributes('aria-expanded')).toBe('false')
+  await wrapper.setProps({ selected: 'nested/DETAIL.html', selectedId: 'detail' })
+  expect(wrapper.get('button.tree-folder').attributes('aria-expanded')).toBe('true')
+  expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('Details')
+})
+
+it('keeps filtered folder state and aria expansion synchronized while allowing the user to collapse matches', async () => {
+  const wrapper = mount(PageTree, {
+    props: {
+      pages: [
+        {
+          name: 'Group',
+          folder: true,
+          children: [{ name: 'Details', path: 'detail.html', pageId: 'detail' }],
+        },
+      ],
+    },
+    // Real transition callbacks settle Ant Tree's motion state when filtering immediately after collapse.
+    global: { plugins: [i18n], stubs: { transition: false } },
+  })
+  wrappers.push(wrapper)
+  const folder = wrapper.get('button.tree-folder')
+  await folder.trigger('click')
+  expect(folder.attributes('aria-expanded')).toBe('false')
+  await wrapper.get('input').setValue('details')
+  expect(folder.attributes('aria-expanded')).toBe('true')
+  await expect.poll(() => wrapper.get('.tree-page').isVisible()).toBe(true)
+  await folder.trigger('click')
+  expect(folder.attributes('aria-expanded')).toBe('false')
+  await expect
+    .poll(() => wrapper.find('.tree-page').exists() && wrapper.find('.tree-page').isVisible())
+    .toBe(false)
+  await folder.trigger('click')
+  expect(folder.attributes('aria-expanded')).toBe('true')
+  await expect.poll(() => wrapper.get('.tree-page').isVisible()).toBe(true)
+  await wrapper.get('input').setValue('')
+  expect(folder.attributes('aria-expanded')).toBe('false')
 })

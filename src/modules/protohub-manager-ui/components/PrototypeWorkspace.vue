@@ -11,7 +11,7 @@ import {
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/modules/protohub-manager-ui/hooks/useWorkspace'
-import type { WorkspaceContext } from '../types'
+import type { WorkspaceContext, PrototypePage } from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
 const props = defineProps({
@@ -25,6 +25,11 @@ const {
   inspectorOpen,
   frame,
   currentPage,
+  selectedPage,
+  pageId,
+  canCopy,
+  copyCurrentPage,
+  select: selectPage,
   url,
   loading,
   error,
@@ -34,8 +39,8 @@ const {
   loaded,
   failed,
 } = useWorkspace(toRef(props, 'context'))
-function select(path: string) {
-  currentPage.value = path
+function select(path: string, id?: string, page?: PrototypePage) {
+  selectPage(path, id, page)
   if (isNarrow.value) navVisible.value = false
 }
 </script>
@@ -54,6 +59,20 @@ function select(path: string) {
       ><a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
         t('proto.details')
       }}</a-button>
+      <div class="workspace-current" aria-live="polite">
+        <span :title="selectedPage?.path || currentPage"
+          >{{ t('proto.currentPage') }}: {{ selectedPage?.name || currentPage }}</span
+        >
+        <span v-if="selectedPage?.path" class="muted current-path" :title="selectedPage.path">{{
+          selectedPage.path
+        }}</span>
+        <a-button
+          :disabled="!canCopy"
+          :title="canCopy ? t('proto.copyPageLink') : t('proto.noStablePageLink')"
+          @click="copyCurrentPage"
+          >{{ t('proto.copyPageLink') }}</a-button
+        >
+      </div>
     </header>
     <div
       class="workspace-body"
@@ -68,6 +87,7 @@ function select(path: string) {
           v-if="!isNarrow"
           :pages="context.pages"
           :selected="currentPage"
+          :selected-id="pageId"
           @select="select"
         />
       </nav>
@@ -100,6 +120,7 @@ function select(path: string) {
         <page-tree
           :pages="context.pages"
           :selected="currentPage"
+          :selected-id="pageId"
           @select="select"
         /></section></a-drawer
     ><a-drawer
@@ -138,6 +159,26 @@ function select(path: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.workspace-current {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+.workspace-current span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-current .current-path {
+  flex: 1;
+}
+.workspace-current :deep(.ant-btn) {
+  margin-inline-start: auto;
+  flex: none;
 }
 .workspace-body {
   display: grid;

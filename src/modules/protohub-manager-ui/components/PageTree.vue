@@ -1,24 +1,48 @@
 <script setup lang="ts">
-import { computed, ref, watch, type PropType } from 'vue'
-import { Tree as ATree, Empty as AEmpty } from 'ant-design-vue'
+import { computed, ref, watch, nextTick, type PropType } from 'vue'
+import { Tree as ATree, Empty as AEmpty, InputSearch as AInputSearch } from 'ant-design-vue'
 import { FolderOutlined, FileOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
-import { pageNodes, expandedPageKeys, type PageNode } from '../utils/pages'
+import {
+  pageNodes,
+  expandedPageKeys,
+  filterPageNodes,
+  pageAncestorKeys,
+  type PageNode,
+} from '../utils/pages'
 import type { PrototypePage } from '../types'
 const props = defineProps({
   pages: { type: Array as PropType<PrototypePage[]>, required: true },
   selected: { type: String, default: '' },
+  selectedId: { type: String, default: '' },
 })
-const emit = defineEmits<{ select: [path: string] }>()
+const emit = defineEmits<{ select: [path: string, pageId?: string, page?: PrototypePage] }>()
 const { t } = useI18n()
 const nodes = computed(() => pageNodes(props.pages))
 const expanded = ref<string[]>([])
 const selectedKey = ref('')
+const keyword = ref('')
+const searchExpanded = ref<string[]>([])
+const activeExpanded = computed(() =>
+  keyword.value.trim() ? searchExpanded.value : expanded.value,
+)
+const tree = ref<HTMLElement>()
+const filtered = computed(() => filterPageNodes(nodes.value, keyword.value, selectedKey.value))
+const hasMatches = computed(() => filterPageNodes(nodes.value, keyword.value).length > 0)
 function flatten(value: PageNode[]): PageNode[] {
   return value.flatMap((node) => [node, ...flatten(node.children || [])])
 }
 const allNodes = computed(() => flatten(nodes.value))
+function expand(keys: (string | number)[]) {
+  const value = keys.map(String)
+  if (keyword.value.trim()) searchExpanded.value = value
+  else expanded.value = value
+}
+watch([keyword, nodes], () => {
+  // A new search reveals its matches once; subsequent folder toggles remain under user control.
+  if (keyword.value.trim()) searchExpanded.value = expandedPageKeys(filtered.value)
+})
 watch(
   nodes,
   (value) => {
@@ -27,10 +51,23 @@ watch(
   { immediate: true },
 )
 watch(
-  [allNodes, () => props.selected],
-  ([value, path]) => {
-    if (!value.some((node) => node.key === selectedKey.value && node.path === path))
-      selectedKey.value = value.find((node) => node.selectable && node.path === path)?.key || ''
+  [allNodes, () => props.selected, () => props.selectedId],
+  ([value, path, id]) => {
+    if (
+      !value.some(
+        (node) =>
+          node.key === selectedKey.value && node.path === path && (!id || node.pageId === id),
+      )
+    )
+      selectedKey.value =
+        value.find((node) => node.selectable && node.path === path && (!id || node.pageId === id))
+          ?.key || ''
+    expand([
+      ...new Set([...activeExpanded.value, ...pageAncestorKeys(nodes.value, selectedKey.value)]),
+    ])
+    void nextTick(() =>
+      tree.value?.querySelector('.ant-tree-node-selected')?.scrollIntoView?.({ block: 'nearest' }),
+    )
   },
   { immediate: true },
 )
@@ -38,26 +75,42 @@ function select(keys: (string | number)[]) {
   const node = allNodes.value.find((node) => node.key === String(keys[0] || ''))
   if (node?.selectable && node.path) {
     selectedKey.value = node.key
-    emit('select', node.path)
+    // A path may have several manifest labels, including legacy aliases without an ID.
+    if (allNodes.value.filter((item) => item.selectable && item.path === node.path).length > 1)
+      emit('select', node.path, node.pageId || undefined, node.source)
+    else if (node.pageId) emit('select', node.path, node.pageId)
+    else emit('select', node.path)
   }
 }
 function toggleFolder(key: string) {
-  expanded.value = expanded.value.includes(key)
-    ? expanded.value.filter((value) => value !== key)
-    : [...expanded.value, key]
+  expand(
+    activeExpanded.value.includes(key)
+      ? activeExpanded.value.filter((value) => value !== key)
+      : [...activeExpanded.value, key],
+  )
 }
 </script>
 <template>
+  <a-input-search
+    v-if="nodes.length"
+    v-model:value="keyword"
+    type="search"
+    :aria-label="t('proto.searchPages')"
+    :placeholder="t('proto.searchPages')"
+    allow-clear
+    class="page-search"
+  />
   <a-empty v-if="!nodes.length" :description="t('common.empty')" />
-  <div v-else class="prototype-page-tree">
+  <div v-else ref="tree" class="prototype-page-tree">
+    <a-empty v-if="keyword.trim() && !hasMatches" :description="t('proto.noPageMatches')" />
     <a-tree
-      :tree-data="nodes"
+      :tree-data="filtered"
       :selected-keys="selectedKey ? [selectedKey] : []"
-      :expanded-keys="expanded"
+      :expanded-keys="activeExpanded"
       :show-line="{ showLeafIcon: false }"
       show-icon
       block-node
-      @expand="(keys) => (expanded = keys.map(String))"
+      @expand="expand"
       @select="select"
       ><template #icon="{ folder }"
         ><folder-outlined v-if="folder" /><file-outlined v-else /></template
@@ -66,7 +119,7 @@ function toggleFolder(key: string) {
           v-if="node.folder"
           type="button"
           class="tree-folder"
-          :aria-expanded="expanded.includes(node.key)"
+          :aria-expanded="activeExpanded.includes(node.key)"
           @click.stop="toggleFolder(node.key)"
         >
           <text-ellipsis :text="node.title" /></button
@@ -75,6 +128,9 @@ function toggleFolder(key: string) {
   </div>
 </template>
 <style scoped>
+.page-search {
+  margin-bottom: var(--space-3);
+}
 .prototype-page-tree {
   min-width: 0;
 }

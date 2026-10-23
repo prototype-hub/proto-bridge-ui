@@ -3,6 +3,7 @@ import { useRoute } from 'vue-router'
 import { publicApi } from '@/modules/protohub-manager-ui/api'
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
+import { previewIdentity } from '@/modules/protohub-manager-ui/utils/preview-location'
 import { entryFromUrls } from '@/modules/protohub-manager-ui/utils/urls'
 import { t } from '@/shared/i18n'
 import type { PublicShare, WorkspaceContext } from '@/modules/protohub-manager-ui/types'
@@ -21,7 +22,13 @@ export function usePublicShare() {
     {},
   )
   async function prepare(share: PublicShare, signal?: AbortSignal) {
+    if (signal?.aborted) throw new Error(t('proto.unavailable'))
     if (share.token !== token.value) throw new Error(t('proto.unavailable'))
+    const revisionId = previewIdentity(route.query?.revisionId)
+    if (revisionId === null) throw new Error(t('proto.invalidPageTarget'))
+    // A deep link cannot grant historical access beyond the share's freshly resolved policy.
+    if (revisionId !== undefined && revisionId !== share.revisionId)
+      throw new Error(t('proto.sharePageChanged'))
     if (!share.accessKey) {
       if (!share.passwordRequired) throw new Error(t('proto.unavailable'))
       return { share }
@@ -37,6 +44,8 @@ export function usePublicShare() {
     return {
       share,
       context: {
+        revisionId: share.revisionId,
+        locationPath: route.path,
         title: share.projectName,
         versionName: share.versionName,
         runtimeBaseUrl: share.runtimeBaseUrl,
@@ -71,8 +80,13 @@ export function usePublicShare() {
     })
   }
   watch(
-    token,
+    computed(() => JSON.stringify([token.value, route.query?.revisionId])),
     () => {
+      if (
+        resource.data.value.share?.token === token.value &&
+        resource.data.value.context?.revisionId === route.query?.revisionId
+      )
+        return
       generation++
       verification?.abort()
       resource.data.value = {}

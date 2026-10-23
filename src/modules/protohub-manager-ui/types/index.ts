@@ -169,6 +169,10 @@ export interface InspectElement {
   assets: InspectAsset[]
 }
 export interface WorkspaceContext {
+  /** Immutable identity authorized for this workspace; legacy standalone contexts may omit it. */
+  revisionId?: string
+  /** App path captured with the authorized context to prevent stale canonical navigation. */
+  locationPath?: string
   title: string
   versionName: string
   runtimeBaseUrl: string
