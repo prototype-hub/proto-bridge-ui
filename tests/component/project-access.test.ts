@@ -176,7 +176,11 @@ beforeEach(() => {
   vi.mocked(request.post)
     .mockReset()
     .mockImplementation(async (path) =>
-      path.endsWith('/preview-session') ? response(session()) : response(true),
+      path === '/prototype-hub/versions/_query'
+        ? response({ data: [structuredClone(version)], total: 1, pageIndex: 0, pageSize: 20 })
+        : path.endsWith('/preview-session')
+          ? response(session())
+          : response(true),
     )
   vi.mocked(request.put).mockReset().mockResolvedValue(response(true))
   vi.mocked(request.remove).mockReset().mockResolvedValue(response(true))
@@ -272,8 +276,8 @@ it('keeps project member administration usable without unrelated version query p
   )
   expect(wrapper.text()).toContain('Private project')
   expect(wrapper.text()).toContain('项目成员')
-  expect(request.get).not.toHaveBeenCalledWith(
-    '/prototype-hub/versions',
+  expect(request.post).not.toHaveBeenCalledWith(
+    '/prototype-hub/versions/_query',
     expect.anything(),
     expect.anything(),
   )
@@ -530,6 +534,12 @@ it('keeps legacy versions visible but disables content actions until administrat
     migrationRequired: true,
     revisionCount: 0,
   }
+  const post = vi.mocked(request.post).getMockImplementation()!
+  vi.mocked(request.post).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/versions/_query'
+      ? Promise.resolve(response({ data: [legacy], total: 1, pageIndex: 0, pageSize: 20 }))
+      : post(path, ...args),
+  )
   vi.mocked(request.get).mockImplementation((path, ...args) =>
     path === '/prototype-hub/versions'
       ? Promise.resolve(response([legacy]))
@@ -544,5 +554,7 @@ it('keeps legacy versions visible but disables content actions until administrat
   const { state } = await previewPage()
   expect(state.data.value).toBeUndefined()
   expect(state.error.value).toBe(protoLocales.zh.revisionMigrationRequired)
-  expect(request.post).not.toHaveBeenCalled()
+  expect(
+    vi.mocked(request.post).mock.calls.filter(([path]) => path.endsWith('/preview-session')),
+  ).toHaveLength(0)
 })

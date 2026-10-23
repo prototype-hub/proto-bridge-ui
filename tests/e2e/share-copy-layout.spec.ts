@@ -231,10 +231,10 @@ test('share creation fields use a two-row desktop layout and status wording swit
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('button', { name: '语言', exact: true }).click()
   await expect(page.locator('.ant-table-tbody .ant-tag')).toHaveText('Preview available')
-  await page.route('**/api/prototype-hub/versions?*', async (route) => {
+  await page.route('**/api/prototype-hub/versions/_query?*', async (route) => {
     const response = await route.fetch()
     const body = await response.json()
-    body.result = body.result.map((version: { status: string }) => ({
+    body.result.data = body.result.data.map((version: { status: string }) => ({
       ...version,
       status: 'failed',
     }))

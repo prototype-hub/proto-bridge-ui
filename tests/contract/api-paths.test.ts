@@ -94,3 +94,30 @@ it('uploads personal avatars through the current-user endpoint and keeps brandin
   await systemService.upload(file)
   expect(vi.mocked(request.post).mock.calls[1]![0]).toBe('/file/upload')
 })
+
+it('uses typed prototype page queries and keeps version parent scope outside the body', async () => {
+  const controller = new AbortController()
+  const options = { signal: controller.signal, silent: true }
+  const query = {
+    pageIndex: 2,
+    pageSize: 10,
+    keyword: '100%_\\',
+    sortBy: 'name',
+    sortOrder: 'asc',
+  } as const
+  await projectsApi.query(query, options)
+  expect(request.post).toHaveBeenCalledWith('/prototype-hub/projects/_query', query, options)
+  await versionsApi.query('p/id', query, options)
+  expect(request.post).toHaveBeenCalledWith('/prototype-hub/versions/_query', query, {
+    ...options,
+    params: { projectId: 'p/id' },
+  })
+  await projectsApi.list(options)
+  await versionsApi.list('p/id', options)
+  expect(request.get).toHaveBeenCalledWith('/prototype-hub/projects', undefined, options)
+  expect(request.get).toHaveBeenCalledWith(
+    '/prototype-hub/versions',
+    { projectId: 'p/id' },
+    options,
+  )
+})

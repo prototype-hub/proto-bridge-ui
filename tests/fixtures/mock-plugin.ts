@@ -9,6 +9,7 @@ import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import type {
+  PrototypeListQuery,
   Project,
   Version,
   Revision,
@@ -21,6 +22,29 @@ import type {
 import type { ServerMenu } from '../../src/shared/auth/types'
 import type { ManagedUser } from '@/modules/authentication-manager-ui/types/user'
 import type { Role } from '@/modules/authentication-manager-ui/types/role'
+
+/** Fixtures model typed paging only; server authorization is exercised by live/integration tests. */
+function prototypePage<T extends Project | Version>(rows: T[], query: PrototypeListQuery) {
+  const pageIndex = query.pageIndex ?? 0
+  const pageSize = query.pageSize ?? 20
+  const keyword = query.keyword?.trim() || ''
+  const name = (row: T) => ('name' in row ? row.name : row.versionName)
+  const filtered = rows.filter((row) => name(row).includes(keyword))
+  const order = query.sortOrder === 'asc' ? 1 : -1
+  filtered.sort((left, right) => {
+    const value =
+      query.sortBy === 'name'
+        ? name(left).localeCompare(name(right))
+        : left.createdAt - right.createdAt
+    return value * order || left.id.localeCompare(right.id)
+  })
+  return {
+    data: filtered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    total: filtered.length,
+    pageIndex,
+    pageSize,
+  }
+}
 
 const pages: PrototypePage[] = [
   {
@@ -555,7 +579,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       value.claimRequired = false
       send(res, 200, value)
     }
-  } else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
+  } else if (path === '/prototype-hub/projects/_query' && method === 'POST')
+    send(res, 200, prototypePage(projects, data))
+  else if (path === '/prototype-hub/versions/_query' && method === 'POST')
+    send(
+      res,
+      200,
+      prototypePage(
+        versions.filter((item) => item.projectId === url.searchParams.get('projectId')),
+        data,
+      ),
+    )
+  else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
   else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
     send(res, 200, { installationId: 'contract-installation', projects: capacity(projects.length) })
   else if (path === '/prototype-hub/versions/_usage' && method === 'GET') {

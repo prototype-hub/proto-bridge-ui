@@ -84,7 +84,7 @@ test('canonical and legacy prototype menus use the new API and keep detail, stan
   })
   await login(page)
   await expect(page).toHaveURL(/\/tools\/prototype-hub$/)
-  expect(calls).toContain('/api/prototype-hub/projects')
+  expect(calls).toContain('/api/prototype-hub/projects/_query')
   for (const url of ['protohub', 'protohub/projects', 'PrototypeHub', 'prototype-hub/projects']) {
     await page.goto(url)
     await page.reload()
@@ -96,12 +96,23 @@ test('canonical and legacy prototype menus use the new API and keep detail, stan
   await expect(page).toHaveURL(/\/prototype-hub\/projects\/p1\?filter=kept&page=2$/)
   await expect(page.getByRole('heading', { name: 'Contract project', exact: true })).toBeVisible()
   const popupPromise = page.waitForEvent('popup')
+  const previewSession = context.waitForEvent(
+    'response',
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        '/api/prototype-hub/versions/v1/revisions/r-v1/preview-session',
+  )
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   const popup = await popupPromise
   await expect(popup).toHaveURL(/\/tools\/preview\/p1\/v1$/)
+  const sessionResponse = await previewSession
+  expect(sessionResponse.status()).toBe(200)
+  const { previewUrl } = (await sessionResponse.json()).result as { previewUrl: string }
+  expect(previewUrl).toMatch(/^\/api\/prototype-hub\/runtime\/v1\/[^/]+\/index\.html$/)
   await expect(popup.locator('iframe')).toHaveAttribute(
     'src',
-    /\/api\/prototype-hub\/runtime\/v1\/preview-key\/index\.html$/,
+    new URL(previewUrl, popup.url()).href,
   )
   await expect(popup.locator('.pro-header')).toHaveCount(0)
   await popup.close()

@@ -1,3 +1,13 @@
+/** Typed list queries deliberately exclude arbitrary ORM terms and column expressions. */
+export interface PrototypeListQuery {
+  pageIndex?: number
+  pageSize?: number
+  keyword?: string
+  sortBy?: 'createTime' | 'name'
+  sortOrder?: 'asc' | 'desc'
+}
+export type PrototypeListSort = 'createTime:desc' | 'createTime:asc' | 'name:asc' | 'name:desc'
+
 export interface Project {
   id: string
   name: string

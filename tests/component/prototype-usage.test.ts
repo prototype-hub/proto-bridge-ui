@@ -113,7 +113,31 @@ beforeEach(() => {
       ])
     return response(project)
   })
-  vi.mocked(request.post).mockResolvedValue(response(project))
+  vi.mocked(request.post).mockImplementation(async (path) => {
+    if (path === '/prototype-hub/projects/_query')
+      return response({ data: [project], total: 1, pageIndex: 0, pageSize: 20 })
+    if (path === '/prototype-hub/versions/_query') {
+      return response({
+        data: [
+          {
+            id: 'v1',
+            projectId: 'p1',
+            versionName: 'V1',
+            status: 'ready',
+            createdAt: 1,
+            currentRevisionId: 'r1',
+            revisionId: 'r1',
+            revisionCount: 1,
+            migrationRequired: false,
+          },
+        ],
+        total: 1,
+        pageIndex: 0,
+        pageSize: 20,
+      })
+    }
+    return response(project)
+  })
   vi.mocked(request.remove).mockResolvedValue(response(true))
 })
 afterEach(() => {

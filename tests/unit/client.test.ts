@@ -318,3 +318,48 @@ it('keeps DELETE JSON bodies supplied through legacy request options', async () 
   await client.remove('/operations', {}, { data: ['op1'] })
   expect(JSON.parse(capture.mock.calls[0][0].data as string)).toEqual(['op1'])
 })
+
+it.each(['post', 'put', 'patch'] as const)(
+  'preserves options.params for %s without an explicit query argument',
+  async (method) => {
+    const capture: AxiosAdapter = async (config) => ({
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data: { result: true },
+    })
+    const spy = vi.fn(capture)
+    const client = createClient(true, axios.create({ adapter: spy }))
+    await client[method]('/operations', { name: 'draft' }, { params: { projectId: 'p/中文' } })
+    expect(spy.mock.calls[0][0].params).toEqual({ projectId: 'p/中文' })
+    expect(JSON.parse(spy.mock.calls[0][0].data as string)).toEqual({ name: 'draft' })
+  },
+)
+
+it.each(['get', 'remove'] as const)(
+  '%s keeps its explicit query argument authoritative and falls back only when omitted',
+  async (method) => {
+    const capture: AxiosAdapter = async (config) => ({
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data: { result: true },
+    })
+    const spy = vi.fn(capture)
+    const client = createClient(true, axios.create({ adapter: spy }))
+    await client[method](
+      '/operations',
+      { scope: 'explicit' },
+      { params: { scope: 'options', extra: true } },
+    )
+    expect(spy.mock.calls[0][0].params).toEqual({ scope: 'explicit' })
+    await client[method]('/operations', {}, { params: { scope: 'options' } })
+    expect(spy.mock.calls[1][0].params).toEqual({})
+    await client[method]('/operations', undefined, { params: { scope: 'options' } })
+    expect(spy.mock.calls[2][0].params).toEqual({ scope: 'options' })
+    await client[method]('/operations', null, { params: { scope: 'options' } })
+    expect(spy.mock.calls[3][0].params).toBeNull()
+  },
+)

@@ -56,6 +56,11 @@ test('owner manages members without global user administration and member change
   const internalUrl = await frame.getAttribute('src')
   expect(internalUrl).not.toBeNull()
   expect((await request.get(internalUrl!)).status()).toBe(200)
+  const publicShare = await request.get('/api/prototype-hub/public/shares/open')
+  expect(publicShare.status()).toBe(200)
+  const publicUrl = (await publicShare.json()).result.previewUrl as string
+  expect(publicUrl).toMatch(/\/revisions\/[^/]+\/runtime\/index\.html$/)
+  expect((await request.get(publicUrl)).status()).toBe(200)
   const userQueries: string[] = []
   page.on('request', (outgoing) => {
     if (/\/api\/user\/(?:detail\/)?_query/.test(outgoing.url()))
@@ -74,11 +79,7 @@ test('owner manages members without global user administration and member change
   expect(userQueries).toEqual([])
   expect((await request.get(internalUrl!)).status()).toBe(404)
   // Public shares are separate grants and remain usable after membership changes.
-  expect(
-    (
-      await request.get('/api/prototype-hub/public/shares/open/access-key/runtime/index.html')
-    ).status(),
-  ).toBe(200)
+  expect((await request.get(publicUrl)).status()).toBe(200)
   await page.screenshot({
     path: testInfo.outputPath('project-members.png'),
     animations: 'disabled',

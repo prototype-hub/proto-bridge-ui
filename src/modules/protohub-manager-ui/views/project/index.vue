@@ -1,11 +1,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
-import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  InputSearch as AInputSearch,
+  Pagination as APagination,
   Card as ACard,
-  Button as AButton,
   Space as ASpace,
   Alert as AAlert,
 } from 'ant-design-vue'
@@ -19,6 +17,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useProjects } from '@/modules/protohub-manager-ui/views/project/hooks/useProjects'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
+import PrototypeListToolbar from '@/modules/protohub-manager-ui/views/project/components/PrototypeListToolbar.vue'
 import ProjectDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectDialog.vue'
 import CapacityNotice from '@/modules/protohub-manager-ui/views/project/components/CapacityNotice.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
@@ -30,13 +29,25 @@ import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-acces
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
-const { resource, usage, loadUsage, refresh, task, open, form, search, edit, save, remove } =
-  useProjects()
-const projects = computed(() =>
-  resource.data.value.filter((project) =>
-    project.name.toLowerCase().includes(search.value.toLowerCase()),
-  ),
-)
+const {
+  resource,
+  usage,
+  loadUsage,
+  refresh,
+  task,
+  open,
+  form,
+  search,
+  submitSearch,
+  resetSearch,
+  sort,
+  changeSort,
+  pagination,
+  page,
+  edit,
+  save,
+  remove,
+} = useProjects()
 function openDetail(id: string) {
   void router.push({ name: 'project-detail', params: { id }, query: { ...route.query } })
 }
@@ -52,13 +63,14 @@ function openDetail(id: string) {
         >{{ t('proto.newProject') }}</permission-button
       ></template
     >
-    <div class="toolbar">
-      <a-input-search
-        v-model:value="search"
-        :placeholder="t('common.name')"
-        :style="{ maxWidth: '360px' }"
-      /><a-button @click="refresh">{{ t('common.refresh') }}</a-button>
-    </div>
+    <prototype-list-toolbar
+      v-model:keyword="search"
+      :sort="sort"
+      :loading="resource.loading.value"
+      @search="submitSearch"
+      @reset="resetSearch"
+      @sort="changeSort"
+      @refresh="refresh" />
     <capacity-notice
       :capacity="usage.data.value?.projects"
       :loading="usage.loading.value"
@@ -68,11 +80,11 @@ function openDetail(id: string) {
     <a-alert v-if="task.error.value" type="error" :message="task.error.value" /><load-state
       :loading="resource.loading.value"
       :error="resource.error.value"
-      :empty="!projects.length"
+      :empty="!resource.data.value.length"
       @retry="resource.load"
       ><div class="project-grid">
         <a-card
-          v-for="project in projects"
+          v-for="project in resource.data.value"
           :key="project.id"
           class="project-card"
           hoverable
@@ -123,8 +135,14 @@ function openDetail(id: string) {
                 />
               </a-space>
             </footer></article
-        ></a-card></div></load-state
-    ><project-dialog
+        ></a-card></div
+    ></load-state>
+    <a-pagination
+      v-if="pagination.total"
+      v-bind="pagination"
+      class="project-pagination"
+      @change="page" />
+    <project-dialog
       :open="open"
       :form="form"
       :busy="task.busy.value"
@@ -134,6 +152,9 @@ function openDetail(id: string) {
   /></page-container>
 </template>
 <style scoped>
+.project-pagination {
+  margin-top: var(--space-4);
+}
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
