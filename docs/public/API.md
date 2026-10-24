@@ -186,3 +186,13 @@
 这组接口使用独立同源 JSON fetch 客户端，浏览器仅向 review 路径发送 HttpOnly、SameSite=Strict 的限时 Cookie；生产 HTTPS 默认 Secure，不读取 Cookie、不附平台令牌，CSRF 仅放 `X-Review-CSRF` 请求头。公开预览客户端继续省略 Cookie，原型 iframe 的 opaque sandbox 与 postMessage 边界不变。反向代理需按后端文档明确配置受信任的应用 Origin，不应放宽 CORS 或全局 Cookie 策略。
 
 验证码为 6 位 ASCII 数字、有效 5 分钟；发送冷却、次数限制与一次性消费由服务端决定。发码不自动重试，网络结果不明确时由用户手动核对再发送；错误校验保留表单，修改邮箱/姓名/公司后须重新发码。身份最长 8 小时，关闭窗口会清空页面内身份信息；重开时重新验证 Cookie 和当前分享权限，分享变更、撤销、过期与删除均不能靠旧身份绕过。没有可用邮件服务时不能降级为未验证身份。
+
+## 项目访问者管理
+
+项目详情的“访问者管理”在当前项目 `manageShares` 能力与分享 `query` 动作同时具备时显示。它不是系统用户管理，也不新增导航菜单；启用/禁用操作额外要求分享 `save` 动作。后端逐次校验项目范围，不能仅凭访问者 ID 操作其他项目。
+
+- `POST /prototype-hub/projects/{projectId}/review-guests/_query` 提交 `{pageIndex:0,pageSize:20}`，返回现有 `{data,total,pageIndex,pageSize}` 分页结构。页号为 0–10000、页大小为 1–100；按更新时间倒序、ID 正序排列，超出范围返回空页。没有全量联系人、搜索邮箱或任意查询条件接口。
+- 列表与更新响应仅提供 `{id,displayName,company,maskedEmail,verificationLevel:'email',enabled,configVersion,createTime,modifyTime}`。姓名和公司仍是自述，只有邮箱持有权经过验证；不返回完整邮箱、邮箱哈希、Cookie 或会话凭据。尚未完成首次验证的邮箱不出现在列表。
+- `PUT /prototype-hub/projects/{projectId}/review-guests/{guestId}/enabled` 提交 `{enabled,expectedVersion}`。实际状态变更使该项目下该访问者的所有身份会话和验证码失效，不影响匿名原型预览，不退还发码限额，也不撤回已发送的邮件。重新启用不会恢复旧凭据，须重新发码验证。并发冲突返回 409，界面刷新当前页并要求重新确认，绝不自动重试写入。
+
+抽屉关闭、切换项目/页码或权限变化时取消旧请求并清空本地数据，迟到结果不能重新展示旧项目访问者；不将访问者信息缓存到全局 store。发送中的邮件可能已被邮件服务器接受，但失效验证码不能恢复身份。生产 SMTP 配置与后续通知模块分离计划以配套后端文档为准。

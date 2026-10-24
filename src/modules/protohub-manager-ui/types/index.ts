@@ -249,6 +249,18 @@ export interface ReviewIdentity {
   verificationLevel: 'email'
   expiresAt: number
 }
+/** Management projection: mailbox and session credentials never leave the public identity boundary. */
+export interface ReviewGuest {
+  id: string
+  displayName: string
+  company: string | null
+  maskedEmail: string
+  verificationLevel: 'email'
+  enabled: boolean
+  configVersion: number
+  createTime: number
+  modifyTime: number
+}
 export interface ReviewContext {
   revisionId: string
   enabled: boolean
