@@ -16,7 +16,7 @@ export const protoLocales = {
     restore: '恢复',
     deletedAt: '删除时间',
     recycleHint:
-      '已删除数据持续保留，不自动清理。恢复会重新核对当前权限和使用额度，原分享及预览授权不会恢复。',
+      '删除后保留 30 天，到期不可恢复，并自动永久清理数据和文件。恢复会核对当前权限和额度，原分享及预览授权不恢复。',
     projectRestoreConfirm:
       '确认恢复该项目？保留原项目标识并占用一个项目名额，仅恢复项目，版本需进入项目回收站单独恢复。原分享和预览授权仍失效。',
     versionRestoreConfirm:
@@ -52,9 +52,9 @@ export const protoLocales = {
       versionsRetained: '暂时无法新增版本，已有版本仍可预览、更新、分享和删除。',
     },
     projectDeleteConfirm:
-      '确认删除该原型项目？项目下存在版本时无法删除，请先删除全部版本。删除后保留数据，释放使用额度，可从回收站恢复；原预览和分享将拒绝后续访问。',
+      '确认删除该项目？请先删除全部活动版本。删除后释放额度，30 天内可恢复；到期自动永久清理数据和文件。原预览和分享失效。',
     versionDeleteConfirm:
-      '确认删除该版本？删除后保留修订和文件，释放版本使用额度，可从回收站恢复；原预览和分享将拒绝后续访问。已下载内容无法撤回。',
+      '确认删除该版本？删除后释放额度，修订和文件保留 30 天，期间可恢复；到期自动永久清理。原预览和分享失效，已下载内容无法撤回。',
     upload: '上传版本',
     update: '上传新修订',
     updateHint:
@@ -221,7 +221,7 @@ export const protoLocales = {
     restore: 'Restore',
     deletedAt: 'Deleted at',
     recycleHint:
-      'Deleted data is retained without automatic cleanup. Restore checks current permissions and usage limits. Old share and preview grants remain invalid.',
+      'Deleted data is retained for 30 days, then becomes unrestorable and is automatically purged with its files. Restore checks current permissions and limits; old grants stay invalid.',
     projectRestoreConfirm:
       'Restore this project with its original identity? This uses one project slot and restores only the project. Restore its versions separately from the project recycle bin. Old share and preview grants remain invalid.',
     versionRestoreConfirm:
@@ -260,9 +260,9 @@ export const protoLocales = {
         'New versions are paused. Existing versions can still be previewed, replaced, shared and deleted.',
     },
     projectDeleteConfirm:
-      'Delete this prototype project? Delete all active versions first. Data is retained and usage is released, and can be restored from the recycle bin. Existing preview and share links will reject subsequent requests.',
+      'Delete this project? Delete all active versions first. Usage is released; restore is available for 30 days, then data and files are permanently purged. Old preview and share links stop working.',
     versionDeleteConfirm:
-      'Delete this version? Revisions and files are retained and usage is released, and can be restored from the recycle bin. Existing preview and share links will reject subsequent requests. Downloaded content cannot be recalled.',
+      'Delete this version? Usage is released. Revisions and files can be restored for 30 days, then are permanently purged. Old preview and share links stop working; downloaded content cannot be recalled.',
     upload: 'Upload version',
     update: 'Upload new revision',
     updateHint:

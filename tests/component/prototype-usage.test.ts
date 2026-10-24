@@ -325,8 +325,8 @@ it.each(['projects', 'detail'] as const)(
             ? []
             : [
                 kind === 'projects'
-                  ? { ...project, deletedTime: 2 }
-                  : { id: 'v1', projectId: 'p1', deletedTime: 2 },
+                  ? { ...project, deletedTime: Date.now() }
+                  : { id: 'v1', projectId: 'p1', deletedTime: Date.now() },
               ],
           total: restored ? 0 : 1,
           pageIndex: 0,
@@ -360,29 +360,60 @@ it.each(['projects', 'detail'] as const)(
   },
 )
 
-it.each([409, 404])(
-  'keeps restore errors authoritative (%s) and reloads only a missing tombstone',
-  async (status) => {
+it.each([
+  ['projects', 409],
+  ['projects', 404],
+  ['detail', 409],
+  ['detail', 404],
+] as const)(
+  'keeps %s restore errors authoritative (%s), refreshing expired tombstones and usage on 404',
+  async (kind, status) => {
+    let refused = false
     const original = vi.mocked(request.post).getMockImplementation()!
     vi.mocked(request.post).mockImplementation(async (path, ...args) => {
-      if (path.endsWith('/_deleted/_query'))
+      if (path.endsWith('/_deleted/_query')) {
+        const missing = refused && status === 404
         return response({
-          data: [{ ...project, deletedTime: 2 }],
-          total: 1,
+          data: missing
+            ? []
+            : [
+                kind === 'projects'
+                  ? { ...project, deletedTime: Date.now() }
+                  : { id: 'v1', projectId: 'p1', deletedTime: Date.now() },
+              ],
+          total: missing ? 0 : 1,
           pageIndex: 0,
           pageSize: 20,
         })
-      if (path.endsWith('/_restore')) throw new ApiError('Restore refused', status)
+      }
+      if (path.endsWith('/_restore')) {
+        refused = true
+        throw new ApiError('Restore refused', status)
+      }
       return original(path, ...args)
     })
-    const { projects } = await render('projects')
-    projects.trash.value = true
+    const { projects, detail } = await render(kind)
+    const state = kind === 'projects' ? projects : detail
+    state.trash.value = true
     await flushPromises()
     const before = vi.mocked(request.post).mock.calls.length
-    await projects.restore(projects.resource.data.value[0]!)
-    expect(projects.task.error.value).toBe('Restore refused')
-    expect(projects.resource.data.value[0]?.id).toBe('p1')
+    const usageBefore = vi
+      .mocked(request.get)
+      .mock.calls.filter(([path]) => path.endsWith('/_usage')).length
+    if (kind === 'projects') await projects.restore(projects.resource.data.value[0]!)
+    else await detail.restore('v1')
+    expect(state.task.error.value).toBe('Restore refused')
+    const rows =
+      kind === 'projects' ? projects.resource.data.value : detail.resource.data.value.versions
+    expect(rows.map((row) => row.id)).toEqual(
+      status === 404 ? [] : [kind === 'projects' ? 'p1' : 'v1'],
+    )
+    expect(state.pagination.total).toBe(status === 404 ? 0 : 1)
     expect(vi.mocked(request.post).mock.calls.length - before).toBe(status === 404 ? 2 : 1)
+    expect(
+      vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/_usage')).length -
+        usageBefore,
+    ).toBe(status === 404 ? 1 : 0)
   },
 )
 
@@ -449,7 +480,12 @@ it('hides project restore without the save action even when the server reports o
   const original = vi.mocked(request.post).getMockImplementation()!
   vi.mocked(request.post).mockImplementation(async (path, ...args) =>
     path.endsWith('/_deleted/_query')
-      ? response({ data: [{ ...project, deletedTime: 2 }], total: 1, pageIndex: 0, pageSize: 20 })
+      ? response({
+          data: [{ ...project, deletedTime: Date.now() }],
+          total: 1,
+          pageIndex: 0,
+          pageSize: 20,
+        })
       : original(path, ...args),
   )
   const { wrapper } = await render(

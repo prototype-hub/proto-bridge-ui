@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
 async function login(page: Page, user = 'admin') {
   await page.goto('login')
   await page.getByLabel('用户名', { exact: true }).fill(user)
@@ -123,9 +124,8 @@ test('project deletion is blocked until all versions are deleted', async ({ page
   const deleteProject = card.getByRole('button', { name: '删除', exact: true })
 
   await deleteProject.click()
-  await expect(page.locator('.ant-popconfirm')).toContainText(
-    '项目下存在版本时无法删除，请先删除全部版本',
-  )
+  await expect(page.locator('.ant-popconfirm')).toContainText(protoLocales.zh.projectDeleteConfirm)
+  await expect(page.locator('.ant-popconfirm')).toContainText('30 天')
   await page.locator('.ant-popconfirm').getByRole('button', { name: '确定', exact: true }).click()
   await expect(
     page
