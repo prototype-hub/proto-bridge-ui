@@ -47,3 +47,11 @@ pnpm build
 问题列表仅用文本插值显示包内路径和引用，不能使用 `v-html` 或将原始引用直接变为可点击外链。界面区分检查完成、存在错误与检查不完整；未检查引用、跳过文档和遗漏问题数必须保留在界面与下载中。JSON 下载复用共享 API 客户端的 `download`，不深导入其他业务模块私有工具。
 
 针对性入口为 `tests/component/revision-quality.test.ts`、`tests/unit/revision-quality-api.test.ts`、`tests/e2e/revision-quality.spec.ts`。Mock 仅模拟固定报告和有界问题列表，覆盖取消、归属检查、分页、错误重试、文本显示、下载及窄屏；真实浏览器用例还从已上传且已被新修订替换的旧内容读取报告并核对下载完全相同。HTML/CSS 解析、引用归一化、读写安全、预算及数据权限需要服务端测试和最终 JAR 联验，Mock 不替代这些证据。
+
+## 邮箱访问者身份的维护边界
+
+`api/review.ts` 独占公开身份的同源 Cookie 请求，不复用管理认证头、不修改全局 `publicRequest`。`useReviewIdentity` 只属于可信分享外壳；表单、挑战、CSRF 和身份保持局部内存，关闭、换分享/修订/授权或卸载时取消旧请求并清空。`PrototypeWorkspace` 仅增加可选 actions 插槽，不把身份字段混入 iframe context、地址或 postMessage。邮件用途仅为身份验证，不能借验证码入口发送业务消息。
+
+管理设置的 CAS、错误与请求取消由 `ReviewPolicyDialog` 承接；保存后重读权威分享列表。默认旧分享仍关闭，不能在普通创建或编辑请求中夹带身份设置。新增字段兼容旧后端缺失值时不显示身份入口；启用但邮件不可用时明确提示，预览继续可用。
+
+针对性测试为 `tests/unit/review-api.test.ts`、`tests/component/review-identity.test.ts`、`tests/component/review-policy.test.ts` 和 `tests/e2e/review-identity.spec.ts`。Mock 的固定验证码与内存记录仅验证界面，不能证明 SMTP、数据库原子消费、跨实例限速或 Cookie 安全。真实联验新增 `PROTO_E2E_REVIEW_MAILBOX_PATH`，仅由 Node 测试读取隔离的本地 SMTP sink 临时 JSON 数组 `[{recipient,code}]`；使用唯一 `example.invalid` 地址，未接线时失败，不向真实邮箱发送。邮箱和验证码不进入 `VITE_*`、公开端点、日志、trace 或发行包，临时信箱由 runtime 工具回收。

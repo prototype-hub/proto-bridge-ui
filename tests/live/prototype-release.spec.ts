@@ -789,6 +789,114 @@ liveTest(
       await main.getByRole('button', { name: 'Close', exact: true }).click()
     })
 
+    await test.step('verify a local SMTP visitor identity in the trusted public shell and sign out', async () => {
+      const mail = `review-${randomUUID()}@example.invalid`
+      const password = `Review-${randomUUID()}`
+      const created = await result<Share>(
+        await request.post(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+          data: { password },
+        }),
+      )
+      owned.shares.push(created.id)
+      const publicPage = await page.context().newPage()
+      try {
+        const policy = await result<{ configVersion: number }>(
+          await request.get(`/api/prototype-hub/shares/${created.id}/review`, {
+            headers: owned.headers,
+          }),
+        )
+        const updated = await result<{ enabled: boolean; mailAvailable: boolean }>(
+          await request.put(`/api/prototype-hub/shares/${created.id}/review`, {
+            headers: owned.headers,
+            data: { enabled: true, expectedVersion: policy.configVersion },
+          }),
+        )
+        expect(updated).toMatchObject({ enabled: true, mailAvailable: true })
+        await publicPage.goto(`/share/${encodeURIComponent(created.token)}`)
+        await expect(
+          publicPage.getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true }),
+        ).toHaveCount(0)
+        await publicPage.getByLabel('分享密码', { exact: true }).fill(password)
+        await publicPage.getByRole('button', { name: '打开原型', exact: true }).click()
+        await expect(publicPage.locator('.frame-stage > iframe')).toHaveAttribute(
+          'sandbox',
+          'allow-scripts allow-forms',
+        )
+        let sends = 0
+        publicPage.on('request', (outgoing) => {
+          if (outgoing.url().endsWith('/review/challenges')) sends++
+        })
+        await publicPage
+          .getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true })
+          .click()
+        const drawer = publicPage.getByRole('dialog', {
+          name: protoLocales.zh.reviewIdentity,
+          exact: true,
+        })
+        await drawer.getByLabel(protoLocales.zh.reviewEmail, { exact: true }).fill(mail)
+        await drawer
+          .getByLabel(protoLocales.zh.reviewName, { exact: true })
+          .fill('Local SMTP visitor')
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.reviewSendCode, exact: true })
+          .click()
+        await expect(
+          drawer.getByText(protoLocales.zh.reviewCodeSent, { exact: true }),
+        ).toBeVisible()
+        const readCode = () => {
+          const mailbox = JSON.parse(readFileSync(environment.reviewMailboxPath, 'utf8')) as {
+            recipient: string
+            code: string
+          }[]
+          return mailbox.find((item) => item.recipient === mail && /^[0-9]{6}$/.test(item.code))
+            ?.code
+        }
+        // Poll only a boolean so assertion output cannot disclose mailbox codes.
+        await expect.poll(() => !!readCode()).toBe(true)
+        await drawer.getByLabel(protoLocales.zh.reviewCode, { exact: true }).fill(readCode()!)
+        const verifying = publicPage.waitForResponse((response) =>
+          response.url().endsWith('/review/verify'),
+        )
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.reviewVerify, exact: true })
+          .click()
+        const verified = await verifying
+        expect(verified.request().headers()['x-access-token']).toBeUndefined()
+        expect(verified.request().headers()['x-review-csrf']).toBeTruthy()
+        await expect(
+          drawer.getByText(protoLocales.zh.reviewEmailVerified, { exact: true }),
+        ).toBeVisible()
+        await expect(drawer.getByText('Local SMTP visitor', { exact: true })).toBeVisible()
+        const cookies = await publicPage.context().cookies()
+        const reviewCookie = cookies.find(
+          (cookie) => cookie.path === `/api/prototype-hub/public/shares/${created.token}/review`,
+        )
+        expect(!!reviewCookie).toBe(true)
+        expect(reviewCookie?.httpOnly).toBe(true)
+        expect(reviewCookie?.sameSite).toBe('Strict')
+        expect(sends).toBe(1)
+        await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+        await publicPage
+          .getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true })
+          .click()
+        await expect(
+          drawer.getByText(protoLocales.zh.reviewEmailVerified, { exact: true }),
+        ).toBeVisible()
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.reviewLogout, exact: true })
+          .click()
+        await expect(drawer.getByLabel(protoLocales.zh.reviewEmail, { exact: true })).toBeVisible()
+      } finally {
+        await publicPage.close()
+        const removed = await request.delete(`/api/prototype-hub/shares/${created.id}`, {
+          headers: owned.headers,
+        })
+        expect(removed.ok()).toBe(true)
+        owned.shares = owned.shares.filter((id) => id !== created.id)
+      }
+    })
+
     await test.step('enforce version capacity while existing previews remain usable', async () => {
       for (let number = 2; number <= 5; number++) {
         const version = await result<Version>(

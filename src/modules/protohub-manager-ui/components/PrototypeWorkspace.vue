@@ -75,6 +75,7 @@ function select(path: string, id?: string, page?: PrototypePage) {
           >{{ t('proto.copyPageLink') }}</a-button
         >
       </div>
+      <slot name="actions" />
     </header>
     <div
       class="workspace-body"

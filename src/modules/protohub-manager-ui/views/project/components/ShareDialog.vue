@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef, defineAsyncComponent, type PropType } from 'vue'
+import { computed, toRef, shallowRef, watch, defineAsyncComponent, type PropType } from 'vue'
 import dayjs from 'dayjs'
 import {
   Modal as AModal,
@@ -23,6 +23,7 @@ import {
   PlayCircleOutlined,
   StopOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useShares } from '@/modules/protohub-manager-ui/views/project/hooks/useShares'
@@ -37,6 +38,8 @@ import ShareCopyDialog from './ShareCopyDialog.vue'
 import { usePermissions } from '@/shared/auth/provider'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 const ShareEditDialog = defineAsyncComponent(() => import('./ShareEditDialog.vue'))
+const ReviewPolicyDialog = defineAsyncComponent(() => import('./ReviewPolicyDialog.vue'))
+const reviewTarget = shallowRef<Share>()
 const props = defineProps({
   version: { type: Object as PropType<Version>, default: undefined },
   project: { type: Object as PropType<Project>, default: undefined },
@@ -68,7 +71,7 @@ const columns = computed<TableColumnsType<Share>>(() => [
   { title: t('proto.password'), dataIndex: 'passwordRequired', width: 90 },
   { title: t('proto.shareTime'), dataIndex: 'createdAt', width: 140 },
   { title: t('proto.expiryTime'), dataIndex: 'expiresAt', width: 140 },
-  { title: t('common.actions'), key: 'actions', width: 248 },
+  { title: t('common.actions'), key: 'actions', width: 280 },
 ])
 const {
   task,
@@ -91,6 +94,21 @@ const {
   validity,
   shareCopy,
 } = useShares(toRef(props, 'version'), toRef(props, 'project'))
+watch(
+  () => [
+    props.version?.id,
+    props.project?.id,
+    props.project?.capabilities?.manageShares,
+    permissions.can(p.share.save),
+  ],
+  () => {
+    reviewTarget.value = undefined
+  },
+)
+function reviewSaved() {
+  reviewTarget.value = undefined
+  void resource.load()
+}
 // Keyboard form submission must respect the same capability as the visible creation button.
 const submitCreate = () => {
   if (
@@ -187,6 +205,14 @@ const submitCreate = () => {
             }}</span
             ><a-space v-else-if="column.key === 'actions'" :size="4" :wrap="false">
               <action-button
+                v-if="!record.revoked"
+                :label="t('proto.reviewSettings')"
+                :icon="SafetyCertificateOutlined"
+                :permission="p.share.save"
+                :disabled="task.busy.value"
+                @action="reviewTarget = record"
+              />
+              <action-button
                 v-if="['permanent', 'temporary'].includes(validity(record))"
                 :label="t('common.copy')"
                 :icon="CopyOutlined"
@@ -260,6 +286,17 @@ const submitCreate = () => {
     @close="shareCopy.cancel"
     @verify="shareCopy.verify"
     @copy="shareCopy.copyVerified"
+  />
+  <review-policy-dialog
+    v-if="
+      reviewTarget &&
+      version &&
+      permissions.can(p.share.save) &&
+      projectAllows(project, 'manageShares')
+    "
+    :share="reviewTarget"
+    @close="reviewTarget = undefined"
+    @saved="reviewSaved"
   />
 </template>
 <style scoped>

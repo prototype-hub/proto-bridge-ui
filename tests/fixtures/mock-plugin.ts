@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
+import { reviewEnabled, reviewPolicy, reviewResponse, resetReview } from './review'
 import type {
   PrototypeListQuery,
   Project,
@@ -154,6 +155,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
   return typeof key === 'string' ? `${req.headers['x-access-token']}:${path}:${key}` : undefined
 }
 function reset() {
+  resetReview()
   resetSystem()
   menus = structuredClone(initialMenus)
   counter = 10
@@ -571,7 +573,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       return true
     }
-    if (suffix !== '' && suffix !== '/verify') {
+    if (suffix !== '' && suffix !== '/verify' && !suffix.startsWith('/review/')) {
       send(res, 404, null, 'Unknown share endpoint')
       return true
     }
@@ -581,6 +583,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         : record.revisionId || shareRevisions.get(record.token) || ''
     const grant = `access-${record.configVersion}-${rid}`
     const grantBase = `/api/prototype-hub/public/shares/${record.token}/${grant}/revisions/${rid}`
+    if (reviewResponse(req, res, record, data, suffix, rid, grant, send)) return true
     const access =
       !record.passwordRequired ||
       (suffix === '/verify' && data.password === passwords.get(record.token))
@@ -589,6 +592,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       return true
     }
     const info: PublicShare = {
+      reviewEnabled: access && reviewEnabled(record.id),
+      reviewAvailable: access && reviewEnabled(record.id),
       token: record.token,
       revisionId: rid,
       revisionMode: record.revisionMode,
@@ -1031,6 +1036,15 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       send(res, 200, value)
     }
+  } else if (/^\/prototype-hub\/shares\/[^/]+\/review$/.test(path)) {
+    const id = decodeURIComponent(path.split('/')[3]!)
+    const value = shares.find((item) => item.id === id)
+    if (!value || value.revoked) send(res, 404, null, 'Share unavailable')
+    else if (method === 'GET') send(res, 200, reviewPolicy(value))
+    else if (method === 'PUT' && data.expectedVersion === value.configVersion) {
+      const policy = reviewPolicy(value, data)
+      send(res, 200, policy)
+    } else send(res, 409, null, 'Share changed')
   } else if (/^\/prototype-hub\/shares\/[^/]+\/verify-password$/.test(path) && method === 'POST') {
     const id = decodeURIComponent(path.split('/')[3])
     const value = shares.find((item) => item.id === id)
