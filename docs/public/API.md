@@ -174,3 +174,15 @@
 `summary` 提供包内文件数、已读取文档/字节数、已检查本地引用数、错误/提醒/问题总数、遗漏问题数及跳过文档数。`uncheckedReferences` 单独统计外部、根绝对路径、页内锚点和其他协议引用，这些未检查项不代表已通过。`complete=true` 仅表示支持的本地检查范围完成；文件缺失、读取失败、预算或问题收录限制等会使其为 false。界面始终显示范围、限制、未检查项及遗漏数量，不把“没有问题”解释为所有页面正确。
 
 当前预算为单文档 2 MiB、文档合计 32 MiB、最多 100000 条引用及最多收录 1000 项问题；以报告 `limits` 的实际值为准。界面每页显示 50 条已收录问题，翻页不请求服务器。下载使用同一份已加载报告在浏览器生成 JSON，保留总数与遗漏信息，不重新扫描、不补造被遗漏的问题；文件名仅使用版本和修订标识，不带预览授权或平台令牌。下载后的报告与其他已下载内容一样无法远程撤回。
+
+## 分享的邮箱访问者身份
+
+分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,expectedVersion}`。旧分享默认关闭，普通分享创建/编辑不自行开启身份验证。保存采用该设置接口返回的版本号；冲突刷新后需手动重新确认。变更使旧预览授权与访问者身份授权失效，界面刷新分享列表。邮件未配置时仍显示不可用原因，不影响原型预览。
+
+获得分享密码授权后，公开分享响应可提供 `reviewEnabled`、`reviewAvailable`；缺少字段按未启用兼容。可信外壳显示“访问者身份”，支持邮箱、姓名、选填公司、邮件验证码、当前身份与退出。仅邮箱持有权经过验证，姓名/公司为自述，不创建平台用户，也不提供批注、邀请或业务提醒。
+
+以下均为 `POST /prototype-hub/public/shares/{token}/review/{action}`，请求体必须携带本次分享的 `{revisionId,accessKey}`，不放在查询字符串。动作包括 `context`、`challenges`、`verify`、`logout`；挑战额外提交 `{email,displayName,company?}`，校验额外提交 `{challengeId,code}`。context 响应为 `{revisionId,enabled,mailAvailable,csrfToken,session}`；校验成功返回同样形状并轮换 Cookie/CSRF。`session` 仅含 `{guestId,displayName,company,maskedEmail,verificationLevel:'email',expiresAt}`，不返回完整邮箱或会话密钥。登出成功后重新获取匿名 context。
+
+这组接口使用独立同源 JSON fetch 客户端，浏览器仅向 review 路径发送 HttpOnly、SameSite=Strict 的限时 Cookie；生产 HTTPS 默认 Secure，不读取 Cookie、不附平台令牌，CSRF 仅放 `X-Review-CSRF` 请求头。公开预览客户端继续省略 Cookie，原型 iframe 的 opaque sandbox 与 postMessage 边界不变。反向代理需按后端文档明确配置受信任的应用 Origin，不应放宽 CORS 或全局 Cookie 策略。
+
+验证码为 6 位 ASCII 数字、有效 5 分钟；发送冷却、次数限制与一次性消费由服务端决定。发码不自动重试，网络结果不明确时由用户手动核对再发送；错误校验保留表单，修改邮箱/姓名/公司后须重新发码。身份最长 8 小时，关闭窗口会清空页面内身份信息；重开时重新验证 Cookie 和当前分享权限，分享变更、撤销、过期与删除均不能靠旧身份绕过。没有可用邮件服务时不能降级为未验证身份。

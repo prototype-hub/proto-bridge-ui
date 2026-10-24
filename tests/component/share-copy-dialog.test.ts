@@ -183,6 +183,7 @@ describe('denied creation permission', () => {
     await flushPromises()
     expect(sharesApi.create).not.toHaveBeenCalled()
     expect(modal().find('tbody button[aria-label="复制"]').exists()).toBe(true)
+    expect(modal().find('tbody button[aria-label="访问者身份设置"]').exists()).toBe(false)
     expect(modal().find('tbody button[aria-label="删除"]').exists()).toBe(false)
   })
 })
@@ -213,6 +214,7 @@ describe('share table', () => {
     expect(rows[0]!.get('.share-expiry-time').text()).toBe('—')
     expect(rows[0]!.get('.share-url').classes()).toContain('ellipsis')
     expect(rows[0]!.findAll('button').map((button) => button.attributes('aria-label'))).toEqual([
+      '访问者身份设置',
       '复制',
       '编辑',
       '暂停分享',

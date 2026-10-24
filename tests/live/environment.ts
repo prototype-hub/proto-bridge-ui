@@ -28,5 +28,6 @@ export function liveEnvironment() {
     username: required('PROTO_E2E_USERNAME'),
     password: required('PROTO_E2E_PASSWORD'),
     zipPath,
+    reviewMailboxPath: resolve(required('PROTO_E2E_REVIEW_MAILBOX_PATH')),
   }
 }

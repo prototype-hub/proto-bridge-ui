@@ -1,5 +1,33 @@
 export const protoLocales = {
   zh: {
+    reviewIdentity: '访问者身份',
+    reviewIdentityHint:
+      '验证邮箱以找回当前项目的访问者身份。姓名与公司为自行填写，仅验证邮箱持有权；不会创建平台账户。',
+    reviewSettings: '访问者身份设置',
+    reviewEnable: '允许邮箱身份验证',
+    reviewPolicyHint:
+      '保存会更新分享配置并使旧的预览和身份授权失效。请重新复制分享链接；开启不代表开启批注或消息提醒。',
+    reviewPolicyUnavailable: '暂时无法读取或保存身份设置，请重试并核对最新分享状态。',
+    reviewEmail: '邮箱',
+    reviewName: '姓名',
+    reviewCompany: '公司（选填）',
+    reviewCode: '邮箱验证码',
+    reviewSendCode: '发送验证码',
+    reviewVerify: '验证邮箱',
+    reviewCodeSent: '验证码已发送，5 分钟内有效。未收到时请检查垃圾邮件，稍后可手动重发。',
+    reviewResendWait: '{seconds} 秒后可重发',
+    reviewEmailVerified: '邮箱已验证',
+    reviewExpires: '本次身份有效至 {time}',
+    reviewLogout: '退出访问者身份',
+    reviewExpired: '本次身份已到期，请重试并重新验证邮箱。',
+    reviewCodeExpired: '验证码已过期，请手动重新发送。',
+    reviewCodeInvalid: '验证码无效或已过期，请核对后重试或手动重新发送。',
+    reviewCodeRequired: '请输入 6 位数字验证码。',
+    reviewProfileRequired: '请填写有效邮箱和姓名。',
+    reviewRateLimited: '发送过于频繁，请稍后再试。',
+    reviewAccessChanged: '分享或身份授权已失效，请关闭后重新打开分享链接。',
+    reviewMailUnavailable: '邮箱验证暂不可用，请联系分享者检查邮件服务。原型仍可正常查看。',
+    reviewUnavailable: '身份验证暂时失败，请重试。发送结果不明确时不会自动重发验证码。',
     qualityCheck: '质量体检',
     qualityDownload: '下载 JSON 报告',
     qualityScope:
@@ -266,6 +294,40 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    reviewIdentity: 'Visitor identity',
+    reviewIdentityHint:
+      'Verify your mailbox to recover your visitor identity for this project. Name and company are self-declared; only mailbox ownership is verified. No platform account is created.',
+    reviewSettings: 'Visitor identity settings',
+    reviewEnable: 'Allow email identity verification',
+    reviewPolicyHint:
+      'Saving updates the share and invalidates previous preview and identity grants. Copy the updated link again. This does not enable comments or notifications.',
+    reviewPolicyUnavailable:
+      'Unable to load or save identity settings. Retry and check the latest share state.',
+    reviewEmail: 'Email',
+    reviewName: 'Name',
+    reviewCompany: 'Company (optional)',
+    reviewCode: 'Email verification code',
+    reviewSendCode: 'Send code',
+    reviewVerify: 'Verify email',
+    reviewCodeSent:
+      'Code sent, valid for 5 minutes. Check your spam folder; resend manually when available.',
+    reviewResendWait: 'Resend available in {seconds} seconds',
+    reviewEmailVerified: 'Email verified',
+    reviewExpires: 'This identity expires at {time}',
+    reviewLogout: 'Sign out visitor identity',
+    reviewExpired: 'This identity has expired. Retry and verify your mailbox again.',
+    reviewCodeExpired: 'This code has expired. Send another code manually.',
+    reviewCodeInvalid:
+      'Invalid or expired code. Check it and retry, or request another code manually.',
+    reviewCodeRequired: 'Enter a 6-digit code.',
+    reviewProfileRequired: 'Enter a valid email and your name.',
+    reviewRateLimited: 'Too many requests. Try again later.',
+    reviewAccessChanged:
+      'The share or identity grant is no longer valid. Close it and reopen the share link.',
+    reviewMailUnavailable:
+      'Email verification is unavailable. Ask the sharer to check their mail service. The prototype is still available.',
+    reviewUnavailable:
+      'Identity verification failed. Retry manually; an uncertain delivery never triggers an automatic resend.',
     qualityCheck: 'Package quality',
     qualityDownload: 'Download JSON report',
     qualityScope:

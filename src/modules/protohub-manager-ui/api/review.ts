@@ -1,0 +1,88 @@
+import { config } from '@/shared/config'
+import { normalize } from '@/shared/api/client'
+import { ApiError } from '@/shared/api/errors'
+import { t, i18n } from '@/shared/i18n'
+import type { ReviewContext, ReviewChallenge } from '../types'
+
+export interface ReviewGrant {
+  token: string
+  revisionId: string
+  accessKey: string
+}
+export interface ReviewProfile {
+  email: string
+  displayName: string
+  company?: string
+}
+
+/** This is the only public client that sends cookies, within its own same-origin review scope. */
+async function post<T>(
+  grant: ReviewGrant,
+  action: string,
+  input: object,
+  csrf?: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const base = new URL(config.apiBase.replace(/\/$/, '') + '/', window.location.origin)
+  if (
+    base.origin !== window.location.origin ||
+    base.username ||
+    base.password ||
+    base.search ||
+    base.hash
+  )
+    throw new ApiError(t('proto.reviewUnavailable'))
+  const url = `${base.pathname}prototype-hub/public/shares/${encodeURIComponent(grant.token)}/review/${action}`
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) controller.abort()
+  const timeout = setTimeout(abort, 30000)
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      redirect: 'error',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept-Language': i18n.global.locale.value,
+        ...(csrf ? { 'X-Review-CSRF': csrf } : {}),
+      },
+      body: JSON.stringify({ revisionId: grant.revisionId, accessKey: grant.accessKey, ...input }),
+    })
+    const body: unknown = await response.json()
+    const result = normalize<T>(body, response.status)
+    if (!response.ok) throw new ApiError(t('proto.reviewUnavailable'), response.status)
+    return result.result
+  } catch (cause) {
+    if (cause instanceof ApiError) throw cause
+    throw new ApiError(
+      t('proto.reviewUnavailable'),
+      0,
+      undefined,
+      undefined,
+      undefined,
+      !!signal?.aborted,
+    )
+  } finally {
+    clearTimeout(timeout)
+    signal?.removeEventListener('abort', abort)
+  }
+}
+export const reviewApi = {
+  context: (grant: ReviewGrant, signal?: AbortSignal) =>
+    post<ReviewContext>(grant, 'context', {}, undefined, signal),
+  challenge: (grant: ReviewGrant, profile: ReviewProfile, csrf: string, signal?: AbortSignal) =>
+    post<ReviewChallenge>(grant, 'challenges', profile, csrf, signal),
+  verify: (
+    grant: ReviewGrant,
+    challengeId: string,
+    code: string,
+    csrf: string,
+    signal?: AbortSignal,
+  ) => post<ReviewContext>(grant, 'verify', { challengeId, code }, csrf, signal),
+  logout: (grant: ReviewGrant, csrf: string, signal?: AbortSignal) =>
+    post<{ loggedOut: true }>(grant, 'logout', {}, csrf, signal),
+}

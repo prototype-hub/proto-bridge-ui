@@ -8,11 +8,27 @@ import {
   Alert as AAlert,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
+import { ref, watch, defineAsyncComponent } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 const { t } = useI18n()
 const { resource, task, password, verify } = usePublicShare()
+const ReviewIdentityDrawer = defineAsyncComponent(
+  () => import('./components/ReviewIdentityDrawer.vue'),
+)
+const identityOpen = ref(false)
+watch(
+  () => [
+    resource.data.value.share?.token,
+    resource.data.value.share?.revisionId,
+    resource.data.value.share?.accessKey,
+    resource.data.value.share?.reviewEnabled,
+  ],
+  () => {
+    identityOpen.value = false
+  },
+)
 </script>
 <template>
   <div class="fullscreen">
@@ -23,7 +39,19 @@ const { resource, task, password, verify } = usePublicShare()
       ><prototype-workspace
         v-if="resource.data.value.context"
         :context="resource.data.value.context"
-      />
+        ><template #actions>
+          <a-button
+            v-if="resource.data.value.share?.reviewEnabled"
+            :title="
+              resource.data.value.share.reviewAvailable
+                ? t('proto.reviewIdentity')
+                : t('proto.reviewMailUnavailable')
+            "
+            @click="identityOpen = true"
+            >{{ t('proto.reviewIdentity') }}</a-button
+          >
+        </template></prototype-workspace
+      >
       <main v-else-if="resource.data.value.share" class="public-shell">
         <section class="panel public-card">
           <h1>{{ resource.data.value.share.projectName }}</h1>
@@ -48,4 +76,10 @@ const { resource, task, password, verify } = usePublicShare()
       </main></load-state
     >
   </div>
+  <review-identity-drawer
+    v-if="identityOpen"
+    :share="resource.data.value.share"
+    :open="identityOpen"
+    @close="identityOpen = false"
+  />
 </template>

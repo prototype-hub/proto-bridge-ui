@@ -222,6 +222,8 @@ export interface Share {
   sharePath: string
 }
 export interface PublicShare {
+  reviewEnabled?: boolean
+  reviewAvailable?: boolean
   revisionMode: ShareRevisionMode
   pagesUrl?: string
   token: string
@@ -233,6 +235,31 @@ export interface PublicShare {
   accessKey?: string
   runtimeBaseUrl?: string
   previewUrl?: string
+}
+export interface ReviewPolicy {
+  enabled: boolean
+  mailAvailable: boolean
+  configVersion: number
+}
+export interface ReviewIdentity {
+  guestId: string
+  displayName: string
+  company: string | null
+  maskedEmail: string
+  verificationLevel: 'email'
+  expiresAt: number
+}
+export interface ReviewContext {
+  revisionId: string
+  enabled: boolean
+  mailAvailable: boolean
+  csrfToken: string
+  session: ReviewIdentity | null
+}
+export interface ReviewChallenge {
+  challengeId: string
+  expiresAt: number
+  resendAfter: number
 }
 export interface InspectAsset {
   type: 'image' | 'svg'

@@ -1,8 +1,29 @@
 import { request } from '@/shared/api/client'
 import type { RequestOptions } from '@/shared/api/types'
-import type { Share, ShareInput, ShareUpdate } from '../types'
+import type { Share, ShareInput, ShareUpdate, ReviewPolicy } from '../types'
 const segment = encodeURIComponent
 export const sharesApi = {
+  reviewPolicy: async (id: string, options?: RequestOptions) =>
+    (
+      await request.get<ReviewPolicy>(
+        `/prototype-hub/shares/${segment(id)}/review`,
+        undefined,
+        options,
+      )
+    ).result,
+  setReviewPolicy: async (
+    id: string,
+    enabled: boolean,
+    expectedVersion: number,
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.put<ReviewPolicy>(
+        `/prototype-hub/shares/${segment(id)}/review`,
+        { enabled, expectedVersion },
+        options,
+      )
+    ).result,
   list: async (versionId: string, options?: RequestOptions) =>
     (
       await request.get<Share[]>(
