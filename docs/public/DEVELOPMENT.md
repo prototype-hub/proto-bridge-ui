@@ -39,3 +39,11 @@ pnpm build
 比较页复用历史修订分页、现有版本 query 权限、固定修订页面与短期预览接口。`useRevisionComparison` 管理 pair 请求、独立差异分页、页面位置和两个短期授权；切换 pair 取消旧请求并清空旧内容，分页不重新签发预览凭证。`useWorkspaceLocation` 的可选左右命名空间只用于比较页，默认单独预览与公开分享仍使用原 revisionId/pageId 规则。比较页面不写 currentRevisionId，不增加版本额度，也不把下载文件、视觉截图或语义重命名混入 hash 比较。
 
 相关测试入口：`tests/component/revision-comparison.test.ts`、`tests/component/preview-location.test.ts`、`tests/unit/revision-comparison-api.test.ts`、`tests/e2e/revision-comparison.spec.ts`，以及既有真实后端 `tests/live/prototype-release.spec.ts` 的比较步骤。Mock 仅提供有界历史、确定页面/文件差异及不同 HTML；服务端权限、持久清单分类与实际文件安全仍须由后端集成及真实 JAR 验证，不能以 Mock 结果替代。
+
+## 交付包质量报告的维护边界
+
+质量报告沿历史修订的项目读能力与版本 query 权限进入。`RevisionQualityDrawer` 承接单个修订报告，`useRevisionQuality` 管理读取、取消代次、局部分页和同报告导出；类型及端点仍在模块 `types`、`api/version.ts`。不要从当前修订接口推断所选历史内容，不增加平行下载端点、扫描任务或全局缓存。
+
+问题列表仅用文本插值显示包内路径和引用，不能使用 `v-html` 或将原始引用直接变为可点击外链。界面区分检查完成、存在错误与检查不完整；未检查引用、跳过文档和遗漏问题数必须保留在界面与下载中。JSON 下载复用共享 API 客户端的 `download`，不深导入其他业务模块私有工具。
+
+针对性入口为 `tests/component/revision-quality.test.ts`、`tests/unit/revision-quality-api.test.ts`、`tests/e2e/revision-quality.spec.ts`。Mock 仅模拟固定报告和有界问题列表，覆盖取消、归属检查、分页、错误重试、文本显示、下载及窄屏；真实浏览器用例还从已上传且已被新修订替换的旧内容读取报告并核对下载完全相同。HTML/CSS 解析、引用归一化、读写安全、预算及数据权限需要服务端测试和最终 JAR 联验，Mock 不替代这些证据。

@@ -164,3 +164,13 @@
 页面行是 `{path,status,left,right}`，各侧为 `{pageId,name,path}` 或 null；文件行各侧为 `{size,sha256,mediaType}` 或 null。状态为从左到右的 added、removed、changed、unchanged。文件同路径且 SHA-256 或大小不同即变化；页面以路径配对，主名称或关联文件变化即变化，重复路径保留首个主页面。路径区分大小写，重命名仅表现为删除与新增，不代表视觉或 HTML 语义差异。旧页面 null 标识保持原样，不伪造标识。响应不包含存储根目录或预览凭证。
 
 比较页 `/prototype-hub/compare/:projectId/:versionId` 通过 `leftRevisionId`、`rightRevisionId`、可选 `leftPageId`、`rightPageId` 恢复固定定位。历史抽屉按选择顺序打开左右修订；各侧目录独立导航，点击差异行才按该路径同时定位两侧。缺失页面显示空态，无稳定标识的旧页面仅显示比较信息，不能定位预览。每侧使用已有固定修订短期授权，过期卸载 iframe，需显式重新授权。复制链接只包含应用身份字段，不能包含平台 token 或运行态授权；原单独预览及公开分享的定位与授权行为保持不变。
+
+## 固定修订交付包质量
+
+历史修订行的“质量体检”调用 `GET /prototype-hub/versions/{id}/revisions/{revisionId}/quality`，需要当前项目读权限与版本 `query` 动作。它只检查所选活动版本的明确修订，不回退当前修订，不向公开分享授予历史报告访问能力。关闭抽屉、切换修订或失去权限时清空结果并取消请求。
+
+报告包含 `versionId`、`revisionId`、`manifestSha256`、`entryFile`、`summary`、`limits`、`complete` 和 `findings`。每个问题为 `{code,severity,sourcePath,targetPath,reference}`，后两项可为 null，级别为 `error/warning`。检查覆盖入口、清单文件存在性与支持的本地 HTML/CSS 静态引用；中文路径是兼容提醒。不会执行脚本、请求外网或验证动态业务交互，也不能代替上传 ZIP 安全检查。
+
+`summary` 提供包内文件数、已读取文档/字节数、已检查本地引用数、错误/提醒/问题总数、遗漏问题数及跳过文档数。`uncheckedReferences` 单独统计外部、根绝对路径、页内锚点和其他协议引用，这些未检查项不代表已通过。`complete=true` 仅表示支持的本地检查范围完成；文件缺失、读取失败、预算或问题收录限制等会使其为 false。界面始终显示范围、限制、未检查项及遗漏数量，不把“没有问题”解释为所有页面正确。
+
+当前预算为单文档 2 MiB、文档合计 32 MiB、最多 100000 条引用及最多收录 1000 项问题；以报告 `limits` 的实际值为准。界面每页显示 50 条已收录问题，翻页不请求服务器。下载使用同一份已加载报告在浏览器生成 JSON，保留总数与遗漏信息，不重新扫描、不补造被遗漏的问题；文件名仅使用版本和修订标识，不带预览授权或平台令牌。下载后的报告与其他已下载内容一样无法远程撤回。

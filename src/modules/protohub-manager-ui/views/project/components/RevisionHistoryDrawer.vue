@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, toRef, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Drawer as ADrawer,
@@ -8,10 +8,10 @@ import {
   Alert as AAlert,
   Checkbox as ACheckbox,
 } from 'ant-design-vue'
-import { EyeOutlined } from '@ant-design/icons-vue'
+import { EyeOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermissions } from '@/shared/auth/provider'
-import type { Project, Version } from '@/modules/protohub-manager-ui/types'
+import type { Project, Revision, Version } from '@/modules/protohub-manager-ui/types'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { useRevisions } from '@/modules/protohub-manager-ui/views/project/hooks/useRevisions'
@@ -22,6 +22,7 @@ import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 
 const props = defineProps<{ version?: Version; project?: Project }>()
+const RevisionQualityDrawer = defineAsyncComponent(() => import('./RevisionQualityDrawer.vue'))
 const emit = defineEmits<{ close: []; preview: [version: Version, revisionId: string] }>()
 const { t } = useI18n()
 const permissions = usePermissions()
@@ -35,11 +36,13 @@ const open = computed(
 const state = useRevisions(toRef(props, 'version'), open)
 const router = useRouter()
 const selected = ref<string[]>([])
+const qualityRevision = shallowRef<Revision>()
 // Selection survives cursor appends, but cannot cross a closed or replaced version scope.
 watch(
   () => [open.value, props.version?.id],
   () => {
     selected.value = []
+    qualityRevision.value = undefined
   },
 )
 function select(id: string, checked: boolean) {
@@ -68,7 +71,7 @@ const columns = computed(() => [
   { title: t('common.createdAt'), dataIndex: 'createdAt', width: 180 },
   { title: t('proto.revisionFiles'), dataIndex: 'fileCount', width: 90 },
   { title: t('proto.revisionSize'), dataIndex: 'totalBytes', width: 110 },
-  { title: t('common.actions'), key: 'actions', width: 64 },
+  { title: t('common.actions'), key: 'actions', width: 96 },
 ])
 </script>
 <template>
@@ -112,13 +115,20 @@ const columns = computed(() => [
             <template v-else-if="column.dataIndex === 'totalBytes'"
               >{{ (record.totalBytes / 1024 / 1024).toFixed(2) }} MiB</template
             >
-            <action-button
-              v-else-if="column.key === 'actions'"
-              :label="t('proto.preview')"
-              :icon="EyeOutlined"
-              :permission="p.version.query"
-              @action="version && emit('preview', version, record.id)"
-            />
+            <template v-else-if="column.key === 'actions'">
+              <action-button
+                :label="t('proto.preview')"
+                :icon="EyeOutlined"
+                :permission="p.version.query"
+                @action="version && emit('preview', version, record.id)"
+              />
+              <action-button
+                :label="t('proto.qualityCheck')"
+                :icon="FileSearchOutlined"
+                :permission="p.version.query"
+                @action="qualityRevision = record"
+              />
+            </template>
             <template v-else>{{ record.fileCount }}</template>
           </template>
         </data-table>
@@ -133,4 +143,10 @@ const columns = computed(() => [
       <a-button @click="emit('close')">{{ t('common.close') }}</a-button>
     </section>
   </a-drawer>
+  <revision-quality-drawer
+    v-if="qualityRevision"
+    :revision="qualityRevision"
+    :allowed="open"
+    @close="qualityRevision = undefined"
+  />
 </template>

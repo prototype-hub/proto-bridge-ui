@@ -9,6 +9,7 @@ import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
+import { fixtureQuality } from './quality'
 import type {
   PrototypeListQuery,
   Project,
@@ -930,7 +931,15 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         (item) => item.projectId === url.searchParams.get('projectId') && activeVersion(item.id),
       ),
     )
-  else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/_compare$/.test(path)) {
+  else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/[^/]+\/quality$/.test(path)) {
+    const id = decodeURIComponent(path.split('/')[3]!)
+    const rid = decodeURIComponent(path.split('/')[5]!)
+    const value = activeVersion(id)
+    const revision = revisions.get(rid)
+    if (!value || !revision || revision.versionId !== id)
+      send(res, 404, null, 'Revision unavailable')
+    else send(res, 200, fixtureQuality(revision))
+  } else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/_compare$/.test(path)) {
     const id = decodeURIComponent(path.split('/')[3]!)
     const value = activeVersion(id)
     const left = revisions.get(url.searchParams.get('leftRevisionId') || '')
