@@ -31,11 +31,12 @@ watch([allowed, blocked], ([permitted, disabled]) => {
 </script>
 
 <template>
-  <a-tooltip v-if="allowed" :title="tooltip || label">
+  <a-tooltip v-if="allowed" :title="tooltip || label" :open="open ? false : undefined">
     <span class="action-button-trigger">
       <a-popconfirm
         v-model:open="open"
         :title="confirm"
+        :overlay-style="{ maxWidth: 'min(420px, calc(100vw - 24px))' }"
         :disabled="!confirm || blocked"
         @confirm="act"
       >

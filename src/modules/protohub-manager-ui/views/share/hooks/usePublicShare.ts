@@ -3,6 +3,7 @@ import { useRoute } from 'vue-router'
 import { publicApi } from '@/modules/protohub-manager-ui/api'
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
+import { ApiError } from '@/shared/api/errors'
 import { previewIdentity } from '@/modules/protohub-manager-ui/utils/preview-location'
 import { entryFromUrls } from '@/modules/protohub-manager-ui/utils/urls'
 import { t } from '@/shared/i18n'
@@ -75,7 +76,14 @@ export function usePublicShare() {
         resource.data.value = result
         password.value = ''
       } catch (cause) {
-        if (submittedGeneration === generation && !request.signal.aborted) throw cause
+        if (submittedGeneration !== generation || request.signal.aborted) return
+        // A removed target cannot leave the old title, password form or granted content usable.
+        if (cause instanceof ApiError && cause.status === 404) {
+          resource.data.value = {}
+          resource.error.value = cause.message
+          password.value = ''
+        }
+        throw cause
       }
     })
   }

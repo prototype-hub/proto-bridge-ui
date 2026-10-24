@@ -6,6 +6,7 @@ import { useResource } from '@/shared/composables/useResource'
 import { usePrototypeList } from './usePrototypeList'
 import { useTask } from '@/shared/composables/useTask'
 import { deleted } from '@/shared/utils/feedback'
+import { ApiError } from '@/shared/api/errors'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import { t } from '@/shared/i18n'
 import { usePermissions } from '@/shared/auth/provider'
@@ -103,7 +104,13 @@ export function useProjectDetail() {
   async function remove(key: string) {
     if (!projectAllows(resource.data.value.project, 'edit')) return
     await task.run(async () => {
-      await versionsApi.remove(key)
+      try {
+        await versionsApi.remove(key)
+      } catch (cause) {
+        // A concurrently deleted version must not leave its old controls available in the list.
+        if (cause instanceof ApiError && cause.status === 404) await refresh()
+        throw cause
+      }
       deleted()
       await refresh()
     })

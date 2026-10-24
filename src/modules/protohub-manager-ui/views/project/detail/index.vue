@@ -166,7 +166,7 @@ const columns = computed(() => [
                 :permission="p.version.delete"
                 danger
                 :disabled="task.busy.value"
-                :confirm="t('common.confirmDelete')"
+                :confirm="t('proto.versionDeleteConfirm')"
                 @action="remove(record.id)"
               /> </a-space
             ><a-tag

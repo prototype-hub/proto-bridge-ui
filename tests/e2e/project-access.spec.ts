@@ -77,7 +77,7 @@ test('owner manages members without global user administration and member change
   const operatorRow = dialog.locator('tr').filter({ hasText: 'Operator' })
   await expect(operatorRow.getByText('编辑者', { exact: true })).toBeVisible()
   expect(userQueries).toEqual([])
-  expect((await request.get(internalUrl!)).status()).toBe(404)
+  expect((await request.get(internalUrl!)).status()).toBe(403)
   // Public shares are separate grants and remain usable after membership changes.
   expect((await request.get(publicUrl)).status()).toBe(200)
   await page.screenshot({
