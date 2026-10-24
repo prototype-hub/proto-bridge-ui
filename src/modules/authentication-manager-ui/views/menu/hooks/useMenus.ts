@@ -141,14 +141,17 @@ export function useMenus() {
     query.value = value
     await resource.load()
   }
-  useLegacyDetail(async (id) => {
+  useLegacyDetail(async (id, _path, current) => {
     if (id === ':id') {
       const parent = findMenu(resource.data.value, String(route.query.pid || ''))
       edit(undefined, parent)
       form.value.parentId = String(route.query.pid || '') || undefined
       form.value.url = String(route.query.basePath || '/')
       form.value.sortIndex = Number(route.query.sortIndex || 1)
-    } else edit(await menuManagement.detail(id))
+    } else {
+      const loaded = await menuManagement.detail(id)
+      if (current()) edit(loaded)
+    }
   })
   onMounted(resource.load)
   return {

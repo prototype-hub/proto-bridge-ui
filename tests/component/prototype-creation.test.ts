@@ -244,7 +244,7 @@ it('creates a cryptographically random key on LAN HTTP browsers without randomUU
   vi.stubGlobal('crypto', { getRandomValues })
   const intent = createCreationIntent()
   const first = intent.key(['Project'])
-  expect(first).toMatch(/^[0-9a-f]{32}$/)
+  expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   expect(intent.key(['Project'])).toBe(first)
   expect(getRandomValues).toHaveBeenCalledTimes(1)
   intent.reset()

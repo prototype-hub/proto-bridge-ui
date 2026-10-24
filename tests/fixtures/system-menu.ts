@@ -20,6 +20,7 @@ const leaf = (code: string, name: string, url: string): ServerMenu => ({
   code,
   name,
   url,
+  owner: 'iot',
   granted: true,
   buttons: actions.map((id) => ({ id, name: id, granted: true })),
 })
@@ -29,12 +30,14 @@ export function systemMenus(core: ServerMenu[]): ServerMenu[] {
     {
       id: 'system-root',
       code: 'system',
+      owner: 'iot',
       name: '系统管理',
       url: '/system',
       children: [
         {
           id: 'identity',
           code: 'identity',
+          owner: 'iot',
           name: '权限管理',
           children: [...core.slice(1, 5), ...core.slice(6)].map((row) => ({
             ...row,
@@ -45,6 +48,7 @@ export function systemMenus(core: ServerMenu[]): ServerMenu[] {
         {
           id: 'organization',
           code: 'organization',
+          owner: 'iot',
           name: '组织与职位',
           children: [
             leaf('system/Department', '组织管理', '/system/Department'),
@@ -54,6 +58,7 @@ export function systemMenus(core: ServerMenu[]): ServerMenu[] {
         {
           id: 'configuration',
           code: 'configuration',
+          owner: 'iot',
           name: '系统配置',
           children: [
             leaf('system/Basis', '基础配置', '/system/Basis'),
@@ -63,6 +68,7 @@ export function systemMenus(core: ServerMenu[]): ServerMenu[] {
         {
           id: 'operations',
           code: 'operations',
+          owner: 'iot',
           name: '运维管理',
           children: [core[5], leaf('system/Log/System', '系统日志', '/system/Log/System')],
         },

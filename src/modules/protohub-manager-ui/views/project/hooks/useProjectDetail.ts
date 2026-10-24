@@ -1,11 +1,11 @@
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch, onScopeDispose } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { projectsApi, versionsApi } from '@/modules/protohub-manager-ui/api'
 import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useResource } from '@/shared/composables/useResource'
 import { usePrototypeList } from './usePrototypeList'
 import { useTask } from '@/shared/composables/useTask'
-import { deleted } from '@/shared/utils/feedback'
+import { deleted, saved } from '@/shared/utils/feedback'
 import { ApiError } from '@/shared/api/errors'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import { t } from '@/shared/i18n'
@@ -22,6 +22,8 @@ export function useProjectDetail() {
   const router = useRouter()
   const id = computed(() => String(route.params.id))
   const task = useTask()
+  const trash = ref(false)
+  let generation = 0
   const permissions = usePermissions()
   const uploadOpen = ref(false)
   const uploadContext = ref<UploadContext>({ projectId: id.value })
@@ -38,22 +40,31 @@ export function useProjectDetail() {
   const project = shallowRef<Project>()
   const list = usePrototypeList<Version>(
     async (query, options) => {
-      const projectId = id.value
-      const loaded = await projectsApi.get(projectId, options)
-      if (options.signal?.aborted) return { data: [], total: 0, pageIndex: 0, pageSize: 20 }
-      if (loaded.id !== projectId) throw new Error(t('proto.projectUnavailable'))
-      project.value = loaded
-      // Project administration does not imply permission to query its version contents.
-      const versions = permissions.can(p.version.query)
-        ? await versionsApi.query(projectId, query, options)
-        : { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
-      if (versions.data.some((version) => version.projectId !== loaded.id))
-        throw new Error(t('proto.projectUnavailable'))
-      return versions
+      try {
+        const projectId = id.value
+        const loaded = await projectsApi.get(projectId, options)
+        if (options.signal?.aborted) return { data: [], total: 0, pageIndex: 0, pageSize: 20 }
+        if (loaded.id !== projectId) throw new Error(t('proto.projectUnavailable'))
+        project.value = loaded
+        if (!projectAllows(loaded, 'manageMembers')) membersOpen.value = false
+        // Project administration does not imply permission to query its version contents.
+        const versions = permissions.can(p.version.query)
+          ? await (trash.value ? versionsApi.deleted : versionsApi.query)(projectId, query, options)
+          : { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
+        if (versions.data.some((version) => version.projectId !== loaded.id))
+          throw new Error(t('proto.projectUnavailable'))
+        return versions
+      } catch (cause) {
+        if (!options.signal?.aborted) {
+          project.value = undefined
+          membersOpen.value = false
+        }
+        throw cause
+      }
     },
     () => {
-      // Refreshes invalidate controls together with data; a late response cannot restore another scope.
-      project.value = undefined
+      // Member changes revalidate the same project in place; failed checks and scope changes close it.
+      if (!membersOpen.value) project.value = undefined
       uploadOpen.value = false
       shareVersion.value = undefined
       historyVersion.value = undefined
@@ -101,23 +112,48 @@ export function useProjectDetail() {
       'noopener,noreferrer',
     )
   }
-  async function remove(key: string) {
-    if (!projectAllows(resource.data.value.project, 'edit')) return
+  async function changeVersion(key: string, restoring: boolean) {
+    if (
+      !projectAllows(resource.data.value.project, 'edit') ||
+      (restoring && (!trash.value || !permissions.can(p.version.save)))
+    )
+      return
+    const submitted = generation
     await task.run(async () => {
       try {
-        await versionsApi.remove(key)
+        await (restoring ? versionsApi.restore(key) : versionsApi.remove(key))
       } catch (cause) {
+        if (submitted !== generation) return
         // A concurrently deleted version must not leave its old controls available in the list.
         if (cause instanceof ApiError && cause.status === 404) await refresh()
         throw cause
       }
-      deleted()
+      if (submitted !== generation) return
+      if (restoring) saved()
+      else deleted()
       await refresh()
     })
   }
+  const remove = (key: string) => changeVersion(key, false)
+  const restore = (key: string) => changeVersion(key, true)
+  watch(
+    trash,
+    () => {
+      generation++
+      task.error.value = ''
+      membersOpen.value = false
+      list.resetScope()
+      void refresh()
+    },
+    { flush: 'sync' },
+  )
+  onScopeDispose(() => generation++)
   watch(
     id,
     () => {
+      generation++
+      task.error.value = ''
+      trash.value = false
       shareVersion.value = undefined
       historyVersion.value = undefined
       uploadOpen.value = false
@@ -130,6 +166,8 @@ export function useProjectDetail() {
   )
   return {
     resource,
+    trash,
+    restore,
     usage,
     loadUsage,
     refresh,

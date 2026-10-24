@@ -42,7 +42,11 @@ const project: Project = {
 }
 const mounted: VueWrapper[] = []
 
-async function render(page: 'projects' | 'detail', actualPage = false) {
+async function render(
+  page: 'projects' | 'detail',
+  actualPage = false,
+  can: (value: string | string[]) => boolean = () => true,
+) {
   let projects!: ReturnType<typeof useProjects>
   let detail!: ReturnType<typeof useProjectDetail>
   const harness = defineComponent({
@@ -69,7 +73,7 @@ async function render(page: 'projects' | 'detail', actualPage = false) {
     {
       global: {
         plugins: [createPinia(), router, i18n],
-        provide: { [permissionKey]: { can: () => true } },
+        provide: { [permissionKey]: { can } },
         stubs: { ProjectDialog: true, UploadDialog: true, ShareDialog: true },
       },
     },
@@ -308,3 +312,177 @@ it.each(['projects', 'detail'] as const)(
     ).toHaveLength(2)
   },
 )
+
+it.each(['projects', 'detail'] as const)(
+  'restores %s through its scoped trash endpoint and refreshes usage',
+  async (kind) => {
+    let restored = false
+    const original = vi.mocked(request.post).getMockImplementation()!
+    vi.mocked(request.post).mockImplementation(async (path, ...args) => {
+      if (path.endsWith('/_deleted/_query'))
+        return response({
+          data: restored
+            ? []
+            : [
+                kind === 'projects'
+                  ? { ...project, deletedTime: 2 }
+                  : { id: 'v1', projectId: 'p1', deletedTime: 2 },
+              ],
+          total: restored ? 0 : 1,
+          pageIndex: 0,
+          pageSize: 20,
+        })
+      if (path.endsWith('/_restore')) {
+        restored = true
+        return response(project)
+      }
+      return original(path, ...args)
+    })
+    const { projects, detail } = await render(kind)
+    const state = kind === 'projects' ? projects : detail
+    state.trash.value = true
+    await flushPromises()
+    const row =
+      kind === 'projects'
+        ? projects.resource.data.value[0]!
+        : detail.resource.data.value.versions[0]!
+    if (kind === 'projects') await projects.restore(row as Project)
+    else await detail.restore(row.id)
+    expect(request.post).toHaveBeenCalledWith(
+      `/prototype-hub/${kind === 'projects' ? 'projects/p1' : 'versions/v1'}/_restore`,
+      undefined,
+      undefined,
+    )
+    expect(state.pagination.total).toBe(0)
+    expect(
+      vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/_usage')),
+    ).toHaveLength(3)
+  },
+)
+
+it.each([409, 404])(
+  'keeps restore errors authoritative (%s) and reloads only a missing tombstone',
+  async (status) => {
+    const original = vi.mocked(request.post).getMockImplementation()!
+    vi.mocked(request.post).mockImplementation(async (path, ...args) => {
+      if (path.endsWith('/_deleted/_query'))
+        return response({
+          data: [{ ...project, deletedTime: 2 }],
+          total: 1,
+          pageIndex: 0,
+          pageSize: 20,
+        })
+      if (path.endsWith('/_restore')) throw new ApiError('Restore refused', status)
+      return original(path, ...args)
+    })
+    const { projects } = await render('projects')
+    projects.trash.value = true
+    await flushPromises()
+    const before = vi.mocked(request.post).mock.calls.length
+    await projects.restore(projects.resource.data.value[0]!)
+    expect(projects.task.error.value).toBe('Restore refused')
+    expect(projects.resource.data.value[0]?.id).toBe('p1')
+    expect(vi.mocked(request.post).mock.calls.length - before).toBe(status === 404 ? 2 : 1)
+  },
+)
+
+it.each(['resolve', 'reject'] as const)(
+  'does not close or poison a reopened project form after an old save %s',
+  async (outcome) => {
+    const { projects } = await render('projects')
+    let resolve!: (value: ApiResponse<Project>) => void
+    let reject!: (cause: Error) => void
+    const pending = new Promise<ApiResponse<Project>>((done, fail) => {
+      resolve = done
+      reject = fail
+    })
+    vi.mocked(request.post).mockReturnValueOnce(pending)
+    projects.edit()
+    const saving = projects.save({ name: 'Old form' })
+    projects.open.value = false
+    projects.edit()
+    projects.form.value.name = 'New draft'
+    if (outcome === 'resolve') resolve(response(project))
+    else reject(new ApiError('Old save failed', 500))
+    await saving
+    expect(projects.open.value).toBe(true)
+    expect(projects.form.value.name).toBe('New draft')
+    expect(projects.task.error.value).toBe('')
+  },
+)
+
+it.each(['resolve', 'reject'] as const)(
+  'does not refresh or poison a different project after an old delete %s',
+  async (outcome) => {
+    const { detail, router } = await render('detail')
+    let resolve!: (value: ApiResponse<boolean>) => void
+    let reject!: (cause: Error) => void
+    vi.mocked(request.remove).mockReturnValueOnce(
+      new Promise((done, fail) => {
+        resolve = done
+        reject = fail
+      }),
+    )
+    const deleting = detail.remove('v1')
+    const original = vi.mocked(request.get).getMockImplementation()!
+    vi.mocked(request.get).mockImplementation((path, ...args) =>
+      path === '/prototype-hub/projects/p2'
+        ? Promise.resolve(response({ ...project, id: 'p2' }))
+        : original(path, ...args),
+    )
+    vi.mocked(request.post).mockResolvedValue(
+      response({ data: [], total: 0, pageIndex: 0, pageSize: 20 }),
+    )
+    await router.push('/prototype-hub/projects/p2')
+    await flushPromises()
+    const queries = vi.mocked(request.post).mock.calls.length
+    if (outcome === 'resolve') resolve(response(true))
+    else reject(new ApiError('Old delete failed', 404))
+    await deleting
+    expect(detail.resource.data.value.project?.id).toBe('p2')
+    expect(detail.task.error.value).toBe('')
+    expect(vi.mocked(request.post).mock.calls).toHaveLength(queries)
+  },
+)
+
+it('hides project restore without the save action even when the server reports owner capabilities', async () => {
+  const original = vi.mocked(request.post).getMockImplementation()!
+  vi.mocked(request.post).mockImplementation(async (path, ...args) =>
+    path.endsWith('/_deleted/_query')
+      ? response({ data: [{ ...project, deletedTime: 2 }], total: 1, pageIndex: 0, pageSize: 20 })
+      : original(path, ...args),
+  )
+  const { wrapper } = await render(
+    'projects',
+    true,
+    (value) => value !== 'prototype-hub-project:save',
+  )
+  await wrapper.get('input[type="radio"][value="true"]').setValue()
+  await flushPromises()
+  expect(wrapper.text()).toContain(project.name)
+  expect(wrapper.find('button[aria-label="恢复"]').exists()).toBe(false)
+})
+
+it('does not expose the version recycle bin to a viewer despite global action grants', async () => {
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/projects/p1'
+      ? Promise.resolve(
+          response({
+            ...project,
+            role: 'viewer',
+            capabilities: {
+              read: true,
+              edit: false,
+              deleteProject: false,
+              manageMembers: false,
+              manageShares: false,
+            },
+          }),
+        )
+      : original(path, ...args),
+  )
+  const { wrapper } = await render('detail', true)
+  expect(wrapper.text()).not.toContain('回收站')
+  expect(wrapper.find('button[aria-label="恢复"]').exists()).toBe(false)
+})

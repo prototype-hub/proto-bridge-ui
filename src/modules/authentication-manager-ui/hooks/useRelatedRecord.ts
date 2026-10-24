@@ -1,3 +1,4 @@
+import { secureId } from '@/shared/utils/secure-id'
 import { onScopeDispose, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { relatedSaveMessage } from '@/modules/authentication-manager-ui/utils/related-record'
@@ -58,7 +59,7 @@ export function useRelatedRecord(
     const session = activeSession()
     if (session === undefined) return
     relatedError.value = ''
-    const sourceId = `related_${crypto.randomUUID()}`
+    const sourceId = `related_${secureId()}`
     const path = { role: '/system/Role', org: '/system/Department', position: '/system/Positions' }[
       kind
     ]

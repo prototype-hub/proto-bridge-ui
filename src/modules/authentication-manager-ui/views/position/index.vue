@@ -73,9 +73,12 @@ async function savedPosition(record: Model) {
   await state.load()
 }
 useLegacyDetail(
-  async (id) => {
+  async (id, _path, current) => {
     if (id === ':id') selected.value = {}
-    else selected.value = positionDetail(await detail(id))
+    else {
+      const loaded = positionDetail(await detail(id))
+      if (current()) selected.value = loaded
+    }
   },
   async () => {
     selected.value = {}

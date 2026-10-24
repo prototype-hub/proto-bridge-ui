@@ -1,3 +1,4 @@
+import { secureId } from '@/shared/utils/secure-id'
 /** Keeps a creation retry on the same key until its metadata, file or dialog intent changes. */
 export function createCreationIntent() {
   let previous: readonly unknown[] = []
@@ -9,13 +10,7 @@ export function createCreationIntent() {
         parts.length !== previous.length ||
         parts.some((part, index) => !Object.is(part, previous[index]))
       ) {
-        // LAN deployments may use HTTP, where randomUUID is unavailable but getRandomValues works.
-        key =
-          typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : [...crypto.getRandomValues(new Uint8Array(16))]
-                .map((byte) => byte.toString(16).padStart(2, '0'))
-                .join('')
+        key = secureId()
         previous = [...parts]
       }
       return key

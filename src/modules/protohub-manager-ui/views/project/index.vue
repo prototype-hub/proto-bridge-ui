@@ -6,9 +6,12 @@ import {
   Card as ACard,
   Space as ASpace,
   Alert as AAlert,
+  RadioGroup as ARadioGroup,
+  RadioButton as ARadioButton,
 } from 'ant-design-vue'
 import {
   ClockCircleOutlined,
+  UndoOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -31,6 +34,8 @@ const router = useRouter()
 const route = useRoute()
 const {
   resource,
+  trash,
+  restore,
   usage,
   loadUsage,
   refresh,
@@ -58,11 +63,20 @@ function openDetail(id: string) {
       ><permission-button
         :permission="p.project.save"
         type="primary"
-        :disabled="usage.data.value?.projects.canCreate === false"
+        :disabled="trash || usage.data.value?.projects.canCreate === false"
         @click="edit()"
         >{{ t('proto.newProject') }}</permission-button
       ></template
     >
+    <a-radio-group
+      v-model:value="trash"
+      class="prototype-list-mode"
+      :aria-label="t('proto.listMode')"
+    >
+      <a-radio-button :value="false">{{ t('proto.activeProjects') }}</a-radio-button>
+      <a-radio-button :value="true">{{ t('proto.recycleBin') }}</a-radio-button>
+    </a-radio-group>
+    <a-alert v-if="trash" type="info" show-icon :message="t('proto.recycleHint')" />
     <prototype-list-toolbar
       v-model:keyword="search"
       :sort="sort"
@@ -88,12 +102,12 @@ function openDetail(id: string) {
           :key="project.id"
           class="project-card"
           hoverable
-          role="link"
-          tabindex="0"
+          :role="trash ? undefined : 'link'"
+          :tabindex="trash ? undefined : 0"
           :aria-label="`${t('common.detail')}：${project.name}`"
-          @click="openDetail(project.id)"
-          @keydown.enter.self.prevent="openDetail(project.id)"
-          @keydown.space.self.prevent="openDetail(project.id)"
+          @click="!trash && openDetail(project.id)"
+          @keydown.enter.self.prevent="!trash && openDetail(project.id)"
+          @keydown.space.self.prevent="!trash && openDetail(project.id)"
           ><article class="project-card-content">
             <header class="project-card-header">
               <span class="project-icon" aria-hidden="true"><folder-open-outlined /></span
@@ -107,24 +121,34 @@ function openDetail(id: string) {
                 <clock-circle-outlined />
                 <text-ellipsis
                   class="project-updated-text"
-                  :text="`${t('proto.updatedAt')}：${new Date(project.updatedAt).toLocaleString()}`"
+                  :text="`${t(trash ? 'proto.deletedAt' : 'proto.updatedAt')}：${new Date(project.deletedTime || project.updatedAt).toLocaleString()}`"
                 />
               </span>
               <a-space class="project-actions" :size="4" :wrap="false" @click.stop @keydown.stop>
                 <action-button
+                  v-if="trash && projectAllows(project, 'deleteProject')"
+                  :label="t('proto.restore')"
+                  :icon="UndoOutlined"
+                  :permission="p.project.save"
+                  :disabled="task.busy.value"
+                  :confirm="t('proto.projectRestoreConfirm')"
+                  @action="restore(project)"
+                />
+                <action-button
+                  v-if="!trash"
                   :label="t('common.detail')"
                   :icon="EyeOutlined"
                   @action="openDetail(project.id)"
                 />
                 <action-button
-                  v-if="projectAllows(project, 'edit')"
+                  v-if="!trash && projectAllows(project, 'edit')"
                   :label="t('common.edit')"
                   :icon="EditOutlined"
                   :permission="p.project.save"
                   @action="edit(project)"
                 />
                 <action-button
-                  v-if="projectAllows(project, 'deleteProject')"
+                  v-if="!trash && projectAllows(project, 'deleteProject')"
                   :label="t('common.delete')"
                   :icon="DeleteOutlined"
                   :permission="p.project.delete"
@@ -152,6 +176,9 @@ function openDetail(id: string) {
   /></page-container>
 </template>
 <style scoped>
+.prototype-list-mode {
+  margin-bottom: var(--space-4);
+}
 .project-pagination {
   margin-top: var(--space-4);
 }
