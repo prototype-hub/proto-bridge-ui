@@ -101,6 +101,14 @@ let menus: ServerMenu[] = []
 let projects: Project[] = []
 let versions: Version[] = []
 let shares: Share[] = []
+// Test clock and cleanup are fixture-only; browser time never decides server restoration rights.
+const retentionMs = 30 * 24 * 60 * 60 * 1000
+let fixtureTime: number | undefined
+const now = () => fixtureTime ?? Date.now()
+const retained = (tombstones: Map<string, number>, id: string) => {
+  const deletedTime = tombstones.get(id)
+  return deletedTime !== undefined && deletedTime > now() - retentionMs
+}
 // Retain fixture lineage while normal endpoints expose only active resources.
 const deletedProjects = new Map<string, number>()
 const deletedVersions = new Map<string, number>()
@@ -147,6 +155,7 @@ function reset() {
   resetSystem()
   menus = structuredClone(initialMenus)
   counter = 10
+  fixtureTime = undefined
   deletedProjects.clear()
   deletedVersions.clear()
   projects = [
@@ -251,7 +260,7 @@ function saveRevision(value: Version, content: string | Buffer) {
     fileCount: 3,
     totalBytes: Buffer.byteLength(content),
     createdBy: value.createdBy,
-    createdAt: Date.now(),
+    createdAt: now(),
   }
   revisions.set(revision.id, revision)
 }
@@ -351,6 +360,48 @@ function createOnce(
   if (receiptKey) creationReceipts.set(receiptKey, { payload, result: structuredClone(result) })
   send(res, 200, result)
 }
+/** Models committed graph removal, not filesystem safety or database transactions. */
+function purgeExpired() {
+  const expiredVersions = new Set(
+    versions
+      .filter((item) => deletedVersions.has(item.id) && !retained(deletedVersions, item.id))
+      .map((item) => item.id),
+  )
+  versions = versions.filter((item) => !expiredVersions.has(item.id))
+  // Every raw child protects its parent, including a younger tombstone or an active row.
+  const expiredProjects = new Set(
+    projects
+      .filter(
+        (item) =>
+          deletedProjects.has(item.id) &&
+          !retained(deletedProjects, item.id) &&
+          !versions.some((child) => child.projectId === item.id),
+      )
+      .map((item) => item.id),
+  )
+  projects = projects.filter((item) => !expiredProjects.has(item.id))
+  for (const id of expiredVersions) deletedVersions.delete(id)
+  for (const id of expiredProjects) {
+    deletedProjects.delete(id)
+    projectMembers.delete(id)
+  }
+  for (const [id, revision] of revisions)
+    if (expiredVersions.has(revision.versionId)) revisions.delete(id)
+  for (const [id, session] of previewSessions)
+    if (expiredVersions.has(session.versionId) || expiredProjects.has(session.projectId))
+      previewSessions.delete(id)
+  shares = shares.filter((item) => {
+    if (!expiredVersions.has(item.versionId) && !expiredProjects.has(item.projectId)) return true
+    passwords.delete(item.token)
+    shareRevisions.delete(item.token)
+    return false
+  })
+  for (const [key, receipt] of creationReceipts) {
+    const value = receipt.result
+    if ('projectId' in value ? expiredVersions.has(value.id) : expiredProjects.has(value.id))
+      creationReceipts.delete(key)
+  }
+}
 function multipartFields(bytes: Buffer, contentType: string) {
   const boundary = contentType
     .match(/boundary=(?:"([^"]+)"|([^;]+))/)
@@ -365,7 +416,7 @@ function multipartFields(bytes: Buffer, contentType: string) {
   }
   return fields
 }
-async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+export async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url || '/', 'http://localhost')
   const path = url.pathname.replace(/^\/api/, '')
   const method = req.method || 'GET'
@@ -374,7 +425,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     send(res, 200, true)
     return true
   }
-  if (!url.pathname.startsWith('/api/')) return false
+  const clockControl = method === 'POST' && url.pathname === '/__test/clock'
+  const cleanupControl = method === 'POST' && url.pathname === '/__test/purge-expired'
+  if (!url.pathname.startsWith('/api/') && !clockControl && !cleanupControl) return false
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   const bytes = Buffer.concat(chunks)
@@ -386,19 +439,31 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     input = raw
   }
   const data = object(input)
+  if (clockControl) {
+    if (typeof data.now !== 'number' || !Number.isSafeInteger(data.now) || data.now < 0)
+      send(res, 400, null, 'Invalid fixture clock')
+    else {
+      fixtureTime = data.now
+      send(res, 200, fixtureTime)
+    }
+    return true
+  }
+  if (cleanupControl) {
+    purgeExpired()
+    send(res, 200, true)
+    return true
+  }
   if (path.startsWith('/prototype-hub/runtime/')) {
-    if (path.startsWith('/prototype-hub/runtime/')) {
-      const [, , , versionId, key] = path.split('/')
-      const session = previewSessions.get(key)
-      if (
-        !session ||
-        session.versionId !== versionId ||
-        session.expiresAt <= Date.now() ||
-        !activeVersion(session.versionId)
-      ) {
-        send(res, 403, null, 'Preview unavailable')
-        return true
-      }
+    const [, , , versionId, key] = path.split('/')
+    const session = previewSessions.get(key)
+    if (
+      !session ||
+      session.versionId !== versionId ||
+      session.expiresAt <= now() ||
+      !activeVersion(session.versionId)
+    ) {
+      send(res, 403, null, 'Preview unavailable')
+      return true
     }
     res.setHeader('Content-Type', 'text/html')
     res.end(runtimeHtml)
@@ -454,7 +519,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       activeVersion(record.versionId)?.projectId !== record.projectId ||
       !record.enabled ||
       record.revoked ||
-      (record.expiresAt != null && record.expiresAt <= Date.now())
+      (record.expiresAt != null && record.expiresAt <= now())
     ) {
       send(res, 404, null, 'Share unavailable', 'PROTOHUB_SHARE_UNAVAILABLE')
       return true
@@ -525,7 +590,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         member
           ? []
           : projects
-              .filter((item) => deletedProjects.has(item.id))
+              .filter((item) => retained(deletedProjects, item.id))
               .map((item) => ({ ...item, deletedTime: deletedProjects.get(item.id) })),
         data,
       ),
@@ -542,7 +607,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         200,
         prototypePage(
           versions
-            .filter((item) => item.projectId === projectId && deletedVersions.has(item.id))
+            .filter((item) => item.projectId === projectId && retained(deletedVersions, item.id))
             .map((item) => ({ ...item, deletedTime: deletedVersions.get(item.id) })),
           data,
         ),
@@ -567,6 +632,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     else if (member) send(res, 403, null, 'Access denied')
     else if (!tombstones.has(id))
       send(res, 409, null, 'Resource already active', 'PROTOTYPE_HUB_RESOURCE_ACTIVE')
+    else if (!retained(tombstones, id)) send(res, 404, null, 'Resource unavailable')
     else if (used >= 5)
       send(
         res,
@@ -775,8 +841,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
           name,
           description,
           createdBy: 'admin',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt: now(),
+          updatedAt: now(),
           ...ownerProjectAccess,
         }
         projects.push(value)
@@ -822,9 +888,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         'PROTOTYPE_HUB_PROJECT_HAS_VERSIONS',
       )
     else {
-      if (method === 'PUT') Object.assign(value, data, { updatedAt: Date.now() })
+      if (method === 'PUT') Object.assign(value, data, { updatedAt: now() })
       if (method === 'DELETE') {
-        deletedProjects.set(id, Date.now())
+        deletedProjects.set(id, now())
         revokeResourceAccess(id)
       }
       send(res, 200, value)
@@ -859,7 +925,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     else if (suffix === 'pages') send(res, 200, revisionPages(revision.id))
     else if (suffix === 'preview-session' && method === 'POST') {
       const key = `short-preview-${++counter}`
-      const expiresAt = Date.now() + 300000
+      const expiresAt = now() + 300000
       previewSessions.set(key, {
         versionId: id!,
         revisionId: revision.id,
@@ -916,7 +982,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         saveRevision(value, fields.get('file') || Buffer.alloc(0))
       }
       if (method === 'DELETE') {
-        deletedVersions.set(id, Date.now())
+        deletedVersions.set(id, now())
         revokeResourceAccess(value.projectId, id)
       }
       send(res, 200, value)

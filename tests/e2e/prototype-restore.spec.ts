@@ -1,5 +1,6 @@
 import { expect, test, type APIResponse, type Locator } from '@playwright/test'
 import { login } from './system-helpers'
+import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
 import type { Version, PublicShare } from '../../src/modules/protohub-manager-ui/types'
 const origin = 'http://127.0.0.1:5187'
 const headers = { 'X-Access-Token': 'mock-admin' }
@@ -8,7 +9,7 @@ async function result<T>(response: APIResponse): Promise<T> {
   expect(response.ok()).toBe(true)
   return ((await response.json()) as { result: T }).result
 }
-async function usable(prompt: Locator) {
+async function usable(prompt: Locator, confirmName = '确定') {
   await expect(prompt).toBeVisible()
   await expect
     .poll(() =>
@@ -41,7 +42,7 @@ async function usable(prompt: Locator) {
       }),
     )
     .toBeLessThanOrEqual(6)
-  await prompt.getByRole('button', { name: '确定', exact: true }).click({ trial: true })
+  await prompt.getByRole('button', { name: confirmName, exact: true }).click({ trial: true })
 }
 test.beforeEach(async ({ request }) => {
   await request.post(`${origin}/__test/reset`)
@@ -174,6 +175,8 @@ test('keeps long project deletion confirmation readable at the viewport edge on 
   await card.getByRole('button', { name: '删除', exact: true }).click()
   const prompt = page.locator('.ant-popconfirm')
   await usable(prompt)
+  await expect(prompt).toContainText(protoLocales.zh.projectDeleteConfirm)
+  await expect(prompt).toContainText('30 天')
   await prompt.getByRole('button', { name: '取消', exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
   await card.getByRole('button', { name: '删除', exact: true }).click()
@@ -184,5 +187,49 @@ test('keeps long project deletion confirmation readable at the viewport edge on 
   })
   await prompt.getByRole('button', { name: '取消', exact: true }).click()
   await expect(card).toBeVisible()
+  await page.getByRole('button', { name: '语言', exact: true }).click()
+  await card.getByRole('button', { name: 'Delete', exact: true }).click()
+  await usable(prompt, 'OK')
+  await expect(prompt).toContainText(protoLocales.en.projectDeleteConfirm)
+  await expect(prompt).toContainText('30 days')
+  await prompt.getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(deleted).toEqual([])
 })
+
+for (const kind of ['projects', 'versions'] as const)
+  test(`expires a ${kind} tombstone while confirmation is open and refreshes after the real 404`, async ({
+    page,
+    request,
+  }) => {
+    const epoch = 2_000_000_000_000
+    await request.post(`${origin}/__test/clock`, { data: { now: epoch } })
+    await request.delete(`${origin}/api/prototype-hub/versions/v1`, { headers })
+    if (kind === 'projects')
+      await request.delete(`${origin}/api/prototype-hub/projects/p1`, { headers })
+    await login(page)
+    if (kind === 'versions') await page.goto('prototype-hub/projects/p1')
+    await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+    await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.zh.recycleHint)
+    const row =
+      kind === 'projects'
+        ? page.locator('.project-card').filter({ hasText: 'Contract project' })
+        : page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
+    await expect(row).toBeVisible()
+    await row.getByRole('button', { name: '恢复', exact: true }).click()
+    await request.post(`${origin}/__test/clock`, {
+      data: { now: epoch + 30 * 24 * 60 * 60 * 1000 },
+    })
+    const response = page.waitForResponse((value) =>
+      value.url().endsWith(`/${kind}/${kind === 'projects' ? 'p1' : 'v1'}/_restore`),
+    )
+    await page.locator('.ant-popconfirm').getByRole('button', { name: '确定', exact: true }).click()
+    expect((await response).status()).toBe(404)
+    await expect(row).toHaveCount(0)
+    await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
+    await expect(page.locator('.capacity-notice')).toContainText(
+      kind === 'projects' ? '项目用量：0 / 5' : '当前项目版本用量：0 / 5',
+    )
+    await page.getByRole('button', { name: '语言', exact: true }).click()
+    await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.en.recycleHint)
+    await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
+  })

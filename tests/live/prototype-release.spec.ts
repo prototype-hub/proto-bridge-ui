@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { liveEnvironment } from './environment'
+import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
 import type { Share, PublicShare, PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
@@ -809,8 +810,9 @@ liveTest(
         .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
       await row.getByRole('button', { name: '删除', exact: true }).click()
       const prompt = page.locator('.ant-popconfirm')
-      await expect(prompt).toContainText('删除后保留修订和文件')
-      await expect(prompt).toContainText('可从回收站恢复')
+      await expect(prompt).toContainText(protoLocales.zh.versionDeleteConfirm)
+      await expect(prompt).toContainText('30 天')
+      await expect(prompt).toContainText('到期自动永久清理')
       const deleting = page.waitForResponse(
         (response) =>
           response.request().method() === 'DELETE' &&
@@ -893,7 +895,9 @@ liveTest(
       await page.goto('/prototype-hub')
       const card = page.getByRole('link', { name: `详情：${name} 2`, exact: true })
       await card.getByRole('button', { name: '删除', exact: true }).click()
-      await expect(prompt).toContainText('删除后保留数据')
+      await expect(prompt).toContainText(protoLocales.zh.projectDeleteConfirm)
+      await expect(prompt).toContainText('30 天')
+      await expect(prompt).toContainText('到期自动永久清理')
       const deletingProject = page.waitForResponse(
         (response) =>
           response.request().method() === 'DELETE' &&
@@ -937,6 +941,8 @@ liveTest(
       await page.goto(`/prototype-hub/projects/${projectId}`)
       await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
       await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.zh.recycleHint)
+      await expect(page.locator('.ant-alert-info')).toContainText('30 天，到期不可恢复')
       const row = page
         .getByRole('row')
         .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
