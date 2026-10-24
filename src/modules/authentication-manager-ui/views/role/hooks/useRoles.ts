@@ -1,3 +1,4 @@
+import { secureId } from '@/shared/utils/secure-id'
 import { ref, onMounted } from 'vue'
 import { rolesApi } from '@/modules/authentication-manager-ui/api/role/roles'
 import { roleIdentityApi } from '@/modules/authentication-manager-ui/api/role/role-options'
@@ -45,7 +46,7 @@ export function useRoles() {
   }
   function editGroup(row?: SystemRecord) {
     if (row?.id === 'default_group') return
-    groupForm.value = { id: row?.id || crypto.randomUUID(), name: row?.name || '' }
+    groupForm.value = { id: row?.id || secureId(), name: row?.name || '' }
     groupOpen.value = true
   }
   async function saveGroup() {

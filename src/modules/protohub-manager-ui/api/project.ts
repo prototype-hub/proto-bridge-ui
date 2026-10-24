@@ -11,6 +11,22 @@ import type {
 } from '../types'
 const segment = encodeURIComponent
 export const projectsApi = {
+  deleted: async (query: PrototypeListQuery, options?: RequestOptions) =>
+    (
+      await request.post<PageResult<Project>>(
+        '/prototype-hub/projects/_deleted/_query',
+        query,
+        options,
+      )
+    ).result,
+  restore: async (id: string, options?: RequestOptions) =>
+    (
+      await request.post<Project>(
+        `/prototype-hub/projects/${segment(id)}/_restore`,
+        undefined,
+        options,
+      )
+    ).result,
   /** Query only the current user's authorized projects; legacy list keeps its array contract. */
   query: async (query: PrototypeListQuery, options?: RequestOptions) =>
     (await request.post<PageResult<Project>>('/prototype-hub/projects/_query', query, options))

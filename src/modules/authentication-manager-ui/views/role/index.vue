@@ -47,8 +47,9 @@ const {
   save,
   remove,
 } = useRoles()
-useLegacyDetail(async (id) => {
-  selected.value = recordsOf([((await getRoleDetails_api(id)) as { result: unknown }).result])[0]
+useLegacyDetail(async (id, _path, current) => {
+  const loaded = recordsOf([((await getRoleDetails_api(id)) as { result: unknown }).result])[0]
+  if (current()) selected.value = loaded
 })
 const columns = computed(() => [
   { title: t('common.name'), dataIndex: 'name' },

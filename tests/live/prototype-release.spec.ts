@@ -810,7 +810,7 @@ liveTest(
       await row.getByRole('button', { name: '删除', exact: true }).click()
       const prompt = page.locator('.ant-popconfirm')
       await expect(prompt).toContainText('删除后保留修订和文件')
-      await expect(prompt).toContainText('暂无恢复入口')
+      await expect(prompt).toContainText('可从回收站恢复')
       const deleting = page.waitForResponse(
         (response) =>
           response.request().method() === 'DELETE' &&
@@ -924,6 +924,124 @@ liveTest(
         await request.get('/api/prototype-hub/projects/_usage', { headers: owned.headers }),
       )
       expect(projectUsage.projects).toMatchObject({ used: 5, limit: 5, canCreate: false })
+    })
+
+    await test.step('restore through project and version recycle bins without reviving old grants', async () => {
+      // Free this test's active version slots; retained revisions remain available for explicit restore.
+      for (const id of [...owned.versions]) {
+        await result(
+          await request.delete(`/api/prototype-hub/versions/${id}`, { headers: owned.headers }),
+        )
+        owned.versions = owned.versions.filter((entry) => entry !== id)
+      }
+      await page.goto(`/prototype-hub/projects/${projectId}`)
+      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      const row = page
+        .getByRole('row')
+        .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
+        .filter({ has: page.getByRole('cell', { name: '2 个修订', exact: true }) })
+      const restoringVersion = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}/_restore`,
+      )
+      await row.getByRole('button', { name: '恢复', exact: true }).click()
+      await page
+        .locator('.ant-popconfirm')
+        .getByRole('button', { name: '确定', exact: true })
+        .click()
+      const restored = await result<Version>(await restoringVersion)
+      expect(restored.id).toBe(versionId)
+      expect(restored.currentRevisionId).toBe(secondRevisionId)
+      owned.versions.push(versionId)
+      const revoked = await result<Share[]>(
+        await request.get(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+        }),
+      )
+      expect(revoked.length).toBeGreaterThan(0)
+      for (const share of revoked) {
+        expect(share.revoked).toBe(true)
+        expect(
+          (await request.get(`/api/prototype-hub/public/shares/${share.token}`)).status(),
+        ).toBe(404)
+      }
+      const freshSession = await result<{ previewUrl: string }>(
+        await request.post(
+          `/api/prototype-hub/versions/${versionId}/revisions/${secondRevisionId}/preview-session`,
+          { headers: owned.headers },
+        ),
+      )
+      expect((await request.get(freshSession.previewUrl)).status()).toBe(200)
+      await result(
+        await request.delete(`/api/prototype-hub/versions/${versionId}`, {
+          headers: owned.headers,
+        }),
+      )
+      owned.versions = owned.versions.filter((id) => id !== versionId)
+      await result(
+        await request.delete(`/api/prototype-hub/projects/${projectId}`, {
+          headers: owned.headers,
+        }),
+      )
+      owned.projects = owned.projects.filter((id) => id !== projectId)
+      expect((await request.get(freshSession.previewUrl)).status()).toBe(403)
+      await page.goto('/prototype-hub')
+      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      const card = page
+        .locator('.project-card')
+        .filter({ hasText: name })
+        .filter({ hasNotText: `${name} 2` })
+        .filter({ hasNotText: `${name} 3` })
+        .filter({ hasNotText: `${name} 4` })
+        .filter({ hasNotText: `${name} 5` })
+      const restoringProject = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/api/prototype-hub/projects/${projectId}/_restore`,
+      )
+      await card.getByRole('button', { name: '恢复', exact: true }).click()
+      await page
+        .locator('.ant-popconfirm')
+        .getByRole('button', { name: '确定', exact: true })
+        .click()
+      expect((await result<Resource>(await restoringProject)).id).toBe(projectId)
+      owned.projects.push(projectId)
+      expect(
+        (
+          await request.get(`/api/prototype-hub/versions/${versionId}`, { headers: owned.headers })
+        ).status(),
+      ).toBe(404)
+      await page.goto(`/prototype-hub/projects/${projectId}`)
+      await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(0)
+      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      const secondRestore = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}/_restore`,
+      )
+      await row.getByRole('button', { name: '恢复', exact: true }).click()
+      await page
+        .locator('.ant-popconfirm')
+        .getByRole('button', { name: '确定', exact: true })
+        .click()
+      expect((await result<Version>(await secondRestore)).id).toBe(versionId)
+      owned.versions.push(versionId)
+      const freshShare = await result<Share>(
+        await request.post(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+          data: { revisionMode: 'fixed' },
+        }),
+      )
+      owned.shares.push(freshShare.id)
+      const granted = await result<PublicShare>(
+        await request.get(`/api/prototype-hub/public/shares/${freshShare.token}`),
+      )
+      expect((await request.get(granted.previewUrl!)).status()).toBe(200)
+      for (const old of revoked)
+        expect((await request.get(`/api/prototype-hub/public/shares/${old.token}`)).status()).toBe(
+          404,
+        )
     })
   },
 )

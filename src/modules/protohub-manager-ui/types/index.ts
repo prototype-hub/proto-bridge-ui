@@ -9,6 +9,7 @@ export interface PrototypeListQuery {
 export type PrototypeListSort = 'createTime:desc' | 'createTime:asc' | 'name:asc' | 'name:desc'
 
 export interface Project {
+  deletedTime?: number | null
   id: string
   name: string
   description?: string
@@ -67,6 +68,7 @@ export interface VersionUsage {
   versions: Capacity
 }
 export interface Version {
+  deletedTime?: number | null
   id: string
   projectId: string
   versionName: string

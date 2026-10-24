@@ -66,6 +66,7 @@ const menu = (
   code,
   name,
   url,
+  owner: 'iot',
   buttons: actions.map((action) => ({ id: action, name: action, granted: true })),
   granted: true,
 })
@@ -515,6 +516,72 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true
   }
   const member = token === 'mock-member'
+  // Recovery is a separate scoped API, never an include-deleted flag on ordinary reads.
+  if (method === 'POST' && path === '/prototype-hub/projects/_deleted/_query') {
+    send(
+      res,
+      200,
+      prototypePage(
+        member
+          ? []
+          : projects
+              .filter((item) => deletedProjects.has(item.id))
+              .map((item) => ({ ...item, deletedTime: deletedProjects.get(item.id) })),
+        data,
+      ),
+    )
+    return true
+  }
+  if (method === 'POST' && path === '/prototype-hub/versions/_deleted/_query') {
+    const projectId = url.searchParams.get('projectId')
+    if (!projectId || !activeProject(projectId)) send(res, 404, null, 'Resource unavailable')
+    else if (member) send(res, 403, null, 'Access denied')
+    else
+      send(
+        res,
+        200,
+        prototypePage(
+          versions
+            .filter((item) => item.projectId === projectId && deletedVersions.has(item.id))
+            .map((item) => ({ ...item, deletedTime: deletedVersions.get(item.id) })),
+          data,
+        ),
+      )
+    return true
+  }
+  const restore =
+    method === 'POST' && path.match(/^\/prototype-hub\/(projects|versions)\/([^/]+)\/_restore$/)
+  if (restore) {
+    const id = decodeURIComponent(restore[2]!)
+    const isProject = restore[1] === 'projects'
+    const value = isProject
+      ? projects.find((item) => item.id === id)
+      : versions.find((item) => item.id === id)
+    const tombstones = isProject ? deletedProjects : deletedVersions
+    const projectId = value && 'projectId' in value ? value.projectId : id
+    const used = isProject
+      ? projects.filter((item) => activeProject(item.id)).length
+      : versions.filter((item) => item.projectId === projectId && activeVersion(item.id)).length
+    if (!value || (!isProject && !activeProject(projectId)))
+      send(res, 404, null, 'Resource unavailable')
+    else if (member) send(res, 403, null, 'Access denied')
+    else if (!tombstones.has(id))
+      send(res, 409, null, 'Resource already active', 'PROTOTYPE_HUB_RESOURCE_ACTIVE')
+    else if (used >= 5)
+      send(
+        res,
+        409,
+        null,
+        '已达到免费额度',
+        isProject ? 'PROTOTYPE_HUB_PROJECT_LIMIT_REACHED' : 'PROTOTYPE_HUB_VERSION_LIMIT_REACHED',
+      )
+    else {
+      tombstones.delete(id)
+      // Retained shares stay revoked and preview sessions are never recreated.
+      send(res, 200, { ...value, deletedTime: null })
+    }
+    return true
+  }
   // Apply retained-resource visibility before every nested read or mutation, including uploads.
   const projectScope = path.match(/^\/prototype-hub\/projects\/([^/]+)(?:\/|$)/)?.[1]
   const versionScope = path.match(/^\/prototype-hub\/versions\/([^/]+)(?:\/|$)/)?.[1]

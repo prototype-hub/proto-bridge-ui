@@ -18,6 +18,21 @@ function uploadData(name: string, description: string, file: File, expectedRevis
   return data
 }
 export const versionsApi = {
+  deleted: async (projectId: string, query: PrototypeListQuery, options?: RequestOptions) =>
+    (
+      await request.post<PageResult<Version>>('/prototype-hub/versions/_deleted/_query', query, {
+        ...options,
+        params: { projectId },
+      })
+    ).result,
+  restore: async (id: string, options?: RequestOptions) =>
+    (
+      await request.post<Version>(
+        `/prototype-hub/versions/${segment(id)}/_restore`,
+        undefined,
+        options,
+      )
+    ).result,
   /** Keep project scope outside the typed filter body so callers cannot replace that boundary. */
   query: async (projectId: string, query: PrototypeListQuery, options?: RequestOptions) =>
     (

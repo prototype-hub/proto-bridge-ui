@@ -36,7 +36,7 @@ watch([allowed, blocked], ([permitted, disabled]) => {
       <a-popconfirm
         v-model:open="open"
         :title="confirm"
-        :overlay-style="{ maxWidth: 'min(420px, calc(100vw - 24px))' }"
+        :overlay-style="{ width: 'max-content', maxWidth: 'min(420px, calc(100vw - 24px))' }"
         :disabled="!confirm || blocked"
         @confirm="act"
       >

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h, ref } from 'vue'
+import { Modal, Form, Select } from 'ant-design-vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { request } from '@/shared/api/client'
@@ -22,6 +23,7 @@ import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/us
 import { useProjectMembers } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectMembers'
 import { useShares } from '@/modules/protohub-manager-ui/views/project/hooks/useShares'
 import ProjectDetail from '@/modules/protohub-manager-ui/views/project/detail/index.vue'
+import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
 import PreviewView from '@/modules/protohub-manager-ui/views/preview/index.vue'
 import { ownerProjectAccess } from '../fixtures/project-access'
 import { hookHarness } from '../fixtures/hook-harness'
@@ -99,7 +101,11 @@ async function routerAt(path: string) {
   await router.push(path)
   return router
 }
-async function detailPage(can: (value: string | string[]) => boolean = () => true, ui = false) {
+async function detailPage(
+  can: (value: string | string[]) => boolean = () => true,
+  ui = false,
+  memberUi = false,
+) {
   const router = await routerAt('/projects/p1')
   let state!: ReturnType<typeof useProjectDetail>
   const harness = hookHarness(() => {
@@ -109,7 +115,12 @@ async function detailPage(can: (value: string | string[]) => boolean = () => tru
     global: {
       plugins: [createPinia(), router, i18n],
       provide: { [permissionKey]: { can } },
-      stubs: { UploadDialog: true, ShareDialog: true, ProjectMembersDialog: true },
+      stubs: {
+        UploadDialog: true,
+        ShareDialog: true,
+        ProjectMembersDialog: !memberUi,
+        ...(memberUi ? { DataTable: true, CapacityNotice: true, PrototypeListToolbar: true } : {}),
+      },
     },
   })
   wrappers.push(wrapper)
@@ -299,6 +310,88 @@ it('drops an old project and its controls before a failed navigation can leave t
   expect(state.uploadOpen.value).toBe(false)
   await flushPromises()
   expect(state.resource.data.value.versions).toEqual([])
+})
+it('keeps the actual member dialog open while its successful mutation revalidates the same project', async () => {
+  const { wrapper } = await detailPage(() => true, true, true)
+  await wrapper.get('button[aria-label="项目成员"]').trigger('click')
+  await flushPromises()
+  const dialog = wrapper.getComponent(ProjectMembersDialog)
+  const modal = dialog.getComponent(Modal)
+  expect(modal.props('open')).toBe(true)
+  const pending = deferred<ReturnType<typeof response<Project>>>()
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/projects/p1' ? pending.promise : original(path, ...args),
+  )
+  dialog.findAllComponents(Select)[0]!.vm.$emit('update:value', 'u2')
+  dialog.getComponent(Form).vm.$emit('finish')
+  await flushPromises()
+  expect(request.put).toHaveBeenCalledWith(
+    '/prototype-hub/projects/p1/members/u2',
+    { role: 'viewer' },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
+  expect(dialog.emitted('changed')).toHaveLength(1)
+  expect(modal.props('open')).toBe(true)
+  expect(dialog.props('project')?.id).toBe('p1')
+  pending.resolve(response(structuredClone(project)))
+  await flushPromises()
+  expect(modal.props('open')).toBe(true)
+  expect(dialog.props('project')?.id).toBe('p1')
+})
+it.each(['rejected', 'revoked'] as const)(
+  'closes the member dialog after a current project check is %s',
+  async (outcome) => {
+    const { wrapper } = await detailPage(() => true, true, true)
+    await wrapper.get('button[aria-label="项目成员"]').trigger('click')
+    await flushPromises()
+    const dialog = wrapper.getComponent(ProjectMembersDialog)
+    const pending = deferred<ReturnType<typeof response<Project>>>()
+    const original = vi.mocked(request.get).getMockImplementation()!
+    vi.mocked(request.get).mockImplementation((path, ...args) =>
+      path === '/prototype-hub/projects/p1' ? pending.promise : original(path, ...args),
+    )
+    dialog.vm.$emit('changed')
+    await flushPromises()
+    expect(dialog.getComponent(Modal).props('open')).toBe(true)
+    if (outcome === 'rejected') pending.reject(new ApiError('Unavailable', 404))
+    else
+      pending.resolve(
+        response({
+          ...project,
+          role: 'viewer',
+          capabilities: { ...project.capabilities, manageMembers: false },
+        }),
+      )
+    await flushPromises()
+    expect(dialog.getComponent(Modal).props('open')).toBe(false)
+    expect(dialog.props('open')).toBe(false)
+    expect(dialog.props('project')?.capabilities.manageMembers).not.toBe(true)
+  },
+)
+it('does not reopen a member dialog when a same-project revalidation finishes after navigation', async () => {
+  const { wrapper, router } = await detailPage(() => true, true, true)
+  await wrapper.get('button[aria-label="项目成员"]').trigger('click')
+  await flushPromises()
+  const dialog = wrapper.getComponent(ProjectMembersDialog)
+  const pending = deferred<ReturnType<typeof response<Project>>>()
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) => {
+    if (path === '/prototype-hub/projects/p1') return pending.promise
+    if (path === '/prototype-hub/projects/p2')
+      return Promise.reject(new ApiError('Unavailable', 404))
+    return original(path, ...args)
+  })
+  dialog.vm.$emit('changed')
+  await flushPromises()
+  await router.push('/projects/p2')
+  await flushPromises()
+  expect(dialog.getComponent(Modal).props('open')).toBe(false)
+  expect(dialog.props('project')).toBeUndefined()
+  pending.resolve(response(structuredClone(project)))
+  await flushPromises()
+  expect(dialog.getComponent(Modal).props('open')).toBe(false)
+  expect(dialog.props('project')).toBeUndefined()
 })
 it('uses only the exchanged short preview grant and never the nullable legacy version URLs', async () => {
   const { state } = await previewPage()
