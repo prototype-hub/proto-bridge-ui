@@ -257,3 +257,54 @@ it('refreshes version usage after deleting an existing version', async () => {
     vi.mocked(request.get).mock.calls.filter(([path]) => path === '/prototype-hub/versions/_usage'),
   ).toHaveLength(2)
 })
+
+it.each(['projects', 'detail'] as const)(
+  'releases %s usage after deletion while retaining the server limit',
+  async (kind) => {
+    let removed = false
+    const original = vi.mocked(request.get).getMockImplementation()!
+    vi.mocked(request.get).mockImplementation((path, ...args) =>
+      path.endsWith('/_usage')
+        ? Promise.resolve(
+            response(
+              kind === 'projects'
+                ? { installationId: 'private-installation', projects: capacity(removed ? 4 : 5) }
+                : { projectId: 'p1', versions: capacity(removed ? 4 : 5) },
+            ),
+          )
+        : original(path, ...args),
+    )
+    vi.mocked(request.remove).mockImplementation(async () => {
+      removed = true
+      return response(true)
+    })
+    const { projects, detail } = await render(kind)
+    const state = kind === 'projects' ? projects : detail
+    const current = () =>
+      kind === 'projects' ? projects.usage.data.value?.projects : detail.usage.data.value?.versions
+    expect(current()).toMatchObject({ used: 5, limit: 5, canCreate: false })
+    await state.remove(kind === 'projects' ? 'p1' : 'v1')
+    expect(current()).toMatchObject({ used: 4, limit: 5, remaining: 1, canCreate: true })
+  },
+)
+
+it.each(['projects', 'detail'] as const)(
+  'clears a concurrently deleted %s row on 404 without hiding the real denial',
+  async (kind) => {
+    const { projects, detail } = await render(kind)
+    const state = kind === 'projects' ? projects : detail
+    vi.mocked(request.remove).mockRejectedValueOnce(new ApiError('Resource unavailable', 404))
+    vi.mocked(request.post).mockResolvedValue(
+      response({ data: [], total: 0, pageIndex: 0, pageSize: 20 }),
+    )
+    await state.remove(kind === 'projects' ? 'p1' : 'v1')
+    expect(state.task.error.value).toBe('Resource unavailable')
+    expect(
+      kind === 'projects' ? projects.resource.data.value : detail.resource.data.value.versions,
+    ).toEqual([])
+    expect(state.pagination.total).toBe(0)
+    expect(
+      vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/_usage')),
+    ).toHaveLength(2)
+  },
+)

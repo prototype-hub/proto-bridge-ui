@@ -38,7 +38,10 @@ export const protoLocales = {
       projectsRetained: '暂时无法新增项目，已有项目仍可查看、编辑和删除。',
       versionsRetained: '暂时无法新增版本，已有版本仍可预览、更新、分享和删除。',
     },
-    projectDeleteConfirm: '确认删除该原型项目？项目下存在版本时无法删除，请先删除全部版本。',
+    projectDeleteConfirm:
+      '确认删除该原型项目？项目下存在版本时无法删除，请先删除全部版本。删除后保留数据，释放使用额度，暂无恢复入口；原预览和分享将拒绝后续访问。',
+    versionDeleteConfirm:
+      '确认删除该版本？删除后保留修订和文件，释放版本使用额度，暂无恢复入口；原预览和分享将拒绝后续访问。已下载内容无法撤回。',
     upload: '上传版本',
     update: '上传新修订',
     updateHint:
@@ -231,7 +234,9 @@ export const protoLocales = {
         'New versions are paused. Existing versions can still be previewed, replaced, shared and deleted.',
     },
     projectDeleteConfirm:
-      'Delete this prototype project? Projects with versions cannot be deleted. Delete all versions first.',
+      'Delete this prototype project? Delete all active versions first. Data is retained and usage is released, with no restore action available. Existing preview and share links will reject subsequent requests.',
+    versionDeleteConfirm:
+      'Delete this version? Revisions and files are retained and usage is released, with no restore action available. Existing preview and share links will reject subsequent requests. Downloaded content cannot be recalled.',
     upload: 'Upload version',
     update: 'Upload new revision',
     updateHint:

@@ -4,6 +4,7 @@ import { createCreationIntent } from '@/modules/protohub-manager-ui/utils/creati
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { saved, deleted } from '@/shared/utils/feedback'
+import { ApiError } from '@/shared/api/errors'
 import type { ProjectInput, Project, ProjectUsage } from '@/modules/protohub-manager-ui/types'
 import { usePrototypeList } from './usePrototypeList'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
@@ -71,7 +72,13 @@ export function useProjects() {
     )
       return
     await task.run(async () => {
-      await projectsApi.remove(id)
+      try {
+        await projectsApi.remove(id)
+      } catch (cause) {
+        // Another operator may have deleted the row; reload without treating a denial as success.
+        if (cause instanceof ApiError && cause.status === 404) await refresh()
+        throw cause
+      }
       deleted()
       await refresh()
     })

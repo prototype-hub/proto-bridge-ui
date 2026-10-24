@@ -100,6 +100,15 @@ let menus: ServerMenu[] = []
 let projects: Project[] = []
 let versions: Version[] = []
 let shares: Share[] = []
+// Retain fixture lineage while normal endpoints expose only active resources.
+const deletedProjects = new Map<string, number>()
+const deletedVersions = new Map<string, number>()
+const activeProject = (id: string) =>
+  projects.find((item) => item.id === id && !deletedProjects.has(id))
+const activeVersion = (id: string) =>
+  versions.find(
+    (item) => item.id === id && !deletedVersions.has(id) && activeProject(item.projectId),
+  )
 const revisions = new Map<string, Revision>()
 const shareRevisions = new Map<string, string>()
 let users: ManagedUser[] = []
@@ -118,11 +127,27 @@ function revokePreviews(projectId: string, versionId?: string) {
     if (session.projectId === projectId && (!versionId || session.versionId === versionId))
       previewSessions.delete(key)
 }
+/** Deleting a resource terminally revokes shares without erasing their retained records. */
+function revokeResourceAccess(projectId: string, versionId?: string) {
+  revokePreviews(projectId, versionId)
+  for (const share of shares) {
+    if (share.projectId !== projectId || (versionId && share.versionId !== versionId)) continue
+    if (!share.revoked) share.configVersion++
+    share.enabled = false
+    share.revoked = true
+  }
+}
 const creationReceipts = new Map<string, { payload: string; result: Project | Version }>()
+const creationReceiptKey = (req: IncomingMessage, path: string) => {
+  const key = req.headers['idempotency-key']
+  return typeof key === 'string' ? `${req.headers['x-access-token']}:${path}:${key}` : undefined
+}
 function reset() {
   resetSystem()
   menus = structuredClone(initialMenus)
   counter = 10
+  deletedProjects.clear()
+  deletedVersions.clear()
   projects = [
     {
       id: 'p1',
@@ -247,7 +272,7 @@ function share(token: string, versionId: string, passwordRequired: boolean): Sha
     revoked: false,
     configVersion: 1,
     id: token,
-    projectId: 'p1',
+    projectId: activeVersion(versionId)?.projectId || 'p1',
     versionId,
     token,
     passwordRequired,
@@ -291,18 +316,22 @@ function createOnce(
   usage: Capacity,
   create: () => Project | Version,
 ) {
-  const key = req.headers['idempotency-key']
-  const receiptKey = typeof key === 'string' ? `${path}:${key}` : undefined
+  const receiptKey = creationReceiptKey(req, path)
   const receipt = receiptKey ? creationReceipts.get(receiptKey) : undefined
   if (receipt) {
+    const original = receipt.result
+    const current =
+      'projectId' in original ? activeVersion(original.id) : activeProject(original.id)
+    // A retained creation receipt cannot resurrect a deleted resource or be reused for a new ID.
+    if (!current) {
+      send(res, 409, null, '创建结果已删除，请重新发起创建', 'PROTOTYPE_HUB_IDEMPOTENCY_CONFLICT')
+      return
+    }
     if (receipt.payload === payload) {
-      const original = receipt.result
-      const current =
-        'revisionId' in original ? versions.find((item) => item.id === original.id) : undefined
       send(
         res,
         200,
-        current
+        'currentRevisionId' in current
           ? {
               ...original,
               currentRevisionId: current.currentRevisionId,
@@ -360,8 +389,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     if (path.startsWith('/prototype-hub/runtime/')) {
       const [, , , versionId, key] = path.split('/')
       const session = previewSessions.get(key)
-      if (!session || session.versionId !== versionId || session.expiresAt <= Date.now()) {
-        send(res, 404, null, 'Preview unavailable')
+      if (
+        !session ||
+        session.versionId !== versionId ||
+        session.expiresAt <= Date.now() ||
+        !activeVersion(session.versionId)
+      ) {
+        send(res, 403, null, 'Preview unavailable')
         return true
       }
     }
@@ -415,11 +449,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const suffix = publicMatch[2]
     if (
       !record ||
+      !activeProject(record.projectId) ||
+      activeVersion(record.versionId)?.projectId !== record.projectId ||
       !record.enabled ||
       record.revoked ||
       (record.expiresAt != null && record.expiresAt <= Date.now())
     ) {
-      send(res, 403, null, 'Share unavailable', 'PROTOHUB_SHARE_UNAVAILABLE')
+      send(res, 404, null, 'Share unavailable', 'PROTOHUB_SHARE_UNAVAILABLE')
       return true
     }
     const canonical = suffix.match(/^\/([^/]+)\/revisions\/([^/]+)\/(pages|runtime)(?:\/.*)?$/)
@@ -479,6 +515,45 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true
   }
   const member = token === 'mock-member'
+  // Apply retained-resource visibility before every nested read or mutation, including uploads.
+  const projectScope = path.match(/^\/prototype-hub\/projects\/([^/]+)(?:\/|$)/)?.[1]
+  const versionScope = path.match(/^\/prototype-hub\/versions\/([^/]+)(?:\/|$)/)?.[1]
+  const shareScope = path.match(/^\/prototype-hub\/shares\/([^/]+)(?:\/|$)/)?.[1]
+  const scopedShare =
+    shareScope && shares.find((item) => item.id === decodeURIComponent(shareScope))
+  const projectQuery =
+    (path === '/prototype-hub/versions' ||
+      path === '/prototype-hub/versions/_query' ||
+      path === '/prototype-hub/versions/_usage') &&
+    url.searchParams.get('projectId')
+  const receiptKey = creationReceiptKey(req, path)
+  const previousCreation = receiptKey && creationReceipts.get(receiptKey)
+  // Only the original actor's exact retained receipt can report a replay conflict before parent lookup.
+  if (
+    method === 'POST' &&
+    /^\/prototype-hub\/projects\/[^/]+\/versions$/.test(path) &&
+    projectScope &&
+    !activeProject(decodeURIComponent(projectScope)) &&
+    previousCreation &&
+    'projectId' in previousCreation.result &&
+    previousCreation.result.projectId === decodeURIComponent(projectScope)
+  ) {
+    send(res, 409, null, '创建结果已删除，请重新发起创建', 'PROTOTYPE_HUB_IDEMPOTENCY_CONFLICT')
+    return true
+  }
+  if (
+    (projectScope &&
+      !['_query', '_usage', '_ownership-migration'].includes(projectScope) &&
+      !activeProject(decodeURIComponent(projectScope))) ||
+    (versionScope &&
+      !['_query', '_usage'].includes(versionScope) &&
+      !activeVersion(decodeURIComponent(versionScope))) ||
+    (projectQuery && !activeProject(projectQuery)) ||
+    (shareScope && (!scopedShare || !activeVersion(scopedShare.versionId)))
+  ) {
+    send(res, 404, null, 'Resource unavailable')
+    return true
+  }
   if (
     member &&
     method !== 'GET' &&
@@ -580,24 +655,43 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       send(res, 200, value)
     }
   } else if (path === '/prototype-hub/projects/_query' && method === 'POST')
-    send(res, 200, prototypePage(projects, data))
+    send(
+      res,
+      200,
+      prototypePage(
+        projects.filter((item) => activeProject(item.id)),
+        data,
+      ),
+    )
   else if (path === '/prototype-hub/versions/_query' && method === 'POST')
     send(
       res,
       200,
       prototypePage(
-        versions.filter((item) => item.projectId === url.searchParams.get('projectId')),
+        versions.filter(
+          (item) => item.projectId === url.searchParams.get('projectId') && activeVersion(item.id),
+        ),
         data,
       ),
     )
-  else if (path === '/prototype-hub/projects' && method === 'GET') send(res, 200, projects)
+  else if (path === '/prototype-hub/projects' && method === 'GET')
+    send(
+      res,
+      200,
+      projects.filter((item) => activeProject(item.id)),
+    )
   else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
-    send(res, 200, { installationId: 'contract-installation', projects: capacity(projects.length) })
+    send(res, 200, {
+      installationId: 'contract-installation',
+      projects: capacity(projects.filter((item) => activeProject(item.id)).length),
+    })
   else if (path === '/prototype-hub/versions/_usage' && method === 'GET') {
     const projectId = url.searchParams.get('projectId')
     send(res, 200, {
       projectId,
-      versions: capacity(versions.filter((item) => item.projectId === projectId).length),
+      versions: capacity(
+        versions.filter((item) => item.projectId === projectId && activeVersion(item.id)).length,
+      ),
     })
   } else if (path === '/prototype-hub/projects' && method === 'POST') {
     const name = String(data.name).trim()
@@ -607,7 +701,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       res,
       path,
       JSON.stringify([name, description, data.cover || '']),
-      capacity(projects.length),
+      capacity(projects.filter((item) => activeProject(item.id)).length),
       () => {
         const value = {
           id: String(++counter),
@@ -635,7 +729,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       res,
       path,
       JSON.stringify([name, description, fileHash]),
-      capacity(versions.filter((item) => item.projectId === projectId).length),
+      capacity(
+        versions.filter((item) => item.projectId === projectId && activeVersion(item.id)).length,
+      ),
       () => {
         const value = { ...version(String(++counter), projectId, name), description }
         versions.push(value)
@@ -647,7 +743,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const id = decodeURIComponent(path.split('/')[3])
     const value = projects.find((item) => item.id === id)
     if (!value) send(res, 404, null, 'Project not found')
-    else if (method === 'DELETE' && versions.some((item) => item.projectId === id))
+    else if (
+      method === 'DELETE' &&
+      versions.some((item) => item.projectId === id && activeVersion(item.id))
+    )
       send(
         res,
         409,
@@ -657,14 +756,19 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       )
     else {
       if (method === 'PUT') Object.assign(value, data, { updatedAt: Date.now() })
-      if (method === 'DELETE') projects = projects.filter((item) => item !== value)
+      if (method === 'DELETE') {
+        deletedProjects.set(id, Date.now())
+        revokeResourceAccess(id)
+      }
       send(res, 200, value)
     }
   } else if (path === '/prototype-hub/versions')
     send(
       res,
       200,
-      versions.filter((item) => item.projectId === url.searchParams.get('projectId')),
+      versions.filter(
+        (item) => item.projectId === url.searchParams.get('projectId') && activeVersion(item.id),
+      ),
     )
   else if (
     /^\/prototype-hub\/versions\/[^/]+\/(?:current-revision|revisions(?:\/[^/]+(?:\/(?:pages|preview-session))?)?)$/.test(
@@ -745,10 +849,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         saveRevision(value, fields.get('file') || Buffer.alloc(0))
       }
       if (method === 'DELETE') {
-        revokePreviews(value.projectId, value.id)
-        versions = versions.filter((item) => item !== value)
-        for (const revision of revisions.values())
-          if (revision.versionId === id) revisions.delete(revision.id)
+        deletedVersions.set(id, Date.now())
+        revokeResourceAccess(value.projectId, id)
       }
       send(res, 200, value)
     }

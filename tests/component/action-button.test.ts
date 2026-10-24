@@ -105,6 +105,30 @@ describe('ActionButton', () => {
     expect(wrapper.get('button').classes()).toContain('ant-btn-dangerous')
   })
 
+  it('hides the icon tooltip while confirmation is open so its buttons stay reachable', async () => {
+    const wrapper = render({
+      label: 'Delete',
+      icon: DeleteOutlined,
+      confirm: 'Delete this version?',
+    })
+    await wrapper.get('.action-button-trigger').trigger('mouseenter')
+    await vi.waitFor(() => expect(body().get('.ant-tooltip-inner').text()).toBe('Delete'))
+    await wrapper.get('button').trigger('click')
+    await vi.waitFor(() =>
+      expect(body().get('.ant-popconfirm-message-title').text()).toBe('Delete this version?'),
+    )
+    await vi.waitFor(() =>
+      expect(
+        body()
+          .findAll('.ant-tooltip')
+          .every((tooltip) => !tooltip.isVisible()),
+      ).toBe(true),
+    )
+    expect(wrapper.emitted('action')).toBeUndefined()
+    await body().get('.ant-popconfirm-buttons .ant-btn-primary').trigger('click')
+    expect(wrapper.emitted('action')).toEqual([[]])
+  })
+
   it('blocks disabled/loading operations including an already-open confirmation', async () => {
     const wrapper = render({ disabled: true, confirm: 'Confirm edit?' })
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()

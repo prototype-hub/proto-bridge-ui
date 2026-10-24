@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { publicApi } from '@/modules/protohub-manager-ui/api'
 import type { PublicShare } from '@/modules/protohub-manager-ui/types'
+import { ApiError } from '@/shared/api/errors'
 const { route } = vi.hoisted(() => ({
   route: { params: { token: 'first' }, path: '/share/first', query: {} as Record<string, unknown> },
 }))
@@ -79,6 +80,19 @@ it('loads server-granted snapshot pages and drops old content before a retry is 
   await flushPromises()
   expect(state.resource.data.value.context).toBeUndefined()
   expect(state.resource.error.value).toBe('Share unavailable')
+})
+
+it('clears retained share identity and password when deletion rejects password verification', async () => {
+  const state = scope.run(usePublicShare)!
+  await flushPromises()
+  expect(state.resource.data.value.share?.token).toBe('first')
+  state.password.value = 'secret'
+  vi.mocked(publicApi.verify).mockRejectedValueOnce(new ApiError('Share unavailable', 404))
+  await state.verify()
+  expect(state.resource.data.value).toEqual({})
+  expect(state.resource.error.value).toBe('Share unavailable')
+  expect(state.password.value).toBe('')
+  expect(publicApi.pages).not.toHaveBeenCalled()
 })
 
 it.each(['fixed', 'latest'] as const)(

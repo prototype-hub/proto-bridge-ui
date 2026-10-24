@@ -96,6 +96,10 @@
 
 `Capacity` 为 `{used, limit, remaining, overLimit, canCreate}`；当前 `limit=5`，剩余数量最低为零。`canCreate=false` 表示已满或超限，`overLimit=true` 仅表示历史数据已超过上限。项目列表和详情独立加载用量，失败展示重试入口，不显示为零，也不阻断已有内容。满额禁用新增入口，已有项目编辑、上传版本新修订、预览、分享及删除仍可操作；删除后刷新用量。展示只是查询快照，并发新增仍以服务端事务校验结果为准。
 
+项目和版本的 `DELETE` 为软删除：正常列表、分页总数和使用额排除已删除记录，删除后释放相应使用额，保留原资源 ID、修订、文件、分享及创建请求记录；不改变购买额度、项目绑定或安装标识。项目仍有活动版本时返回 409，须先删除其全部活动版本。当前没有回收站、恢复或永久删除入口，保留数据不表示界面可以恢复。
+
+已删除项目或版本的详情、成员、上传、修订、页面、分享管理、新内部预览授权和公开分享均返回 404；此前签发的内部 runtime 地址继续遵循 403 拒绝语义。原公开分享及其旧资源授权不可再次使用，管理员也不能通过普通接口绕过删除状态。相同名称新建资源会产生新 ID，不能使旧预览或分享复活；保留的创建请求键重放返回 409。删除响应为 404 时，界面重读列表和用量并保留真实错误，不自动重试删除。撤销只作用于后续请求，无法撤回已经下载或渲染的内容。
+
 项目创建 `POST /prototype-hub/projects` 和版本上传 `POST /prototype-hub/projects/{projectId}/versions` 发送 `Idempotency-Key`。同一弹窗内、输入及所选文件不变的失败重试沿用原键；输入或所选文件改变、关闭后重新打开时生成新键，不自动重试 POST。后端将键绑定用户、动作和项目，并校验元数据与 ZIP 字节摘要；同键同内容返回首次创建的同一资源，同键异内容或资源已删除返回 409。上传新修订使用 `PUT /prototype-hub/versions/{id}`，不新增版本占用；并发冲突返回 409 `PROTOTYPE_HUB_VERSION_CONFLICT`，页面提示刷新确认，不自动覆盖。独立客户端可省略请求键，但不保证 POST 幂等；提供时须为 1–128 个可打印 ASCII 非空白字符。
 
 服务端容量冲突使用 HTTP 409 与 `PROTOTYPE_HUB_PROJECT_LIMIT_REACHED` / `PROTOTYPE_HUB_VERSION_LIMIT_REACHED`；幂等冲突为 HTTP 409 与 `PROTOTYPE_HUB_IDEMPOTENCY_CONFLICT`；无效请求键为 HTTP 400 与 `PROTOTYPE_HUB_IDEMPOTENCY_KEY_INVALID`。页面保留服务端失败原因，不把权限、网络或上传校验失败统一解释为容量不足。

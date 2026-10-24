@@ -777,5 +777,153 @@ liveTest(
       page.off('request', observe)
       expect(legacy).toEqual([])
     })
+
+    await test.step('soft delete through the UI, release usage and keep old grants denied after replacement', async () => {
+      const shared = await result<Share>(
+        await request.post(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+          data: { revisionMode: 'fixed' },
+        }),
+      )
+      owned.shares.push(shared.id)
+      const retainedShares = await result<Share[]>(
+        await request.get(`/api/prototype-hub/versions/${versionId}/shares`, {
+          headers: owned.headers,
+        }),
+      )
+      const grant = await result<PublicShare>(
+        await request.get(`/api/prototype-hub/public/shares/${shared.token}`),
+      )
+      const internal = await result<{ previewUrl: string }>(
+        await request.post(
+          `/api/prototype-hub/versions/${versionId}/revisions/${secondRevisionId}/preview-session`,
+          {
+            headers: owned.headers,
+          },
+        ),
+      )
+      expect((await request.get(grant.previewUrl!)).ok()).toBe(true)
+      expect((await request.get(internal.previewUrl)).ok()).toBe(true)
+      const row = page
+        .getByRole('row')
+        .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
+      await row.getByRole('button', { name: '删除', exact: true }).click()
+      const prompt = page.locator('.ant-popconfirm')
+      await expect(prompt).toContainText('删除后保留修订和文件')
+      await expect(prompt).toContainText('暂无恢复入口')
+      const deleting = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'DELETE' &&
+          new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}`,
+      )
+      await prompt.getByRole('button', { name: '确定', exact: true }).click()
+      expect((await deleting).status()).toBe(200)
+      // Retained shares become inaccessible with their parent; teardown tracks only live resources.
+      owned.versions = owned.versions.filter((id) => id !== versionId)
+      owned.shares = owned.shares.filter((id) => !retainedShares.some((share) => share.id === id))
+      await expect(row).toHaveCount(0)
+      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：4 / 5')
+      await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeEnabled()
+      const usage = await result<{ versions: Capacity }>(
+        await request.get(`/api/prototype-hub/versions/_usage?projectId=${projectId}`, {
+          headers: owned.headers,
+        }),
+      )
+      expect(usage.versions).toMatchObject({ used: 4, limit: 5, canCreate: true })
+      expect((await request.get(internal.previewUrl)).status()).toBe(403)
+      for (const url of [
+        grant.previewUrl!,
+        grant.pagesUrl!,
+        `/api/prototype-hub/public/shares/${shared.token}`,
+      ])
+        expect((await request.get(url)).status()).toBe(404)
+      for (const suffix of [
+        '',
+        `/revisions/${firstRevisionId}`,
+        `/revisions/${secondRevisionId}/pages`,
+        '/shares',
+      ])
+        expect(
+          (
+            await request.get(`/api/prototype-hub/versions/${versionId}${suffix}`, {
+              headers: owned.headers,
+            })
+          ).status(),
+        ).toBe(404)
+      expect(
+        (
+          await request.post(
+            `/api/prototype-hub/versions/${versionId}/revisions/${secondRevisionId}/preview-session`,
+            { headers: owned.headers },
+          )
+        ).status(),
+      ).toBe(404)
+      const fresh = await result<Version>(
+        await request.post(`/api/prototype-hub/projects/${projectId}/versions`, {
+          headers: owned.headers,
+          multipart: {
+            versionName: 'Browser replacement',
+            file: {
+              name: 'replacement.zip',
+              mimeType: 'application/zip',
+              buffer: readFileSync(environment.zipPath),
+            },
+          },
+        }),
+      )
+      owned.versions.push(fresh.id)
+      expect(fresh.id).not.toBe(versionId)
+      expect((await request.get(grant.previewUrl!)).status()).toBe(404)
+      const stalePage = await page.context().newPage()
+      try {
+        for (const path of [
+          `/preview/${projectId}/${versionId}?revisionId=${secondRevisionId}`,
+          `/share/${shared.token}`,
+        ]) {
+          await stalePage.goto(path)
+          await expect(stalePage.getByRole('button', { name: '重试', exact: true })).toBeVisible()
+          await expect(stalePage.locator('.frame-stage > iframe')).toHaveCount(0)
+        }
+      } finally {
+        await stalePage.close()
+      }
+      await page.reload()
+      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
+      const emptyProjectId = owned.projects[1]!
+      await page.goto('/prototype-hub')
+      const card = page.getByRole('link', { name: `详情：${name} 2`, exact: true })
+      await card.getByRole('button', { name: '删除', exact: true }).click()
+      await expect(prompt).toContainText('删除后保留数据')
+      const deletingProject = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'DELETE' &&
+          new URL(response.url()).pathname === `/api/prototype-hub/projects/${emptyProjectId}`,
+      )
+      await prompt.getByRole('button', { name: '确定', exact: true }).click()
+      expect((await deletingProject).status()).toBe(200)
+      owned.projects = owned.projects.filter((id) => id !== emptyProjectId)
+      await expect(card).toHaveCount(0)
+      await expect(page.locator('.capacity-notice')).toContainText('项目用量：4 / 5')
+      await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled()
+      const replacementProject = await result<Resource>(
+        await request.post('/api/prototype-hub/projects', {
+          headers: owned.headers,
+          data: { name: `${name} 2` },
+        }),
+      )
+      owned.projects.push(replacementProject.id)
+      expect(replacementProject.id).not.toBe(emptyProjectId)
+      expect(
+        (
+          await request.get(`/api/prototype-hub/projects/${emptyProjectId}`, {
+            headers: owned.headers,
+          })
+        ).status(),
+      ).toBe(404)
+      const projectUsage = await result<{ projects: Capacity }>(
+        await request.get('/api/prototype-hub/projects/_usage', { headers: owned.headers }),
+      )
+      expect(projectUsage.projects).toMatchObject({ used: 5, limit: 5, canCreate: false })
+    })
   },
 )
