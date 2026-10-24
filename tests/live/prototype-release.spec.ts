@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { liveEnvironment } from './environment'
-import type { Share, PublicShare } from '../../src/modules/protohub-manager-ui/types'
+import type { Share, PublicShare, PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
   id: string
@@ -208,6 +208,61 @@ liveTest(
       expect(Boolean(saved.request().headers()['idempotency-key'])).toBe(true)
       await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
       await preview(page)
+    })
+
+    await test.step('refresh and revisit a selected immutable page through member and anonymous app links', async () => {
+      const pages = await result<PrototypePage[]>(
+        await request.get(
+          `/api/prototype-hub/versions/${versionId}/revisions/${firstRevisionId}/pages`,
+          { headers: owned.headers },
+        ),
+      )
+      const flatten = (items: PrototypePage[]): PrototypePage[] =>
+        items.flatMap((item) => [item, ...flatten(item.children || [])])
+      const targets = flatten(pages).filter(
+        (item) => item.folder !== true && item.path && item.pageId,
+      )
+      expect(
+        targets.length,
+        'Runtime fixture exposes multiple stable manifest pages',
+      ).toBeGreaterThanOrEqual(2)
+      const target = targets[1]
+      for (const path of [`/preview/${projectId}/${versionId}`, `/share/${shareToken}`]) {
+        const popup = await page.context().newPage()
+        try {
+          const query = new URLSearchParams({ revisionId: firstRevisionId, pageId: target.pageId! })
+          await popup.goto(`${path}?${query}`)
+          const iframe = popup.locator('.frame-stage > iframe')
+          await expect(iframe).toHaveAttribute(
+            'src',
+            new RegExp(
+              `/${target
+                .path!.split('/')
+                .map(encodeURIComponent)
+                .join('/')
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+            ),
+          )
+          await expect(popup.locator('.workspace-current')).toContainText(target.name)
+          await expect(popup.locator('.current-path')).toHaveText(target.path!)
+          await popup.reload()
+          await expect(iframe).toHaveAttribute(
+            'src',
+            new RegExp(
+              `/${target
+                .path!.split('/')
+                .map(encodeURIComponent)
+                .join('/')
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+            ),
+          )
+          expect(new URL(popup.url()).searchParams.get('revisionId')).toBe(firstRevisionId)
+          expect(new URL(popup.url()).searchParams.get('pageId')).toBe(target.pageId)
+          await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-forms')
+        } finally {
+          await popup.close()
+        }
+      }
     })
 
     await test.step('search, add, change and remove a test-owned project member through the UI', async () => {
@@ -507,26 +562,53 @@ liveTest(
       } finally {
         await publicPage.close()
       }
-      async function action(label: string, suffix: string) {
-        await row.getByRole('button', { name: label, exact: true }).click()
+      async function action(
+        label: string,
+        suffix: string,
+        confirmation: string,
+        expectedVersion: number,
+      ) {
+        expect(changed).toMatchObject({
+          id: owned.shares[0],
+          configVersion: expectedVersion,
+          revoked: false,
+        })
+        await expect(row.locator('.share-url')).toHaveText(
+          new URL(`/share/${encodeURIComponent(changed.token)}`, page.url()).href,
+        )
+        await expect(row.locator('.share-status')).toHaveText(
+          changed.enabled ? '永久有效' : '已暂停',
+        )
+        const button = row.getByRole('button', { name: label, exact: true })
+        await expect(button).toBeEnabled()
+        await button.click()
         const pending = page.waitForResponse(
           (response) =>
             ['PUT', 'POST'].includes(response.request().method()) &&
             response.url().endsWith(`/shares/${changed.id}/${suffix}`),
         )
-        await page
-          .locator('.ant-popconfirm')
-          .getByRole('button', { name: '确定', exact: true })
-          .click()
-        changed = await result<Share>(await pending)
+        const prompt = page
+          .getByRole('tooltip')
+          .filter({ has: page.getByText(confirmation, { exact: true }) })
+        await expect(prompt).toBeVisible()
+        await prompt.getByRole('button', { name: '确定', exact: true }).click()
+        const response = await pending
+        expect(response.request().postDataJSON()).toMatchObject({ expectedVersion })
+        changed = await result<Share>(response)
+        expect(changed.configVersion).toBe(expectedVersion + 1)
       }
-      await action('暂停分享', 'enabled')
+      await action('暂停分享', 'enabled', '确认暂停分享？已有访问授权将失效。', 2)
       await expect(row.locator('.share-status')).toHaveText('已暂停')
       expect((await request.get(grant!.pagesUrl!)).ok()).toBe(false)
       expect((await request.get(grant!.previewUrl!)).ok()).toBe(false)
-      await action('恢复分享', 'enabled')
+      await action('恢复分享', 'enabled', '确认恢复分享？暂停前的访问授权不会恢复。', 3)
       expect((await request.get(grant!.pagesUrl!)).ok()).toBe(false)
-      await action('轮换链接', 'rotate-link')
+      await action(
+        '轮换链接',
+        'rotate-link',
+        '确认轮换链接？原链接和已有访问授权将永久失效，请重新分发新链接。',
+        4,
+      )
       expect(changed.token).not.toBe(shareToken)
       expect((await request.get(`/api/prototype-hub/public/shares/${shareToken}`)).ok()).toBe(false)
       shareToken = changed.token
@@ -536,7 +618,12 @@ liveTest(
         }),
       )
       expect(fresh.revisionId).toBe(secondRevisionId)
-      await action('永久撤销', 'revoke')
+      await action(
+        '永久撤销',
+        'revoke',
+        '确认永久撤销？此操作不可恢复，链接和已有访问授权将失效。',
+        5,
+      )
       await expect(row.locator('.share-status')).toHaveText('已撤销')
       expect((await request.get(fresh.pagesUrl!)).ok()).toBe(false)
       expect((await request.get(fresh.previewUrl!)).ok()).toBe(false)

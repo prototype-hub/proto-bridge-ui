@@ -2,6 +2,7 @@ import { computed, ref, shallowRef, watch, onScopeDispose } from 'vue'
 import { useRoute } from 'vue-router'
 import { projectsApi, versionsApi } from '@/modules/protohub-manager-ui/api'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+import { previewIdentity } from '@/modules/protohub-manager-ui/utils/preview-location'
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
@@ -29,14 +30,16 @@ export function usePreview() {
     const current = generation
     const request = new AbortController()
     controller = request
+    const locationPath = route.path
     const projectId = String(route.params.projectId)
     const versionId = String(route.params.versionId)
-    const revisionId = typeof route.query.revisionId === 'string' ? route.query.revisionId : ''
+    const revisionId = previewIdentity(route.query.revisionId)
     const options = { signal: request.signal, silent: true }
     loading.value = true
     error.value = ''
     expired.value = false
     try {
+      if (revisionId === null) throw new Error(t('proto.invalidPageTarget'))
       const [project, version] = await Promise.all([
         projectsApi.get(projectId, options),
         versionsApi.get(versionId, options),
@@ -71,6 +74,8 @@ export function usePreview() {
         throw new Error(t('proto.previewExpired'))
       runtimePageUrl(session.runtimeBaseUrl, revision.entryFile)
       data.value = {
+        revisionId: revision.id,
+        locationPath,
         title: project.name,
         versionName: revision.versionName,
         runtimeBaseUrl: session.runtimeBaseUrl,
@@ -95,12 +100,21 @@ export function usePreview() {
       if (current === generation) loading.value = false
     }
   }
-  const key = computed(() => [
-    route.params.projectId,
-    route.params.versionId,
-    route.query.revisionId,
-  ])
-  watch(key, load, { immediate: true, flush: 'sync' })
+  let loadedScope = ''
+  const key = computed(() =>
+    JSON.stringify([route.params.projectId, route.params.versionId, route.query.revisionId]),
+  )
+  watch(
+    key,
+    () => {
+      const scope = JSON.stringify([route.params.projectId, route.params.versionId])
+      // Canonicalizing an already-authorized revision must not exchange a second runtime grant.
+      if (scope === loadedScope && data.value?.revisionId === route.query.revisionId) return
+      loadedScope = scope
+      void load()
+    },
+    { immediate: true, flush: 'sync' },
+  )
   onScopeDispose(clear)
   return { data, loading, error, expired, load }
 }

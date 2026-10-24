@@ -116,8 +116,8 @@ async function detailPage(can: (value: string | string[]) => boolean = () => tru
   await flushPromises()
   return { state, router, wrapper }
 }
-async function previewPage(ui = false) {
-  const router = await routerAt('/preview/p1/v1')
+async function previewPage(ui = false, path = '/preview/p1/v1') {
+  const router = await routerAt(path)
   let state!: ReturnType<typeof usePreview>
   const harness = hookHarness(() => {
     state = usePreview()
@@ -557,4 +557,55 @@ it('keeps legacy versions visible but disables content actions until administrat
   expect(
     vi.mocked(request.post).mock.calls.filter(([path]) => path.endsWith('/preview-session')),
   ).toHaveLength(0)
+})
+
+it('does not exchange another grant for page changes or revision canonicalization and cannot renew after expiry', async () => {
+  vi.useFakeTimers()
+  const { state, router } = await previewPage()
+  await router.replace({ query: { revisionId: 'r1', pageId: 'home' } })
+  await router.push({ query: { revisionId: 'r1', pageId: 'detail' } })
+  await flushPromises()
+  expect(request.post).toHaveBeenCalledOnce()
+  expect(
+    vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/current-revision')),
+  ).toHaveLength(1)
+  await vi.advanceTimersByTimeAsync(300000)
+  expect(state.data.value).toBeUndefined()
+  await router.push({ query: { revisionId: 'r1', pageId: 'home' } })
+  await flushPromises()
+  expect(state.expired.value).toBe(true)
+  expect(state.data.value).toBeUndefined()
+  expect(request.post).toHaveBeenCalledOnce()
+})
+it.each(['?revisionId=', '?revisionId=r1&revisionId=r2', '?revisionId=%20r1', '?revisionId=%0A'])(
+  'rejects malformed revision query before authorizing %s',
+  async (query) => {
+    const { state } = await previewPage(false, `/preview/p1/v1${query}`)
+    expect(state.data.value).toBeUndefined()
+    expect(state.error.value).toBe(protoLocales.zh.invalidPageTarget)
+    expect(request.post).not.toHaveBeenCalled()
+    expect(request.get).not.toHaveBeenCalled()
+  },
+)
+
+it('discards a late revision grant when navigating between revisions of the same version', async () => {
+  const pending = deferred<ReturnType<typeof response<PreviewSession>>>()
+  vi.mocked(request.post).mockReturnValueOnce(pending.promise)
+  const { state, router } = await previewPage()
+  const signal = vi.mocked(request.post).mock.calls[0][2]!.signal as AbortSignal
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) =>
+    path === '/prototype-hub/versions/v1/revisions/r2'
+      ? Promise.resolve(response({ ...revision, id: 'r2', versionName: 'New revision' }))
+      : original(path, ...args),
+  )
+  await router.push('/preview/p1/v1?revisionId=r2&pageId=detail')
+  await flushPromises()
+  expect(signal.aborted).toBe(true)
+  expect(state.data.value?.revisionId).toBe('r2')
+  pending.resolve(response({ ...session(), runtimeBaseUrl: '/api/old-grant' }))
+  await flushPromises()
+  expect(state.data.value?.revisionId).toBe('r2')
+  expect(state.data.value?.versionName).toBe('New revision')
+  expect(state.data.value?.runtimeBaseUrl).not.toContain('old-grant')
 })

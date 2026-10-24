@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { login } from './system-helpers'
+import type { PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 
 test.beforeEach(async ({ request }) => {
   await request.post('http://127.0.0.1:5187/__test/reset')
@@ -52,6 +53,9 @@ test('uploading a revision keeps old shares and short grants, and history opens 
     .waitForEvent('request', (outgoing) =>
       outgoing.url().endsWith('/revisions/r-v1/preview-session'),
     )
+  const historyPages = page
+    .context()
+    .waitForEvent('response', (response) => response.url().endsWith('/revisions/r-v1/pages'))
   await drawer
     .getByRole('row')
     .filter({ has: page.getByText('r-v1', { exact: true }) })
@@ -59,7 +63,22 @@ test('uploading a revision keeps old shares and short grants, and history opens 
     .click()
   const historical = await historicalOpening
   await historyRequest
-  await expect(historical).toHaveURL(/\?revisionId=r-v1$/)
+  const manifest = ((await (await historyPages).json()) as { result: PrototypePage[] }).result
+  const flatten = (items: PrototypePage[]): PrototypePage[] =>
+    items.flatMap((item) => [item, ...flatten(item.children || [])])
+  const firstPage = flatten(manifest).find((item) => item.folder !== true && item.path)
+  expect(firstPage?.pageId).toBeTruthy()
+  await expect(historical).toHaveURL(
+    (url) =>
+      url.pathname === '/tools/preview/p1/v1' &&
+      url.searchParams.get('revisionId') === 'r-v1' &&
+      url.searchParams.get('pageId') === firstPage!.pageId,
+  )
+  expect([...new URL(historical.url()).searchParams]).toEqual([
+    ['revisionId', 'r-v1'],
+    ['pageId', firstPage!.pageId],
+  ])
+  expect(new URL(historical.url()).hash).toBe('')
   await expect(historical.getByText('V1', { exact: true })).toBeVisible()
   await expect(historical.locator('.frame-stage > iframe')).toHaveAttribute(
     'sandbox',
