@@ -11,6 +11,12 @@ export const protectedRoutes: RouteRecordRaw[] = [
 ]
 export const independentRoutes: RouteRecordRaw[] = [
   {
+    path: '/prototype-hub/compare/:projectId/:versionId',
+    name: 'PrototypeHub-revision-compare',
+    component: () => import('@/modules/protohub-manager-ui/views/compare/index.vue'),
+    meta: { standalone: true, permission: protoPermissions.version.query },
+  },
+  {
     path: '/preview/:projectId/:versionId',
     alias: [
       '/prototype-hub/projects/:projectId/versions/:versionId',

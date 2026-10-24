@@ -33,3 +33,9 @@ pnpm build
 回收站回归覆盖项目/版本恢复、同 ID 与修订保留、当前额度冲突、角色与动作权限、恢复后的新授权以及旧分享持续失效。恢复查询沿用原型列表的分页取消与最后页校正，不向普通查询添加 includeDeleted 开关。真实浏览器用例还检查先恢复父项目不会连带恢复版本。Mock 的测试专用时钟与清理控制分开模拟“到期但尚未清理”和“清理已完成”，覆盖 30 天前 1 毫秒、恰好到期、到期后 1 毫秒、未来时间、恢复 404 后刷新、子版本独立期限，以及清理后旧创建请求键只能产生新 ID。该控制仅在 `dev:mock` 中存在，不进入生产构建；它不证明真实数据库事务或物理文件安全。
 
 异步详情读取按路由代次提交结果，菜单、角色和职位均覆盖 A 请求晚于 B 完成的反例；原型删除及编辑结果只反馈给原来的页面或弹窗。安全随机标识统一使用共享工具，局域网 HTTP 缺少 randomUUID 时仅回退到 getRandomValues，不使用时间戳或 Math.random。
+
+## 修订比较的维护边界
+
+比较页复用历史修订分页、现有版本 query 权限、固定修订页面与短期预览接口。`useRevisionComparison` 管理 pair 请求、独立差异分页、页面位置和两个短期授权；切换 pair 取消旧请求并清空旧内容，分页不重新签发预览凭证。`useWorkspaceLocation` 的可选左右命名空间只用于比较页，默认单独预览与公开分享仍使用原 revisionId/pageId 规则。比较页面不写 currentRevisionId，不增加版本额度，也不把下载文件、视觉截图或语义重命名混入 hash 比较。
+
+相关测试入口：`tests/component/revision-comparison.test.ts`、`tests/component/preview-location.test.ts`、`tests/unit/revision-comparison-api.test.ts`、`tests/e2e/revision-comparison.spec.ts`，以及既有真实后端 `tests/live/prototype-release.spec.ts` 的比较步骤。Mock 仅提供有界历史、确定页面/文件差异及不同 HTML；服务端权限、持久清单分类与实际文件安全仍须由后端集成及真实 JAR 验证，不能以 Mock 结果替代。

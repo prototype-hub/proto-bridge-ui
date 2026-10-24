@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs'
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { liveEnvironment } from './environment'
 import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
-import type { Share, PublicShare, PrototypePage } from '../../src/modules/protohub-manager-ui/types'
+import type {
+  Share,
+  PublicShare,
+  PrototypePage,
+  RevisionComparison,
+} from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
   id: string
@@ -133,7 +138,7 @@ const liveTest = test.extend<{ owned: OwnedResources }>({
 
 liveTest(
   'production UI uses the real backend for login, members, nested preview, replacement and capacity',
-  async ({ page, request, owned }) => {
+  async ({ page, request, owned }, testInfo) => {
     const environment = liveEnvironment()
     const name = `Live verification ${randomUUID()}`
     let projectId = ''
@@ -498,6 +503,102 @@ liveTest(
       ).toBeVisible()
       await expect(publicPage.getByText('Browser upload', { exact: true })).toBeVisible()
       await publicPage.close()
+    })
+
+    await test.step('compare two fixed revisions through history without moving current or exposing grants', async () => {
+      await page.getByRole('button', { name: '历史修订', exact: true }).click()
+      const drawer = page.getByRole('dialog', { name: '历史修订', exact: true })
+      for (const id of [firstRevisionId, secondRevisionId])
+        await drawer
+          .getByRole('checkbox', {
+            name: protoLocales.zh.selectRevision.replace('{id}', id),
+            exact: true,
+          })
+          .locator('..')
+          .click()
+      const opening = page.waitForEvent('popup')
+      const comparing = page
+        .context()
+        .waitForEvent(
+          'response',
+          (response) =>
+            new URL(response.url()).pathname ===
+            `/api/prototype-hub/versions/${versionId}/revisions/_compare`,
+        )
+      await drawer
+        .getByRole('button', { name: protoLocales.zh.compareRevisions, exact: true })
+        .click()
+      const comparison = await opening
+      try {
+        const metadata = await result<RevisionComparison>(await comparing)
+        expect(metadata.versionId).toBe(versionId)
+        expect(metadata.left.id).toBe(firstRevisionId)
+        expect(metadata.right.id).toBe(secondRevisionId)
+        expect(metadata.summary.pages.changed).toBeGreaterThan(0)
+        expect(metadata.summary.files.changed).toBeGreaterThan(0)
+        const entry = metadata.pages.data.find((row) => row.path === metadata.left.entryFile)
+        expect(entry?.left?.pageId).toBeTruthy()
+        expect(entry?.right?.pageId).toBeTruthy()
+        await comparison
+          .getByRole('region', { name: protoLocales.zh.comparePages, exact: true })
+          .getByRole('row')
+          .filter({ has: comparison.getByText(entry!.path, { exact: true }) })
+          .getByRole('button', { name: protoLocales.zh.compareOpenPage, exact: true })
+          .click()
+        for (const [side, heading] of [
+          ['left', 'Runtime fixture home'],
+          ['right', 'Runtime fixture revision two'],
+        ] as const) {
+          const pane = comparison.locator(`[data-pane=${side}]`)
+          await expect(
+            pane.frameLocator('iframe').getByRole('heading', { name: heading, exact: true }),
+          ).toBeVisible()
+          await expect(pane.locator('iframe')).toHaveAttribute(
+            'sandbox',
+            'allow-scripts allow-forms',
+          )
+          await expect(pane.locator('iframe')).toHaveAttribute('referrerpolicy', 'no-referrer')
+        }
+        const query = new URL(comparison.url()).searchParams
+        expect([...query.keys()]).toEqual([
+          'leftRevisionId',
+          'rightRevisionId',
+          'leftPageId',
+          'rightPageId',
+        ])
+        expect(query.get('leftRevisionId')).toBe(firstRevisionId)
+        expect(query.get('rightRevisionId')).toBe(secondRevisionId)
+        expect(query.get('leftPageId')).toBe(entry!.left!.pageId)
+        expect(query.get('rightPageId')).toBe(entry!.right!.pageId)
+        await comparison.screenshot({
+          path: testInfo.outputPath('live-revision-comparison-desktop.png'),
+          animations: 'disabled',
+          fullPage: true,
+        })
+        await comparison.setViewportSize({ width: 390, height: 844 })
+        await expect(
+          comparison.getByRole('button', { name: protoLocales.zh.compareCopyLink, exact: true }),
+        ).toBeVisible()
+        for (const side of ['left', 'right']) {
+          const box = await comparison.locator(`[data-pane=${side}]`).boundingBox()
+          expect(box!.width).toBeGreaterThan(300)
+          expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+        }
+        await comparison.screenshot({
+          path: testInfo.outputPath('live-revision-comparison-mobile.png'),
+          animations: 'disabled',
+          fullPage: true,
+        })
+      } finally {
+        await comparison.close()
+      }
+      await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+      const current = await result<Resource>(
+        await request.get(`/api/prototype-hub/versions/${versionId}/current-revision`, {
+          headers: owned.headers,
+        }),
+      )
+      expect(current.id).toBe(secondRevisionId)
     })
 
     await test.step('manage share lifecycle through real UI and invalidate old canonical grants', async () => {

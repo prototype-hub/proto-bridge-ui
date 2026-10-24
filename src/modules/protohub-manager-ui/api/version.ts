@@ -7,6 +7,8 @@ import type {
   PrototypePage,
   VersionUsage,
   PreviewSession,
+  RevisionComparison,
+  ComparisonQuery,
 } from '../types'
 const segment = encodeURIComponent
 function uploadData(name: string, description: string, file: File, expectedRevisionId?: string) {
@@ -18,6 +20,15 @@ function uploadData(name: string, description: string, file: File, expectedRevis
   return data
 }
 export const versionsApi = {
+  /** Compare only explicit immutable revisions; never resolve the mutable current pointer. */
+  compare: async (id: string, query: ComparisonQuery, options?: RequestOptions) =>
+    (
+      await request.get<RevisionComparison>(
+        `/prototype-hub/versions/${segment(id)}/revisions/_compare`,
+        query,
+        options,
+      )
+    ).result,
   deleted: async (projectId: string, query: PrototypeListQuery, options?: RequestOptions) =>
     (
       await request.post<PageResult<Version>>('/prototype-hub/versions/_deleted/_query', query, {

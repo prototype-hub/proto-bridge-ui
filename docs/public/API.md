@@ -154,3 +154,13 @@
 旧分享保持永久撤销，旧内部预览凭证不复活。恢复后可按当前权限重新授权预览或创建新分享。恢复保留创建请求记录，保留的原请求键在重新核验当前授权后可以返回恢复的同一 ID，不能重复占用额度；该保证不延伸到永久清理之后。恢复按钮与普通保存权限共同生效；前端提示不替代服务端校验。
 
 升级包含自动清理的版本前，应停止全部旧版写入和清理节点，并在同一维护窗口备份数据库和原型存储目录；不要让不具备保留期规则的旧节点混合写入。升级前已有的删除记录也按原删除时间计算 30 天，到期数据会进入自动清理。恢复数据应同时恢复数据库与文件，不能仅依赖回收站代替备份。
+
+## 两修订比较
+
+成员可调用 `GET /prototype-hub/versions/{id}/revisions/_compare`，必填 `leftRevisionId`、`rightRevisionId`。两者必须属于同一活动版本及项目，可为同一修订。接口使用现有版本 query 动作与项目读权限，不授予公开分享历史访问能力。显式修订缺失、跨版本或资源已删除时遵守现有 404/403 边界；未迁移旧版本返回 409，不回退当前修订。
+
+响应包含 `versionId`、固定的 `left`/`right` 修订元数据、完整 `summary.pages`/`summary.files` 四状态计数及独立的 `pages`、`files` 分页。`pagesPageIndex`/`filesPageIndex` 从 0 开始，默认 0；对应 `pagesPageSize`/`filesPageSize` 默认 50，范围 1–100。`includeUnchanged` 默认 false，分页 total 只统计过滤后的结果，summary 始终统计完整集合。行按路径排序，超出范围返回空页。
+
+页面行是 `{path,status,left,right}`，各侧为 `{pageId,name,path}` 或 null；文件行各侧为 `{size,sha256,mediaType}` 或 null。状态为从左到右的 added、removed、changed、unchanged。文件同路径且 SHA-256 或大小不同即变化；页面以路径配对，主名称或关联文件变化即变化，重复路径保留首个主页面。路径区分大小写，重命名仅表现为删除与新增，不代表视觉或 HTML 语义差异。旧页面 null 标识保持原样，不伪造标识。响应不包含存储根目录或预览凭证。
+
+比较页 `/prototype-hub/compare/:projectId/:versionId` 通过 `leftRevisionId`、`rightRevisionId`、可选 `leftPageId`、`rightPageId` 恢复固定定位。历史抽屉按选择顺序打开左右修订；各侧目录独立导航，点击差异行才按该路径同时定位两侧。缺失页面显示空态，无稳定标识的旧页面仅显示比较信息，不能定位预览。每侧使用已有固定修订短期授权，过期卸载 iframe，需显式重新授权。复制链接只包含应用身份字段，不能包含平台 token 或运行态授权；原单独预览及公开分享的定位与授权行为保持不变。

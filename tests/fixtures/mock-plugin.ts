@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
+import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import type {
   PrototypeListQuery,
   Project,
@@ -265,6 +266,7 @@ function saveRevision(value: Version, content: string | Buffer) {
   revisions.set(revision.id, revision)
 }
 function revisionPages(revisionId: string): PrototypePage[] {
+  if (comparisonIds.some((id) => id === revisionId)) return comparisonPages(revisionId)
   const decorate = (items: PrototypePage[]): PrototypePage[] =>
     items.map((item) => ({
       ...item,
@@ -427,7 +429,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   }
   const clockControl = method === 'POST' && url.pathname === '/__test/clock'
   const cleanupControl = method === 'POST' && url.pathname === '/__test/purge-expired'
-  if (!url.pathname.startsWith('/api/') && !clockControl && !cleanupControl) return false
+  const comparisonControl = method === 'POST' && url.pathname === '/__test/comparison'
+  if (!url.pathname.startsWith('/api/') && !clockControl && !cleanupControl && !comparisonControl)
+    return false
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   const bytes = Buffer.concat(chunks)
@@ -439,6 +443,25 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     input = raw
   }
   const data = object(input)
+  if (comparisonControl) {
+    const value = versions[0]!
+    const original = revisions.get(value.currentRevisionId!)!
+    for (let index = 0; index < 52; index++) {
+      const revision = { ...original, id: `history-${index}`, createdAt: now() + index + 10 }
+      revisions.set(revision.id, revision)
+    }
+    for (const [index, id] of comparisonIds.entries())
+      revisions.set(id, {
+        ...original,
+        id,
+        versionName: index ? 'Right revision' : 'Left revision',
+        createdAt: now() - 1000 + index,
+      })
+    value.currentRevisionId = comparisonIds[1]
+    value.revisionCount = revisions.size
+    send(res, 200, true)
+    return true
+  }
   if (clockControl) {
     if (typeof data.now !== 'number' || !Number.isSafeInteger(data.now) || data.now < 0)
       send(res, 400, null, 'Invalid fixture clock')
@@ -466,7 +489,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       return true
     }
     res.setHeader('Content-Type', 'text/html')
-    res.end(runtimeHtml)
+    res.end(
+      session.revisionId.startsWith('compare-')
+        ? `<!doctype html><h1>${session.revisionId === 'compare-left' ? 'Left revision' : 'Right revision'}</h1><p>${path.split('/').slice(5).join('/')}</p>`
+        : runtimeHtml,
+    )
     return true
   }
   if (path === '/prototype-hub/public/mock-image.svg') {
@@ -903,7 +930,15 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         (item) => item.projectId === url.searchParams.get('projectId') && activeVersion(item.id),
       ),
     )
-  else if (
+  else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/_compare$/.test(path)) {
+    const id = decodeURIComponent(path.split('/')[3]!)
+    const value = activeVersion(id)
+    const left = revisions.get(url.searchParams.get('leftRevisionId') || '')
+    const right = revisions.get(url.searchParams.get('rightRevisionId') || '')
+    if (!value || !left || !right || left.versionId !== id || right.versionId !== id)
+      send(res, 404, null, 'Revision unavailable')
+    else send(res, 200, fixtureComparison(left, right, url.searchParams))
+  } else if (
     /^\/prototype-hub\/versions\/[^/]+\/(?:current-revision|revisions(?:\/[^/]+(?:\/(?:pages|preview-session))?)?)$/.test(
       path,
     )

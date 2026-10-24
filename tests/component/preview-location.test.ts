@@ -90,6 +90,57 @@ it('replaces the legacy entry, pushes exact IDs for alias paths and restores Bac
   await flushPromises()
   expect(state.selectedPage.value?.pageId).toBe('alias')
 })
+
+it('keeps two comparison namespaces independent and copies their pair without runtime grants', async () => {
+  const leftContext = ref({ ...context(), locationPath: '/compare/p1/v1' })
+  const rightContext = ref({ ...context(), revisionId: 'r2', locationPath: '/compare/p1/v1' })
+  let left!: ReturnType<typeof useWorkspaceLocation>,
+    right!: ReturnType<typeof useWorkspaceLocation>
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/compare/:projectId/:versionId',
+        component: hookHarness(() => {
+          left = useWorkspaceLocation(leftContext, 'left')
+          right = useWorkspaceLocation(rightContext, 'right')
+        }),
+      },
+    ],
+  })
+  await router.push(
+    '/compare/p1/v1?leftRevisionId=r1&rightRevisionId=r2&leftPageId=home&rightPageId=home&accessKey=secret',
+  )
+  wrappers.push(mount(RouterView, { global: { plugins: [router, i18n] } }))
+  await flushPromises()
+  left.select('nested/details.html', 'detail')
+  await flushPromises()
+  expect(left.pageId.value).toBe('detail')
+  expect(right.pageId.value).toBe('home')
+  right.select('nested/details.html', 'alias')
+  await flushPromises()
+  expect(left.pageId.value).toBe('detail')
+  expect(right.pageId.value).toBe('alias')
+  expect(router.currentRoute.value.query).toEqual({
+    leftRevisionId: 'r1',
+    rightRevisionId: 'r2',
+    leftPageId: 'detail',
+    rightPageId: 'alias',
+  })
+  router.back()
+  await flushPromises()
+  expect(right.pageId.value).toBe('home')
+  expect(left.pageId.value).toBe('detail')
+  await left.copyCurrentPage()
+  expect(vi.mocked(copyText).mock.calls.at(-1)![0]).not.toContain('secret')
+  expect(
+    new URL(vi.mocked(copyText).mock.calls.at(-1)![0]).searchParams.get('rightRevisionId'),
+  ).toBe('r2')
+  left.select('legacy.html')
+  expect(left.error.value).toBe(protoLocales.zh.compareLegacyPage)
+  expect(left.currentPage.value).toBe('')
+  expect(right.pageId.value).toBe('home')
+})
 it('copies a reconstructed app URL containing only authorized revision/page identity', async () => {
   const { state } = await setup(
     '/preview/p1/v1?revisionId=r1&pageId=detail&token=platform-secret&password=secret&accessKey=runtime-secret#bad',
