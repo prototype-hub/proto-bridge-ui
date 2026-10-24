@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectDetailView' })
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Space as ASpace,
@@ -38,6 +38,10 @@ import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/co
 const RevisionHistoryDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/RevisionHistoryDrawer.vue'),
 )
+const ReviewGuestsDrawer = defineAsyncComponent(
+  () => import('@/modules/protohub-manager-ui/views/project/components/ReviewGuestsDrawer.vue'),
+)
+const reviewGuestsOpen = ref(false)
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -66,6 +70,13 @@ const {
   preview,
   remove,
 } = useProjectDetail()
+// Navigation must not retain an open management scope from the previous project.
+watch(
+  () => resource.data.value.project?.id,
+  () => {
+    reviewGuestsOpen.value = false
+  },
+)
 const columns = computed(() => [
   { title: t('proto.versionName'), dataIndex: 'versionName' },
   { title: t('common.description'), dataIndex: 'description' },
@@ -84,7 +95,13 @@ const columns = computed(() => [
     back
     @back="router.push(projectListLocation(router, session.menus, route.query))"
     ><template #actions
-      ><a-space
+      ><a-space wrap
+        ><permission-button
+          v-if="!trash && projectAllows(resource.data.value.project, 'manageShares')"
+          :permission="p.share.query"
+          :aria-label="t('proto.reviewGuests')"
+          @click="reviewGuestsOpen = true"
+          >{{ t('proto.reviewGuests') }}</permission-button
         ><permission-button
           v-if="projectAllows(resource.data.value.project, 'manageMembers')"
           :permission="p.project.save"
@@ -241,7 +258,11 @@ const columns = computed(() => [
       :open="membersOpen"
       :project="resource.data.value.project"
       @close="membersOpen = false"
-      @changed="refresh" /><revision-history-drawer
+      @changed="refresh" /><review-guests-drawer
+      v-if="reviewGuestsOpen"
+      :open="reviewGuestsOpen"
+      :project="resource.data.value.project"
+      @close="reviewGuestsOpen = false" /><revision-history-drawer
       v-if="historyVersion"
       :project="resource.data.value.project"
       :version="historyVersion"

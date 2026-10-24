@@ -1,5 +1,21 @@
 export const protoLocales = {
   zh: {
+    reviewGuests: '访问者管理',
+    reviewGuestsHint:
+      '仅显示已验证邮箱的访问者，邮箱经过脱敏。姓名和公司由访问者自行填写，未核实。此处不管理平台用户，也不影响匿名原型预览。',
+    reviewGuestEnabled: '已启用',
+    reviewGuestDisabled: '已禁用',
+    reviewGuestDisable: '禁用访问者',
+    reviewGuestEnable: '启用访问者',
+    reviewGuestDisableConfirm:
+      '禁用此访问者？其现有身份会话和验证码将失效。重新启用后也必须重新获取验证码，匿名原型预览仍可使用。',
+    reviewGuestEnableConfirm:
+      '重新启用此访问者？旧会话和验证码不会恢复，访问者必须重新获取验证码。',
+    reviewGuestsUnavailable: '暂时无法读取访问者，请重试。',
+    reviewGuestsAccessChanged: '项目或访问者管理权限已变化，请关闭后刷新项目。',
+    reviewGuestUpdated: '访问者状态已更新。旧会话和验证码已失效，后续验证需重新获取验证码。',
+    reviewGuestConflict: '访问者已被其他操作更新。列表已刷新，请核对最新状态后重新确认。',
+    reviewGuestUpdateFailed: '访问者状态更新未确认，请刷新列表核对后再操作，不会自动重试。',
     reviewIdentity: '访问者身份',
     reviewIdentityHint:
       '验证邮箱以找回当前项目的访问者身份。姓名与公司为自行填写，仅验证邮箱持有权；不会创建平台账户。',
@@ -294,6 +310,26 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    reviewGuests: 'Visitor management',
+    reviewGuestsHint:
+      'Only visitors with verified mailboxes are listed, with masked email addresses. Names and companies are self-declared and unverified. These are not platform users. Anonymous prototype preview remains available.',
+    reviewGuestEnabled: 'Enabled',
+    reviewGuestDisabled: 'Disabled',
+    reviewGuestDisable: 'Disable visitor',
+    reviewGuestEnable: 'Enable visitor',
+    reviewGuestDisableConfirm:
+      'Disable this visitor? Existing identity sessions and codes will stop working. Enabling again requires a new code. Anonymous prototype preview remains available.',
+    reviewGuestEnableConfirm:
+      'Enable this visitor again? Old sessions and codes will not return. The visitor must request a new code.',
+    reviewGuestsUnavailable: 'Visitors could not be loaded. Try again.',
+    reviewGuestsAccessChanged:
+      'Project or visitor management access has changed. Close this drawer and refresh the project.',
+    reviewGuestUpdated:
+      'Visitor status updated. Old sessions and codes are invalid; request a new code to verify again.',
+    reviewGuestConflict:
+      'This visitor was updated elsewhere. The list has been refreshed. Check the latest state and confirm again.',
+    reviewGuestUpdateFailed:
+      'The update was not confirmed. Refresh the list before trying again. It will not be retried automatically.',
     reviewIdentity: 'Visitor identity',
     reviewIdentityHint:
       'Verify your mailbox to recover your visitor identity for this project. Name and company are self-declared; only mailbox ownership is verified. No platform account is created.',
