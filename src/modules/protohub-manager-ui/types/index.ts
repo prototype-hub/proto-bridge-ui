@@ -102,6 +102,38 @@ export interface PreviewSession {
   previewUrl: string
   expiresAt: number
 }
+export type ComparisonStatus = 'added' | 'removed' | 'changed' | 'unchanged'
+export type ComparisonCounts = Record<ComparisonStatus, number>
+export interface ComparisonPage {
+  path: string
+  status: ComparisonStatus
+  left: { pageId: string | null; name: string; path: string } | null
+  right: { pageId: string | null; name: string; path: string } | null
+}
+export interface ComparisonFile {
+  path: string
+  status: ComparisonStatus
+  left: { size: number; sha256: string; mediaType: string } | null
+  right: { size: number; sha256: string; mediaType: string } | null
+}
+export interface RevisionComparison {
+  versionId: string
+  left: Revision
+  right: Revision
+  summary: { pages: ComparisonCounts; files: ComparisonCounts }
+  pages: import('@/shared/api/types').PageResult<ComparisonPage>
+  files: import('@/shared/api/types').PageResult<ComparisonFile>
+}
+export interface ComparisonQuery {
+  leftRevisionId: string
+  rightRevisionId: string
+  pagesPageIndex: number
+  pagesPageSize: number
+  filesPageIndex: number
+  filesPageSize: number
+  includeUnchanged: boolean
+}
+export type WorkspacePane = 'left' | 'right'
 export interface PrototypePage {
   name: string
   pageId?: string | null

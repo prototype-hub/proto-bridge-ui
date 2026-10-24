@@ -11,11 +11,13 @@ import {
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/modules/protohub-manager-ui/hooks/useWorkspace'
-import type { WorkspaceContext, PrototypePage } from '../types'
+import type { WorkspaceContext, PrototypePage, WorkspacePane } from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
 const props = defineProps({
   context: { type: Object as PropType<WorkspaceContext>, required: true },
+  pane: { type: String as PropType<WorkspacePane>, default: undefined },
+  compact: { type: Boolean, default: false },
 })
 const { t } = useI18n()
 const {
@@ -38,7 +40,7 @@ const {
   load,
   loaded,
   failed,
-} = useWorkspace(toRef(props, 'context'))
+} = useWorkspace(toRef(props, 'context'), props.pane, props.compact)
 function select(path: string, id?: string, page?: PrototypePage) {
   selectPage(path, id, page)
   if (isNarrow.value) navVisible.value = false

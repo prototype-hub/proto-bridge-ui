@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
-import { Drawer as ADrawer, Button as AButton, Tag as ATag, Alert as AAlert } from 'ant-design-vue'
+import { computed, toRef, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  Drawer as ADrawer,
+  Button as AButton,
+  Tag as ATag,
+  Alert as AAlert,
+  Checkbox as ACheckbox,
+} from 'ant-design-vue'
 import { EyeOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermissions } from '@/shared/auth/provider'
@@ -12,6 +19,7 @@ import DataTable from '@/shared/components/DataTable.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
+import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 
 const props = defineProps<{ version?: Version; project?: Project }>()
 const emit = defineEmits<{ close: []; preview: [version: Version, revisionId: string] }>()
@@ -25,7 +33,37 @@ const open = computed(
     permissions.can(p.version.query),
 )
 const state = useRevisions(toRef(props, 'version'), open)
+const router = useRouter()
+const selected = ref<string[]>([])
+// Selection survives cursor appends, but cannot cross a closed or replaced version scope.
+watch(
+  () => [open.value, props.version?.id],
+  () => {
+    selected.value = []
+  },
+)
+function select(id: string, checked: boolean) {
+  selected.value = checked
+    ? [...selected.value, id].slice(0, 2)
+    : selected.value.filter((value) => value !== id)
+}
+function compare() {
+  if (!open.value || selected.value.length !== 2 || !props.version) return
+  window.open(
+    applicationUrl(
+      router,
+      router.resolve({
+        name: 'PrototypeHub-revision-compare',
+        params: { projectId: props.version.projectId, versionId: props.version.id },
+        query: { leftRevisionId: selected.value[0], rightRevisionId: selected.value[1] },
+      }).fullPath,
+    ),
+    '_blank',
+    'noopener,noreferrer',
+  )
+}
 const columns = computed(() => [
+  { title: t('proto.compareSelect'), key: 'select', width: 64 },
   { title: t('proto.revision'), dataIndex: 'id', width: 180 },
   { title: t('common.createdAt'), dataIndex: 'createdAt', width: 180 },
   { title: t('proto.revisionFiles'), dataIndex: 'fileCount', width: 90 },
@@ -43,6 +81,10 @@ const columns = computed(() => [
   >
     <section role="dialog" aria-modal="true" :aria-label="t('proto.revisionHistory')" class="stack">
       <a-alert type="info" show-icon :message="t('proto.revisionHistoryHint')" />
+      <p>{{ t('proto.compareSelectionHint') }}</p>
+      <a-button type="primary" :disabled="selected.length !== 2 || !open" @click="compare">{{
+        t('proto.compareRevisions')
+      }}</a-button>
       <load-state
         :loading="state.loading.value && !state.rows.value.length"
         :error="state.error.value"
@@ -51,7 +93,14 @@ const columns = computed(() => [
       >
         <data-table :rows="state.rows.value" :columns="columns">
           <template #cell="{ record, column }">
-            <template v-if="column.dataIndex === 'id'">
+            <a-checkbox
+              v-if="column.key === 'select'"
+              :aria-label="t('proto.selectRevision', { id: record.id })"
+              :checked="selected.includes(record.id)"
+              :disabled="selected.length === 2 && !selected.includes(record.id)"
+              @change="(event) => select(record.id, event.target.checked)"
+            />
+            <template v-else-if="column.dataIndex === 'id'">
               <text-ellipsis :text="record.id" />
               <a-tag v-if="record.id === version?.currentRevisionId" color="green">{{
                 t('proto.currentRevision')

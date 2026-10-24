@@ -1,17 +1,25 @@
 import { ref, computed, watch, onMounted, onScopeDispose, type Ref } from 'vue'
-import type { WorkspaceContext, InspectElement } from '@/modules/protohub-manager-ui/types'
+import type {
+  WorkspaceContext,
+  InspectElement,
+  WorkspacePane,
+} from '@/modules/protohub-manager-ui/types'
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useWorkspaceLocation } from './useWorkspaceLocation'
 import { isFrameSource, isInspectElement } from '@/modules/protohub-manager-ui/utils/inspect'
 import { t } from '@/shared/i18n'
 
-export function useWorkspace(context: Ref<WorkspaceContext>) {
+export function useWorkspace(
+  context: Ref<WorkspaceContext>,
+  pane?: WorkspacePane,
+  compact = false,
+) {
   const mode = ref<'preview' | 'inspect'>('preview')
   const navVisible = ref(true)
   const isNarrow = ref(false)
   const inspectorOpen = ref(false)
   const frame = ref<HTMLIFrameElement>()
-  const location = useWorkspaceLocation(context)
+  const location = useWorkspaceLocation(context, pane)
   const currentPage = location.currentPage
   const url = ref('')
   const loading = ref(true)
@@ -20,8 +28,8 @@ export function useWorkspace(context: Ref<WorkspaceContext>) {
   let timer: ReturnType<typeof setTimeout> | undefined
   const media = window.matchMedia('(max-width: 760px)')
   const resize = () => {
-    isNarrow.value = media.matches
-    navVisible.value = !media.matches
+    isNarrow.value = compact || media.matches
+    navVisible.value = !isNarrow.value
   }
   const toggleTitle = computed(() => t(navVisible.value ? 'proto.hidePages' : 'proto.showPages'))
   function load() {
