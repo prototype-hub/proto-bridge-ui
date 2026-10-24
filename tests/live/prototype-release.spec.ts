@@ -9,6 +9,7 @@ import type {
   PublicShare,
   PrototypePage,
   RevisionComparison,
+  RevisionQuality,
 } from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
@@ -503,6 +504,60 @@ liveTest(
       ).toBeVisible()
       await expect(publicPage.getByText('Browser upload', { exact: true })).toBeVisible()
       await publicPage.close()
+    })
+
+    await test.step('check and download the original revision package without scanning the current pointer', async () => {
+      await page.getByRole('button', { name: protoLocales.zh.revisionHistory, exact: true }).click()
+      const history = page.getByRole('dialog', {
+        name: protoLocales.zh.revisionHistory,
+        exact: true,
+      })
+      const old = history
+        .getByRole('row')
+        .filter({ has: page.getByText(firstRevisionId, { exact: true }) })
+      const scanning = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+          `/api/prototype-hub/versions/${versionId}/revisions/${firstRevisionId}/quality`,
+      )
+      await old.getByRole('button', { name: protoLocales.zh.qualityCheck, exact: true }).click()
+      const report = await result<RevisionQuality>(await scanning)
+      expect(report.versionId).toBe(versionId)
+      expect(report.revisionId).toBe(firstRevisionId)
+      expect(report.manifestSha256).toMatch(/^[a-f0-9]{64}$/)
+      expect(report.summary.scannedDocuments).toBeGreaterThan(0)
+      expect(report.summary.checkedReferences).toBeGreaterThan(0)
+      expect(report.summary.omittedFindings).toBe(0)
+      const dialog = page.getByRole('dialog', { name: protoLocales.zh.qualityCheck, exact: true })
+      await expect(dialog.getByText(`修订: ${firstRevisionId}`, { exact: true })).toBeVisible()
+      const downloading = page.waitForEvent('download')
+      await dialog
+        .getByRole('button', { name: protoLocales.zh.qualityDownload, exact: true })
+        .click()
+      const saved = await downloading
+      expect(saved.suggestedFilename()).toBe(
+        `prototype-quality-${versionId}-${firstRevisionId}.json`,
+      )
+      expect(JSON.parse(readFileSync((await saved.path())!, 'utf8'))).toEqual(report)
+      await page.screenshot({
+        path: testInfo.outputPath('live-revision-quality-desktop.png'),
+        animations: 'disabled',
+        fullPage: true,
+      })
+      await page.setViewportSize({ width: 390, height: 844 })
+      const button = await dialog
+        .getByRole('button', { name: protoLocales.zh.qualityDownload, exact: true })
+        .boundingBox()
+      expect(button!.x).toBeGreaterThanOrEqual(0)
+      expect(button!.x + button!.width).toBeLessThanOrEqual(390)
+      await page.screenshot({
+        path: testInfo.outputPath('live-revision-quality-mobile.png'),
+        animations: 'disabled',
+        fullPage: true,
+      })
+      await page.setViewportSize({ width: 1440, height: 1000 })
+      await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+      await history.getByRole('button', { name: '关闭', exact: true }).click()
     })
 
     await test.step('compare two fixed revisions through history without moving current or exposing grants', async () => {

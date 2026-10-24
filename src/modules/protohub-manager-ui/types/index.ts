@@ -97,6 +97,56 @@ export interface Revision {
   createdBy: string
   createdAt: number
 }
+export type QualityFindingCode =
+  | 'entry_missing'
+  | 'file_missing'
+  | 'missing_resource'
+  | 'broken_internal_link'
+  | 'chinese_path'
+  | 'text_unreadable'
+  | 'document_limit'
+  | 'reference_limit'
+  | 'findings_limit'
+  | 'invalid_reference'
+export interface QualityFinding {
+  code: QualityFindingCode
+  severity: 'error' | 'warning'
+  sourcePath: string
+  targetPath: string | null
+  reference: string | null
+}
+/** A bounded static check of one persisted revision, independent of the current pointer. */
+export interface RevisionQuality {
+  versionId: string
+  revisionId: string
+  manifestSha256: string
+  entryFile: string
+  summary: {
+    files: number
+    scannedDocuments: number
+    scannedBytes: number
+    checkedReferences: number
+    errors: number
+    warnings: number
+    findingsTotal: number
+    omittedFindings: number
+    skippedDocuments: number
+    uncheckedReferences: {
+      external: number
+      rootAbsolute: number
+      fragment: number
+      unsupportedScheme: number
+    }
+  }
+  limits: {
+    maxTextBytes: number
+    maxTotalTextBytes: number
+    maxReferences: number
+    maxFindings: number
+  }
+  complete: boolean
+  findings: QualityFinding[]
+}
 export interface PreviewSession {
   runtimeBaseUrl: string
   previewUrl: string

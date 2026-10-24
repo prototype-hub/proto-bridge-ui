@@ -1,5 +1,40 @@
 export const protoLocales = {
   zh: {
+    qualityCheck: '质量体检',
+    qualityDownload: '下载 JSON 报告',
+    qualityScope:
+      '检查本修订包内支持的 HTML/CSS 静态引用。不运行脚本、不访问外网，不判断动态交互是否正确。',
+    qualityComplete: '支持的本地静态引用已检查，请结合问题和未检查项判断交付质量。',
+    qualityIncomplete: '检查未完整完成，请先处理缺失文件、读取失败或扫描限制，再重新检查。',
+    qualityEntry: '入口',
+    qualitySeverity: '级别',
+    qualityType: '问题',
+    qualitySource: '来源路径',
+    qualityTarget: '目标路径',
+    qualityReference: '原始引用',
+    qualitySummary: '错误 {errors} · 提醒 {warnings} · 共 {findingsTotal} 项',
+    qualityScanned:
+      '包内 {files} 个文件 · 已读取 {scannedDocuments} 个文档、{scannedBytes} 字节 · 已检查 {checkedReferences} 条本地引用',
+    qualityUnchecked:
+      '未检查引用：外部 {external} · 根绝对路径 {rootAbsolute} · 页内锚点 {fragment} · 其他协议 {unsupportedScheme}',
+    qualityLimits:
+      '扫描上限：单文档 {maxTextBytes} 字节、合计 {maxTotalTextBytes} 字节、引用 {maxReferences} 条、报告问题 {maxFindings} 项。',
+    qualityOmitted:
+      '已跳过 {skippedDocuments} 个文档，另有 {omittedFindings} 项问题未收录；下载报告同样保留这些限制。',
+    qualityNoFindings: '本次已检查范围内未发现问题；未检查项不代表已通过。',
+    qualitySeverities: { error: '错误', warning: '提醒' },
+    qualityCodes: {
+      entry_missing: '入口文件缺失',
+      file_missing: '清单文件缺失',
+      missing_resource: '资源缺失',
+      broken_internal_link: '内部链接失效',
+      chinese_path: '中文路径兼容提醒',
+      text_unreadable: '文档无法读取',
+      document_limit: '文档读取超限',
+      reference_limit: '引用检查超限',
+      findings_limit: '报告问题数量超限',
+      invalid_reference: '引用无效',
+    },
     compareRevisions: '比较修订',
     compareSelect: '选择',
     selectRevision: '选择修订 {id}',
@@ -231,6 +266,44 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    qualityCheck: 'Package quality',
+    qualityDownload: 'Download JSON report',
+    qualityScope:
+      'Checks supported static HTML/CSS references in this revision. Scripts and external requests are not run, and dynamic interactions are not assessed.',
+    qualityComplete:
+      'Supported local static references have been checked. Review findings and unchecked items before delivery.',
+    qualityIncomplete:
+      'The check is incomplete. Resolve missing files, unreadable documents or scan limits, then check again.',
+    qualityEntry: 'Entry file',
+    qualitySeverity: 'Severity',
+    qualityType: 'Finding',
+    qualitySource: 'Source path',
+    qualityTarget: 'Target path',
+    qualityReference: 'Original reference',
+    qualitySummary: 'Errors {errors} · Warnings {warnings} · Total {findingsTotal}',
+    qualityScanned:
+      '{files} package files · {scannedDocuments} documents / {scannedBytes} bytes read · {checkedReferences} local references checked',
+    qualityUnchecked:
+      'Unchecked references: external {external} · root absolute {rootAbsolute} · fragments {fragment} · other schemes {unsupportedScheme}',
+    qualityLimits:
+      'Scan limits: {maxTextBytes} bytes per document, {maxTotalTextBytes} bytes total, {maxReferences} references, {maxFindings} recorded findings.',
+    qualityOmitted:
+      '{skippedDocuments} documents skipped; {omittedFindings} findings omitted. The download retains these limits.',
+    qualityNoFindings:
+      'No findings within the checked scope. Unchecked items have not passed validation.',
+    qualitySeverities: { error: 'Error', warning: 'Warning' },
+    qualityCodes: {
+      entry_missing: 'Missing entry file',
+      file_missing: 'Missing manifest file',
+      missing_resource: 'Missing resource',
+      broken_internal_link: 'Broken internal link',
+      chinese_path: 'Chinese path compatibility',
+      text_unreadable: 'Unreadable document',
+      document_limit: 'Document read limit',
+      reference_limit: 'Reference check limit',
+      findings_limit: 'Report finding limit',
+      invalid_reference: 'Invalid reference',
+    },
     compareRevisions: 'Compare revisions',
     compareSelect: 'Select',
     selectRevision: 'Select revision {id}',

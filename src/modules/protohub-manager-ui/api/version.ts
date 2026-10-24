@@ -9,6 +9,7 @@ import type {
   PreviewSession,
   RevisionComparison,
   ComparisonQuery,
+  RevisionQuality,
 } from '../types'
 const segment = encodeURIComponent
 function uploadData(name: string, description: string, file: File, expectedRevisionId?: string) {
@@ -20,6 +21,15 @@ function uploadData(name: string, description: string, file: File, expectedRevis
   return data
 }
 export const versionsApi = {
+  /** Check only the selected immutable revision; pagination and download reuse this report. */
+  quality: async (id: string, revisionId: string, options?: RequestOptions) =>
+    (
+      await request.get<RevisionQuality>(
+        `/prototype-hub/versions/${segment(id)}/revisions/${segment(revisionId)}/quality`,
+        undefined,
+        options,
+      )
+    ).result,
   /** Compare only explicit immutable revisions; never resolve the mutable current pointer. */
   compare: async (id: string, query: ComparisonQuery, options?: RequestOptions) =>
     (
