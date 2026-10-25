@@ -11,18 +11,33 @@ import {
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/modules/protohub-manager-ui/hooks/useWorkspace'
-import type { WorkspaceContext, PrototypePage, WorkspacePane, ReviewPage } from '../types'
+import type {
+  WorkspaceContext,
+  PrototypePage,
+  WorkspacePane,
+  ReviewPage,
+  ReviewAnchor,
+} from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
 const props = defineProps({
   context: { type: Object as PropType<WorkspaceContext>, required: true },
   pane: { type: String as PropType<WorkspacePane>, default: undefined },
   compact: { type: Boolean, default: false },
+  anchorEpoch: { type: Number, default: 0 },
 })
-const emit = defineEmits<{ pageChange: [page: ReviewPage | undefined] }>()
+const emit = defineEmits<{
+  pageChange: [page: ReviewPage | undefined]
+  anchorCapture: [anchor?: ReviewAnchor]
+}>()
 const { t } = useI18n()
 const {
   mode,
+  anchorStatus,
+  anchorCapture,
+  captureAnchor,
+  locateAnchor,
+  clearAnchor,
   navVisible,
   isNarrow,
   inspectorOpen,
@@ -42,6 +57,11 @@ const {
   loaded,
   failed,
 } = useWorkspace(toRef(props, 'context'), props.pane, props.compact)
+defineExpose({ captureAnchor, locateAnchor, clearAnchor })
+watch(anchorCapture, (result) => {
+  if (result) emit('anchorCapture', result.anchor)
+})
+watch(() => props.anchorEpoch, clearAnchor)
 // Emit only validated manifest identity; the opaque iframe cannot define a discussion target.
 watch(
   [() => props.context.revisionId, pageId, selectedPage],
@@ -61,6 +81,10 @@ watch(
   },
   { immediate: true },
 )
+function cancelCapture() {
+  clearAnchor()
+  emit('anchorCapture')
+}
 function select(path: string, id?: string, page?: PrototypePage) {
   selectPage(path, id, page)
   if (isNarrow.value) navVisible.value = false
@@ -117,6 +141,25 @@ function select(path: string, id?: string, page?: PrototypePage) {
         />
       </nav>
       <main class="frame-stage">
+        <div v-if="anchorStatus && anchorStatus !== 'ready'" class="anchor-tools" role="status">
+          <a-alert
+            show-icon
+            :type="anchorStatus === 'unavailable' ? 'warning' : 'info'"
+            :message="
+              t(
+                anchorStatus === 'unavailable'
+                  ? 'proto.anchorUnavailable'
+                  : anchorStatus === 'capturing'
+                    ? 'proto.anchorDrawingHint'
+                    : 'proto.anchorSnapshotHint',
+              )
+            "
+          />
+          <a-button v-if="anchorStatus === 'capturing'" @click="cancelCapture">{{
+            t('common.cancel')
+          }}</a-button>
+          <a-button v-else @click="clearAnchor">{{ t('proto.anchorHide') }}</a-button>
+        </div>
         <a-alert v-if="error" :message="error" type="error"
           ><template #action
             ><a-button @click="load">{{ t('common.retry') }}</a-button></template
@@ -258,6 +301,25 @@ function select(path: string, id?: string, page?: PrototypePage) {
   height: 100%;
   border: 0;
   background: var(--color-surface);
+}
+.anchor-tools {
+  position: absolute;
+  inset-inline: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.anchor-tools :deep(.ant-alert) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.anchor-tools :deep(.ant-btn) {
+  height: auto;
+  white-space: normal;
 }
 .frame-spinner {
   position: absolute;

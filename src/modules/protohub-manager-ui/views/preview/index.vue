@@ -11,7 +11,7 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage } from '@/modules/protohub-manager-ui/types'
+import type { ReviewPage, ReviewAnchor } from '@/modules/protohub-manager-ui/types'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
@@ -47,6 +47,17 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, threadLocation)
+const workspace = ref<InstanceType<typeof PrototypeWorkspace>>()
+function locateAnchor(anchor: ReviewAnchor) {
+  if (
+    !feedback.readable.value ||
+    !feedback.selected.value ||
+    feedback.selected.value.anchor !== anchor
+  )
+    return
+  feedbackOpen.value = false
+  workspace.value?.locateAnchor(anchor)
+}
 </script>
 <template>
   <div class="fullscreen">
@@ -68,7 +79,13 @@ const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, thread
       >
     </a-alert>
     <load-state v-else :loading="loading" :error="error" @retry="load"
-      ><prototype-workspace v-if="data" :context="data" @page-change="selectedPage = $event">
+      ><prototype-workspace
+        v-if="data"
+        ref="workspace"
+        :context="data"
+        :anchor-epoch="feedback.anchorEpoch.value"
+        @page-change="selectedPage = $event"
+      >
         <template #actions
           ><a-button
             v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
@@ -87,6 +104,7 @@ const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, thread
     :page="selectedPage"
     :state="feedback"
     @close="threadLocation.close"
+    @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
   />
 </template>

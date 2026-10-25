@@ -6,6 +6,7 @@ import type {
   ReviewMessage,
   ReviewThreadQuery,
   ReviewMessageInput,
+  ReviewCreateInput,
   ReviewStatusInput,
   ReviewThreadPage,
   ReviewAssignment,
@@ -18,7 +19,7 @@ const threadPath = (id: string) => `threads/${encodeURIComponent(id)}`
 export const publicReviewThreadsApi = {
   createImage: (
     grant: ReviewGrant,
-    data: ReviewMessageInput,
+    data: ReviewCreateInput,
     image: File,
     csrf: string,
     signal?: AbortSignal,
@@ -64,7 +65,7 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/_detail`, data, csrf, signal),
   query: (grant: ReviewGrant, data: ReviewThreadQuery, csrf: string, signal?: AbortSignal) =>
     reviewRequest<PageResult<ReviewThread>>(grant, 'threads/_query', data, csrf, signal),
-  create: (grant: ReviewGrant, data: ReviewMessageInput, csrf: string, signal?: AbortSignal) =>
+  create: (grant: ReviewGrant, data: ReviewCreateInput, csrf: string, signal?: AbortSignal) =>
     reviewRequest<ReviewThread>(grant, 'threads', data, csrf, signal),
   messages: (
     grant: ReviewGrant,

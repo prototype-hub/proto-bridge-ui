@@ -17,7 +17,7 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage } from '@/modules/protohub-manager-ui/types'
+import type { ReviewPage, ReviewAnchor } from '@/modules/protohub-manager-ui/types'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
@@ -30,12 +30,13 @@ const ReviewIdentityDrawer = defineAsyncComponent(
 )
 const identityOpen = ref(false),
   feedbackOpen = ref(false),
-  returnToFeedback = ref(false)
+  returnToFeedback = ref(false),
+  drawing = ref(false)
 const selectedPage = ref<ReviewPage>()
 const share = computed(() => resource.data.value.share)
 const identity = useReviewIdentity(
   share,
-  computed(() => identityOpen.value || feedbackOpen.value),
+  computed(() => identityOpen.value || feedbackOpen.value || drawing.value),
   invitation.invitation,
 )
 const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
@@ -63,6 +64,32 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, identity.context, threadLocation)
+const workspace = ref<InstanceType<typeof PrototypeWorkspace>>()
+function captureAnchor(shape: ReviewAnchor['shape']) {
+  if (!feedback.isPublic.value || feedback.selectedId.value || feedback.busy.value) return
+  drawing.value = true
+  feedbackOpen.value = false
+  workspace.value?.captureAnchor(shape)
+}
+function capturedAnchor(anchor?: ReviewAnchor) {
+  if (anchor) feedback.selectAnchor(anchor)
+  feedbackOpen.value = true
+  drawing.value = false
+}
+function locateAnchor(anchor: ReviewAnchor) {
+  if (
+    !feedback.readable.value ||
+    !feedback.selected.value ||
+    feedback.selected.value.anchor !== anchor
+  )
+    return
+  feedbackOpen.value = false
+  workspace.value?.locateAnchor(anchor)
+}
+// A page/actor/grant reset cancels drawing without carrying a late shape into the new draft.
+watch(feedback.anchorEpoch, () => {
+  drawing.value = false
+})
 function authenticate() {
   identityOpen.value = true
   feedbackOpen.value = false
@@ -88,7 +115,7 @@ watch(
     resource.data.value.share?.reviewUnverifiedAllowed,
   ],
   () => {
-    identityOpen.value = feedbackOpen.value = false
+    identityOpen.value = feedbackOpen.value = drawing.value = false
     selectedPage.value = undefined
   },
 )
@@ -113,7 +140,10 @@ watch(
       @retry="invitation.ready.value ? resource.load() : invitation.clean()"
       ><prototype-workspace
         v-if="invitation.ready.value && resource.data.value.context"
+        ref="workspace"
         :context="resource.data.value.context"
+        :anchor-epoch="feedback.anchorEpoch.value"
+        @anchor-capture="capturedAnchor"
         @page-change="selectedPage = $event"
         ><template #actions>
           <a-button
@@ -189,6 +219,8 @@ watch(
     :identity-loading="identity.loading.value"
     @close="threadLocation.close"
     @authenticate="authenticate"
+    @capture-anchor="captureAnchor"
+    @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
   />
 </template>

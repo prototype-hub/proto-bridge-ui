@@ -9,6 +9,7 @@ import type {
   ReviewMessage,
   ReviewContext,
   ReviewThreadState,
+  ReviewAnchor,
 } from '../types'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '../routes/permissions'
@@ -17,6 +18,7 @@ import { ApiError } from '@/shared/api/errors'
 import { copyText } from '@/shared/utils/feedback'
 import { secureId } from '@/shared/utils/secure-id'
 import { useReviewAssignment } from './useReviewAssignment'
+import { isReviewAnchor } from '../utils/review-anchor'
 import { t } from '@/shared/i18n'
 
 export type ReviewThreadScope =
@@ -37,6 +39,15 @@ export function useReviewThreads(
     text = ref(''),
     visibility = ref<ReviewMessage['visibility']>('public')
   const detail = shallowRef<ReviewThread>()
+  const anchor = shallowRef<ReviewAnchor>(),
+    anchorEpoch = ref(0)
+  function selectAnchor(value?: ReviewAnchor) {
+    if (busy.value || selectedId.value || !isPublic.value) return
+    if (value && !isReviewAnchor(value)) return
+    anchor.value = value ? { ...value } : undefined
+    pending = undefined
+    anchorEpoch.value++
+  }
   const imageFile = shallowRef<File>(),
     imagePreview = ref(''),
     imageView = shallowRef<{ messageId: string; url?: string; loading?: boolean; error?: string }>()
@@ -233,6 +244,8 @@ export function useReviewThreads(
     imageView.value = { messageId, error: t('proto.feedbackImageUnavailable') }
   }
   function clearDraft() {
+    anchor.value = undefined
+    anchorEpoch.value++
     text.value = ''
     visibility.value = 'public'
     pending = undefined
@@ -439,6 +452,7 @@ export function useReviewThreads(
       state || body,
       state ? '' : target.kind === 'member' ? visibility.value : 'public',
       ...(file ? [imageSequence] : []),
+      ...(!thread && !state && anchor.value ? [anchor.value] : []),
     ])
     if (pending?.semantic !== semantic)
       pending = {
@@ -475,7 +489,14 @@ export function useReviewThreads(
             silent: true,
           })
       } else {
-        const input = { ...page, text: body, clientRequestId: receipt.clientRequestId }
+        const input = {
+          ...page,
+          text: body,
+          clientRequestId: receipt.clientRequestId,
+          ...(!thread && target.kind === 'public' && anchor.value
+            ? { anchor: { ...anchor.value } }
+            : {}),
+        }
         if (target.kind === 'public' && !thread) {
           // Create the thread and first image message together; never leave a text-only shell.
           const created = file
@@ -620,6 +641,9 @@ export function useReviewThreads(
   })
   return {
     assignment,
+    anchor,
+    anchorEpoch,
+    selectAnchor,
     imageFile,
     imagePreview,
     imageView,

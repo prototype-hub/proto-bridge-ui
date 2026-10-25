@@ -1,3 +1,4 @@
+import { isReviewAnchor } from '../../src/modules/protohub-manager-ui/utils/review-anchor'
 import { randomUUID, randomBytes, createHash } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
 import type {
@@ -97,6 +98,10 @@ export function threadResponse(
     return
   }
   const initial = suffix === '' || suffix === '/_with-image'
+  if (initial && input.anchor != null && !isReviewAnchor(input.anchor)) {
+    send(res, 400, null, 'Invalid anchor')
+    return
+  }
   const [, rawId, action, query] = suffix.split('/')
   const id = initial ? undefined : rawId
   const stored = id ? threads.get(decodeURIComponent(id)) : undefined
@@ -292,6 +297,8 @@ export function threadResponse(
         pageName: matches[0]!.name,
         pagePath: matches[0]!.path!,
         summary: text.slice(0, 200),
+        anchor:
+          input.anchor == null ? null : (structuredClone(input.anchor) as ReviewThread['anchor']),
         authorName: guest!.identity.displayName,
         authorCompany: guest!.identity.company,
         verificationLevel: guest!.identity.verificationLevel,
