@@ -39,11 +39,16 @@ export const versionsApi = {
         options,
       )
     ).result,
-  deleted: async (projectId: string, query: PrototypeListQuery, options?: RequestOptions) =>
+  /** Omit projectId for one paged query across the server-authorized editable projects. */
+  deleted: async (
+    projectId: string | undefined,
+    query: PrototypeListQuery,
+    options?: RequestOptions,
+  ) =>
     (
       await request.post<PageResult<Version>>('/prototype-hub/versions/_deleted/_query', query, {
         ...options,
-        params: { projectId },
+        params: projectId === undefined ? undefined : { projectId },
       })
     ).result,
   restore: async (id: string, options?: RequestOptions) =>

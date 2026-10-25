@@ -43,6 +43,29 @@ beforeEach(async () => {
   await clock(epoch)
 })
 
+it('globally pages only retained deleted versions of active authorized editable projects', async () => {
+  await call('/api/prototype-hub/versions/v1', 'DELETE')
+  const query = () =>
+    call<{ data: Version[]; total: number }>(
+      '/api/prototype-hub/versions/_deleted/_query',
+      'POST',
+      {},
+    )
+  expect((await query()).result.data.map((row) => row.id)).toEqual(['v1'])
+  const viewer = await call<{ data: Version[]; total: number }>(
+    '/api/prototype-hub/versions/_deleted/_query',
+    'POST',
+    {},
+    { 'x-access-token': 'mock-member' },
+  )
+  expect(viewer.result).toMatchObject({ data: [], total: 0 })
+  await call('/api/prototype-hub/projects/p1', 'DELETE')
+  expect((await query()).result).toMatchObject({ data: [], total: 0 })
+  await call('/api/prototype-hub/projects/p1/_restore')
+  await clock(epoch + retentionMs)
+  expect((await query()).result).toMatchObject({ data: [], total: 0 })
+})
+
 it.each(['projects', 'versions'] as const)(
   'excludes expired %s before counting and paging, including the exact 30 day boundary',
   async (kind) => {

@@ -47,6 +47,55 @@ async function usable(prompt: Locator, confirmName = '确定') {
 test.beforeEach(async ({ request }) => {
   await request.post(`${origin}/__test/reset`)
 })
+test('opens the scoped old link in recycle tabs and explicitly clears to one global authorized query at 390px', async ({
+  page,
+  request,
+}, testInfo) => {
+  await request.delete(`${origin}/api/prototype-hub/versions/v1`, { headers })
+  await login(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const details: string[] = []
+  page.on('request', (event) => {
+    if (new URL(event.url()).pathname === '/api/prototype-hub/projects/p1')
+      details.push(event.url())
+  })
+  await page.goto('prototype-hub/projects/p1?recycle=versions')
+  await expect(page).toHaveURL(/\/prototype-hub\/recycle-bin\?tab=versions&projectId=p1$/)
+  await expect(page.getByRole('tab', { name: '版本回收站', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  expect(details).toEqual([])
+  const global = page.waitForResponse((event) => {
+    const url = new URL(event.url())
+    return (
+      url.pathname === '/api/prototype-hub/versions/_deleted/_query' &&
+      !url.searchParams.has('projectId')
+    )
+  })
+  await page.getByRole('button', { name: '查看全部授权项目', exact: true }).click()
+  expect((await global).status()).toBe(200)
+  await expect(page).toHaveURL(/\/prototype-hub\/recycle-bin\?tab=versions$/)
+  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '语言', exact: true }).click()
+  const projects = page.getByRole('tab', { name: 'Project recycle bin', exact: true })
+  await projects.focus()
+  await projects.press('Enter')
+  await expect(projects).toHaveAttribute('aria-selected', 'true')
+  const versions = page.getByRole('tab', { name: 'Version recycle bin', exact: true })
+  await versions.focus()
+  await versions.press('Enter')
+  await expect(versions).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true)
+  await page.screenshot({
+    path: testInfo.outputPath('version-recycle-mobile-en.png'),
+    animations: 'disabled',
+  })
+})
 test('restores the same parent and child identities separately while old grants stay revoked', async ({
   page,
   request,
@@ -88,8 +137,11 @@ test('restores the same parent and child identities separately while old grants 
     404,
   )
   await page.getByRole('button', { name: '查看该项目的版本回收站', exact: true }).click()
-  await expect(page).toHaveURL(/\/prototype-hub\/projects\/p1\?recycle=versions$/)
-  await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+  await expect(page).toHaveURL(/\/prototype-hub\/recycle-bin\?tab=versions&projectId=p1$/)
+  await expect(page.getByRole('tab', { name: '版本回收站', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
   const row = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
@@ -101,7 +153,13 @@ test('restores the same parent and child identities separately while old grants 
   })
   await prompt.getByRole('button', { name: '确定', exact: true }).click()
   await expect(row).toHaveCount(0)
-  await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
+  expect(
+    (
+      await result<{ versions: { used: number } }>(
+        await request.get(`${origin}/api/prototype-hub/versions/_usage?projectId=p1`, { headers }),
+      )
+    ).versions.used,
+  ).toBe(1)
   const version = await result<Version>(
     await request.get(`${origin}/api/prototype-hub/versions/v1`, { headers }),
   )
@@ -129,9 +187,11 @@ test('keeps a full-capacity restore in the recycle bin with a genuine 409 and pr
       }),
     )
   await login(page)
-  await page.goto('prototype-hub/projects/p1')
-  await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+  await page.goto('prototype-hub/recycle-bin?tab=versions&projectId=p1')
+  await expect(page.getByRole('tab', { name: '版本回收站', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
   const row = page
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
@@ -142,7 +202,13 @@ test('keeps a full-capacity restore in the recycle bin with a genuine 409 and pr
   await page.locator('.ant-popconfirm').getByRole('button', { name: '确定', exact: true }).click()
   expect((await restore).status()).toBe(409)
   await expect(row).toBeVisible()
-  await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
+  expect(
+    (
+      await result<{ versions: { used: number } }>(
+        await request.get(`${origin}/api/prototype-hub/versions/_usage?projectId=p1`, { headers }),
+      )
+    ).versions.used,
+  ).toBe(5)
   expect(
     (
       await request.post(`${origin}/api/prototype-hub/versions/_deleted/_query?projectId=p1`, {
@@ -205,10 +271,11 @@ for (const kind of ['projects', 'versions'] as const)
       await request.delete(`${origin}/api/prototype-hub/projects/p1`, { headers })
     await login(page)
     if (kind === 'versions') {
-      await page.goto('prototype-hub/projects/p1')
-      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+      await page.goto('prototype-hub/recycle-bin?tab=versions&projectId=p1')
     } else await page.goto('prototype-hub/recycle-bin')
-    await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.zh.recycleHint)
+    await expect(
+      page.locator('.ant-alert-info').filter({ hasText: protoLocales.zh.recycleHint }),
+    ).toBeVisible()
     const row =
       kind === 'projects'
         ? page.locator('.project-card').filter({ hasText: 'Contract project' })
@@ -225,10 +292,21 @@ for (const kind of ['projects', 'versions'] as const)
     expect((await response).status()).toBe(404)
     await expect(row).toHaveCount(0)
     await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
-    await expect(page.locator('.capacity-notice')).toContainText(
-      kind === 'projects' ? '项目用量：0 / 5' : '当前项目版本用量：0 / 5',
-    )
+    if (kind === 'projects')
+      await expect(page.locator('.capacity-notice')).toContainText('项目用量：0 / 5')
+    else
+      expect(
+        (
+          await result<{ versions: { used: number } }>(
+            await request.get(`${origin}/api/prototype-hub/versions/_usage?projectId=p1`, {
+              headers,
+            }),
+          )
+        ).versions.used,
+      ).toBe(0)
     await page.getByRole('button', { name: '语言', exact: true }).click()
-    await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.en.recycleHint)
+    await expect(
+      page.locator('.ant-alert-info').filter({ hasText: protoLocales.en.recycleHint }),
+    ).toBeVisible()
     await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
   })

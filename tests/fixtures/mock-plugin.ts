@@ -94,7 +94,33 @@ const initialMenus: ServerMenu[] = [
           '/prototype-hub/recycle-bin',
           [],
         ),
-        permissions: [{ permission: 'prototype-hub-project', actions: ['query', 'save'] }],
+        permissions: [],
+        buttons: [
+          {
+            id: 'queryProjects',
+            name: '查询项目回收站',
+            permissions: [{ permission: 'prototype-hub-project', actions: ['query'] }],
+            granted: true,
+          },
+          {
+            id: 'queryVersions',
+            name: '查询版本回收站',
+            permissions: [{ permission: 'prototype-hub-version', actions: ['query'] }],
+            granted: true,
+          },
+          {
+            id: 'restore',
+            name: '恢复项目',
+            permissions: [{ permission: 'prototype-hub-project', actions: ['query', 'save'] }],
+            granted: true,
+          },
+          {
+            id: 'restoreVersion',
+            name: '恢复版本',
+            permissions: [{ permission: 'prototype-hub-version', actions: ['query', 'save'] }],
+            granted: true,
+          },
+        ],
       },
     ],
   },
@@ -642,15 +668,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   }
   if (method === 'POST' && path === '/prototype-hub/versions/_deleted/_query') {
     const projectId = url.searchParams.get('projectId')
-    if (!projectId || !activeProject(projectId)) send(res, 404, null, 'Resource unavailable')
-    else if (member) send(res, 403, null, 'Access denied')
+    if (projectId && !activeProject(projectId)) send(res, 404, null, 'Resource unavailable')
+    else if (member && projectId) send(res, 403, null, 'Access denied')
     else
       send(
         res,
         200,
         prototypePage(
           versions
-            .filter((item) => item.projectId === projectId && retained(deletedVersions, item.id))
+            .filter(
+              (item) =>
+                !member &&
+                (!projectId || item.projectId === projectId) &&
+                activeProject(item.projectId) &&
+                retained(deletedVersions, item.id),
+            )
             .map((item) => ({ ...item, deletedTime: deletedVersions.get(item.id) })),
           data,
         ),

@@ -2,17 +2,10 @@
 defineOptions({ name: 'ProjectDetailView' })
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Space as ASpace,
-  Tag as ATag,
-  Alert as AAlert,
-  RadioGroup as ARadioGroup,
-  RadioButton as ARadioButton,
-} from 'ant-design-vue'
+import { Space as ASpace, Tag as ATag, Alert as AAlert } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import {
   EyeOutlined,
-  UndoOutlined,
   UploadOutlined,
   ShareAltOutlined,
   DeleteOutlined,
@@ -48,8 +41,6 @@ const route = useRoute()
 const session = useSession()
 const {
   resource,
-  trash,
-  restore,
   usage,
   loadUsage,
   refresh,
@@ -83,8 +74,8 @@ const columns = computed(() => [
   { title: t('common.status'), dataIndex: 'status' },
   { title: t('proto.revision'), dataIndex: 'revisionCount' },
   {
-    title: t(trash.value ? 'proto.deletedAt' : 'common.createdAt'),
-    dataIndex: trash.value ? 'deletedTime' : 'createdAt',
+    title: t('common.createdAt'),
+    dataIndex: 'createdAt',
   },
   { title: t('common.actions'), key: 'actions', width: 224 },
 ])
@@ -97,7 +88,7 @@ const columns = computed(() => [
     ><template #actions
       ><a-space wrap
         ><permission-button
-          v-if="!trash && projectAllows(resource.data.value.project, 'manageShares')"
+          v-if="projectAllows(resource.data.value.project, 'manageShares')"
           :permission="p.share.query"
           :aria-label="t('proto.reviewGuests')"
           @click="reviewGuestsOpen = true"
@@ -109,7 +100,7 @@ const columns = computed(() => [
           @click="membersOpen = true"
           ><team-outlined />{{ t('proto.members') }}</permission-button
         ><permission-button
-          v-if="!trash && projectAllows(resource.data.value.project, 'edit')"
+          v-if="projectAllows(resource.data.value.project, 'edit')"
           :permission="p.version.save"
           type="primary"
           :disabled="!resource.data.value.project || usage.data.value?.versions.canCreate === false"
@@ -118,16 +109,6 @@ const columns = computed(() => [
         ></a-space
       ></template
     >
-    <a-radio-group
-      v-if="projectAllows(resource.data.value.project, 'edit')"
-      v-model:value="trash"
-      class="prototype-list-mode"
-      :aria-label="t('proto.listMode')"
-    >
-      <a-radio-button :value="false">{{ t('proto.activeVersions') }}</a-radio-button>
-      <a-radio-button :value="true">{{ t('proto.recycleBin') }}</a-radio-button>
-    </a-radio-group>
-    <a-alert v-if="trash" type="info" show-icon :message="t('proto.recycleHint')" />
     <prototype-list-toolbar
       v-model:keyword="search"
       :sort="sort"
@@ -167,16 +148,7 @@ const columns = computed(() => [
           ><template #cell="{ column, record }"
             ><a-space v-if="column.key === 'actions'" :size="8">
               <action-button
-                v-if="trash && projectAllows(resource.data.value.project, 'edit')"
-                :label="t('proto.restore')"
-                :icon="UndoOutlined"
-                :permission="p.version.save"
-                :disabled="task.busy.value"
-                :confirm="t('proto.versionRestoreConfirm')"
-                @action="restore(record.id)"
-              />
-              <action-button
-                v-if="!trash && projectAllows(resource.data.value.project, 'read')"
+                v-if="projectAllows(resource.data.value.project, 'read')"
                 :label="t('proto.preview')"
                 :icon="EyeOutlined"
                 :permission="p.version.query"
@@ -184,7 +156,7 @@ const columns = computed(() => [
                 @action="preview(record)"
               />
               <action-button
-                v-if="!trash && projectAllows(resource.data.value.project, 'read')"
+                v-if="projectAllows(resource.data.value.project, 'read')"
                 :label="t('proto.revisionHistory')"
                 :icon="HistoryOutlined"
                 :permission="p.version.query"
@@ -192,7 +164,7 @@ const columns = computed(() => [
                 @action="historyVersion = record"
               />
               <action-button
-                v-if="!trash && projectAllows(resource.data.value.project, 'edit')"
+                v-if="projectAllows(resource.data.value.project, 'edit')"
                 :label="t('proto.update')"
                 :icon="UploadOutlined"
                 :permission="p.version.save"
@@ -200,7 +172,7 @@ const columns = computed(() => [
                 @action="upload(record)"
               />
               <action-button
-                v-if="!trash && projectAllows(resource.data.value.project, 'manageShares')"
+                v-if="projectAllows(resource.data.value.project, 'manageShares')"
                 :label="t('proto.share')"
                 :icon="ShareAltOutlined"
                 :permission="p.share.query"
@@ -208,7 +180,7 @@ const columns = computed(() => [
                 @action="shareVersion = record"
               />
               <action-button
-                v-if="!trash && projectAllows(resource.data.value.project, 'edit')"
+                v-if="projectAllows(resource.data.value.project, 'edit')"
                 :label="t('common.delete')"
                 :icon="DeleteOutlined"
                 :permission="p.version.delete"
@@ -234,13 +206,9 @@ const columns = computed(() => [
             ><text-ellipsis
               v-else-if="column.dataIndex === 'description'"
               :text="record.description"
-            /><template
-              v-else-if="column.dataIndex === 'createdAt' || column.dataIndex === 'deletedTime'"
-              >{{
-                new Date(
-                  column.dataIndex === 'deletedTime' ? record.deletedTime! : record.createdAt,
-                ).toLocaleString()
-              }}</template
+            /><template v-else-if="column.dataIndex === 'createdAt'">{{
+              new Date(record.createdAt).toLocaleString()
+            }}</template
             ><template v-else>{{
               record[column.dataIndex as keyof typeof record]
             }}</template></template
@@ -271,9 +239,6 @@ const columns = computed(() => [
   /></page-container>
 </template>
 <style scoped>
-.prototype-list-mode {
-  margin-bottom: var(--space-4);
-}
 .project-versions-panel {
   width: 100%;
   min-width: 0;

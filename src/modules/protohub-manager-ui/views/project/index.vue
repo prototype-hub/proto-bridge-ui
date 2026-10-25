@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
 import { useRoute, useRouter } from 'vue-router'
-import { toRef } from 'vue'
+import { computed, toRef } from 'vue'
 import {
   Pagination as APagination,
   Card as ACard,
@@ -28,10 +28,16 @@ import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
-const props = withDefaults(defineProps<{ recycled?: boolean }>(), { recycled: false })
+import { recycleListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
+import { useSession } from '@/app/stores/session'
+const props = withDefaults(defineProps<{ recycled?: boolean; embedded?: boolean }>(), {
+  recycled: false,
+  embedded: false,
+})
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
+const session = useSession()
 const {
   resource,
   trash,
@@ -54,12 +60,19 @@ const {
   save,
   remove,
 } = useProjects(toRef(props, 'recycled'))
+const versionRecycle = computed(() =>
+  restoredProject.value
+    ? recycleListLocation(router, session.menus, restoredProject.value.id)
+    : undefined,
+)
 function openDetail(id: string) {
   void router.push({ name: 'project-detail', params: { id }, query: { ...route.query } })
 }
 </script>
 <template>
-  <page-container :title="t(trash ? 'proto.recycleBin' : 'proto.projects')"
+  <component
+    :is="embedded ? 'section' : PageContainer"
+    :title="embedded ? undefined : t(trash ? 'proto.projectRecycleBin' : 'proto.projects')"
     ><template #actions
       ><permission-button
         v-if="!trash"
@@ -79,14 +92,9 @@ function openDetail(id: string) {
     >
       <template #action
         ><permission-button
+          v-if="versionRecycle"
           :permission="p.version.query"
-          @click="
-            router.push({
-              name: 'project-detail',
-              params: { id: restoredProject.id },
-              query: { recycle: 'versions' },
-            })
-          "
+          @click="router.push(versionRecycle)"
           >{{ t('proto.openVersionRecycle') }}</permission-button
         ></template
       >
@@ -187,7 +195,7 @@ function openDetail(id: string) {
       :error="task.error.value"
       @close="open = false"
       @save="save"
-  /></page-container>
+  /></component>
 </template>
 <style scoped>
 .project-pagination {

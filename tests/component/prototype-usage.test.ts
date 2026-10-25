@@ -1,7 +1,7 @@
 import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { request } from '@/shared/api/client'
@@ -12,6 +12,7 @@ import { permissionKey } from '@/shared/auth/provider'
 import { protoLocales } from '@/modules/protohub-manager-ui/locales'
 import type { Capacity, Project, VersionUsage } from '@/modules/protohub-manager-ui/types'
 import { useProjects } from '@/modules/protohub-manager-ui/views/project/hooks/useProjects'
+import { useVersionRecycle } from '@/modules/protohub-manager-ui/views/recycle/hooks/useVersionRecycle'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
 import ProjectsView from '@/modules/protohub-manager-ui/views/project/index.vue'
 import ProjectDetailView from '@/modules/protohub-manager-ui/views/project/detail/index.vue'
@@ -43,16 +44,18 @@ const project: Project = {
 const mounted: VueWrapper[] = []
 
 async function render(
-  page: 'projects' | 'detail',
+  page: 'projects' | 'detail' | 'versions',
   actualPage = false,
   can: (value: string | string[]) => boolean = () => true,
   recycled = false,
 ) {
   let projects!: ReturnType<typeof useProjects>
   let detail!: ReturnType<typeof useProjectDetail>
+  let recycle!: ReturnType<typeof useVersionRecycle>
   const harness = defineComponent({
     setup() {
       if (page === 'projects') projects = useProjects()
+      else if (page === 'versions') recycle = useVersionRecycle(ref('p1'), ref(true))
       else detail = useProjectDetail()
       return () => h('div')
     },
@@ -82,7 +85,7 @@ async function render(
   )
   mounted.push(wrapper)
   await flushPromises()
-  return { wrapper, router, projects, detail }
+  return { wrapper, router, projects, detail, recycle }
 }
 
 beforeEach(() => {
@@ -315,8 +318,8 @@ it.each(['projects', 'detail'] as const)(
   },
 )
 
-it.each(['projects', 'detail'] as const)(
-  'restores %s through its scoped trash endpoint and refreshes usage',
+it.each(['projects', 'versions'] as const)(
+  'restores %s through its scoped endpoint and refreshes the owning list',
   async (kind) => {
     let restored = false
     const original = vi.mocked(request.post).getMockImplementation()!
@@ -340,33 +343,31 @@ it.each(['projects', 'detail'] as const)(
       }
       return original(path, ...args)
     })
-    const { projects, detail } = await render(kind)
-    const state = kind === 'projects' ? projects : detail
-    state.trash.value = true
+    const { projects, recycle } = await render(kind)
+    const state = kind === 'projects' ? projects : recycle
+    if (kind === 'projects') projects.trash.value = true
     await flushPromises()
     const row =
-      kind === 'projects'
-        ? projects.resource.data.value[0]!
-        : detail.resource.data.value.versions[0]!
+      kind === 'projects' ? projects.resource.data.value[0]! : recycle.resource.data.value[0]!
     if (kind === 'projects') await projects.restore(row as Project)
-    else await detail.restore(row.id)
+    else await recycle.restore(row as (typeof recycle.resource.data.value)[number])
     expect(request.post).toHaveBeenCalledWith(
       `/prototype-hub/${kind === 'projects' ? 'projects/p1' : 'versions/v1'}/_restore`,
       undefined,
-      undefined,
+      kind === 'projects' ? undefined : { silent: true },
     )
     expect(state.pagination.total).toBe(0)
     expect(
       vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/_usage')),
-    ).toHaveLength(3)
+    ).toHaveLength(kind === 'projects' ? 3 : 0)
   },
 )
 
 it.each([
   ['projects', 409],
   ['projects', 404],
-  ['detail', 409],
-  ['detail', 404],
+  ['versions', 409],
+  ['versions', 404],
 ] as const)(
   'keeps %s restore errors authoritative (%s), refreshing expired tombstones and usage on 404',
   async (kind, status) => {
@@ -394,19 +395,18 @@ it.each([
       }
       return original(path, ...args)
     })
-    const { projects, detail } = await render(kind)
-    const state = kind === 'projects' ? projects : detail
-    state.trash.value = true
+    const { projects, recycle } = await render(kind)
+    const state = kind === 'projects' ? projects : recycle
+    if (kind === 'projects') projects.trash.value = true
     await flushPromises()
     const before = vi.mocked(request.post).mock.calls.length
     const usageBefore = vi
       .mocked(request.get)
       .mock.calls.filter(([path]) => path.endsWith('/_usage')).length
     if (kind === 'projects') await projects.restore(projects.resource.data.value[0]!)
-    else await detail.restore('v1')
+    else await recycle.restore(recycle.resource.data.value[0]!)
     expect(state.task.error.value).toBe('Restore refused')
-    const rows =
-      kind === 'projects' ? projects.resource.data.value : detail.resource.data.value.versions
+    const rows = kind === 'projects' ? projects.resource.data.value : recycle.resource.data.value
     expect(rows.map((row) => row.id)).toEqual(
       status === 404 ? [] : [kind === 'projects' ? 'p1' : 'v1'],
     )
@@ -415,7 +415,7 @@ it.each([
     expect(
       vi.mocked(request.get).mock.calls.filter(([path]) => path.endsWith('/_usage')).length -
         usageBefore,
-    ).toBe(status === 404 ? 1 : 0)
+    ).toBe(status === 404 && kind === 'projects' ? 1 : 0)
   },
 )
 
