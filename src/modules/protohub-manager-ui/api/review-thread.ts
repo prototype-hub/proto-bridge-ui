@@ -16,6 +16,13 @@ const base = (versionId: string) =>
   `/prototype-hub/versions/${encodeURIComponent(versionId)}/review-threads`
 const threadPath = (id: string) => `threads/${encodeURIComponent(id)}`
 export const publicReviewThreadsApi = {
+  createImage: (
+    grant: ReviewGrant,
+    data: ReviewMessageInput,
+    image: File,
+    csrf: string,
+    signal?: AbortSignal,
+  ) => reviewRequest<ReviewThread>(grant, 'threads/_with-image', data, csrf, signal, 'POST', image),
   replyImage: (
     grant: ReviewGrant,
     id: string,

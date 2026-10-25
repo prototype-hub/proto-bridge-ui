@@ -96,9 +96,11 @@ export function threadResponse(
     send(res, result ? 200 : 400, result)
     return
   }
-  const [, id, action, query] = suffix.split('/')
+  const initial = suffix === '' || suffix === '/_with-image'
+  const [, rawId, action, query] = suffix.split('/')
+  const id = initial ? undefined : rawId
   const stored = id ? threads.get(decodeURIComponent(id)) : undefined
-  if (suffix && (!stored || !allowed(stored))) {
+  if (!initial && (!stored || !allowed(stored))) {
     send(res, 404, null, 'Feedback unavailable', 'PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE')
     return
   }
@@ -225,8 +227,7 @@ export function threadResponse(
     send(res, 400, null, 'Invalid request')
     return
   }
-  const operation =
-      suffix === '' ? 'create' : action === 'messages-with-image' ? 'messages' : action,
+  const operation = initial ? 'create' : action === 'messages-with-image' ? 'messages' : action,
     key = JSON.stringify([
       guest ? owner(guest.identity) : 'member:admin',
       guest?.share.id || versionId,
@@ -271,9 +272,9 @@ export function threadResponse(
     method !== 'POST' ||
     !text ||
     text.length > 4000 ||
-    (!guest && suffix === '') ||
-    (suffix !== '' && action !== 'messages' && action !== 'messages-with-image') ||
-    (action === 'messages-with-image' && !image)
+    (!guest && initial) ||
+    (!initial && action !== 'messages' && action !== 'messages-with-image') ||
+    ((suffix === '/_with-image' || action === 'messages-with-image') && !image)
   ) {
     send(res, 400, null, 'Invalid feedback')
     return
@@ -282,8 +283,7 @@ export function threadResponse(
     send(res, 400, null, 'Invalid visibility')
     return
   }
-  const now = Date.now(),
-    initial = suffix === ''
+  const now = Date.now()
   const thread = initial
     ? {
         id: randomBytes(32).toString('base64url'),

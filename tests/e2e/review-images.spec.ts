@@ -37,8 +37,10 @@ async function seed(page: Page, request: APIRequestContext, locale: Locale = 'zh
   await page.goto('share/open')
   const drawer = await open(page, locale),
     text = protoLocales[locale]
-  await expect(drawer.getByText(text.feedbackImageThreadRequired, { exact: true })).toBeVisible()
-  await expect(drawer.locator('input[type=file]')).toHaveCount(0)
+  await expect(drawer.getByLabel(text.feedbackImageSelect, { exact: true })).toBeVisible()
+  await expect(
+    drawer.getByRole('button', { name: text.feedbackSubmit, exact: true }),
+  ).toBeDisabled()
   await drawer.getByRole('button', { name: text.reviewIdentity, exact: true }).click()
   const identity = page.getByRole('dialog', { name: text.reviewIdentity, exact: true })
   await identity.getByRole('button', { name: text.reviewUseUnverified, exact: true }).click()

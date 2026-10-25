@@ -490,7 +490,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   } catch {
     input = raw
   }
-  if (path.endsWith('/messages-with-image')) {
+  if (path.endsWith('/messages-with-image') || path.endsWith('/review/threads/_with-image')) {
     try {
       const form = await new Request('http://localhost', {
         method: 'POST',

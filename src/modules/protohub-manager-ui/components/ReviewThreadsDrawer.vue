@@ -401,30 +401,27 @@ function selectImage(event: Event) {
           :disabled="state.busy.value || (!state.isPublic.value && !state.writable.value)"
         />
         <p>{{ t('proto.feedbackPlainText') }}</p>
-        <template v-if="state.selectedId.value">
-          <label for="review-feedback-image">{{ t('proto.feedbackImageSelect') }}</label>
-          <input
-            id="review-feedback-image"
-            class="feedback-image-input"
-            type="file"
-            accept="image/png,image/jpeg"
-            :disabled="state.busy.value || (!state.isPublic.value && !state.writable.value)"
-            @change="selectImage"
+        <label for="review-feedback-image">{{ t('proto.feedbackImageSelect') }}</label>
+        <input
+          id="review-feedback-image"
+          class="feedback-image-input"
+          type="file"
+          accept="image/png,image/jpeg"
+          :disabled="state.busy.value || (!state.isPublic.value && !state.writable.value)"
+          @change="selectImage"
+        />
+        <p>{{ t('proto.feedbackImageHint') }}</p>
+        <template v-if="state.imageFile.value">
+          <img
+            v-if="state.imagePreview.value"
+            class="feedback-image"
+            :src="state.imagePreview.value"
+            :alt="t('proto.feedbackImageDraftAlt')"
           />
-          <p>{{ t('proto.feedbackImageHint') }}</p>
-          <template v-if="state.imageFile.value">
-            <img
-              v-if="state.imagePreview.value"
-              class="feedback-image"
-              :src="state.imagePreview.value"
-              :alt="t('proto.feedbackImageDraftAlt')"
-            />
-            <a-button :disabled="state.busy.value" @click="state.selectImage()">{{
-              t('proto.feedbackImageRemove')
-            }}</a-button>
-          </template>
+          <a-button :disabled="state.busy.value" @click="state.selectImage()">{{
+            t('proto.feedbackImageRemove')
+          }}</a-button>
         </template>
-        <p v-else>{{ t('proto.feedbackImageThreadRequired') }}</p>
         <a-button
           type="primary"
           :loading="state.busy.value"

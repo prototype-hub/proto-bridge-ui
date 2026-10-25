@@ -28,6 +28,7 @@ vi.mock('@/modules/protohub-manager-ui/api/review-thread', () => ({
     detail: vi.fn(),
     query: vi.fn(),
     create: vi.fn(),
+    createImage: vi.fn(),
     messages: vi.fn(),
     reply: vi.fn(),
     replyImage: vi.fn(),
@@ -159,7 +160,7 @@ function setup(
     },
   )
   wrappers.push(wrapper)
-  return { state, target, open, identity, grants, threadId }
+  return { state, target, open, identity, grants, threadId, wrapper }
 }
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -203,6 +204,7 @@ beforeEach(() => {
     vi.mocked(api.status).mockReset().mockResolvedValue(thread())
   }
   vi.mocked(publicReviewThreadsApi.create).mockReset().mockResolvedValue(thread())
+  vi.mocked(publicReviewThreadsApi.createImage).mockReset().mockResolvedValue(thread())
   vi.mocked(reviewThreadsApi.assignment)
     .mockReset()
     .mockImplementation(async (_version, id) => ({
@@ -247,8 +249,11 @@ it('intersects PM project EDIT and ordinary query/save, never creates a PM top-l
   const { state, target, grants } = setup(memberScope())
   await flushPromises()
   state.text.value = 'No top-level'
+  state.selectImage(file())
+  expect(state.imageFile.value).toBeUndefined()
   await state.send()
   expect(reviewThreadsApi.reply).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.createImage).not.toHaveBeenCalled()
   state.choose(state.threads.value[0])
   await flushPromises()
   state.text.value = 'Internal'
@@ -689,12 +694,204 @@ it.each(['target', 'actor', 'scope', 'close'] as const)(
   },
 )
 
-it('only selects one hinted PNG/JPEG for an existing thread and uploads nothing until a text reply is sent', async () => {
+it.each(['image/png', 'image/jpeg'] as const)(
+  'creates a public thread and its first %s message with one explicit upload and protected lazy reading',
+  async (contentType) => {
+    const { state } = setup()
+    await flushPromises()
+    const selected = file(contentType),
+      saved = {
+        ...message(),
+        image: { contentType, size: 3, width: 1, height: 1 },
+      }
+    vi.mocked(publicReviewThreadsApi.messages).mockResolvedValue(pager([saved]))
+    vi.mocked(publicReviewThreadsApi.image).mockResolvedValue(
+      new Blob(['png'], { type: contentType }),
+    )
+    state.selectImage(selected)
+    expect(state.imageFile.value).toBe(selected)
+    expect(state.imagePreview.value).toBe('blob:test-1')
+    await state.send()
+    expect(publicReviewThreadsApi.createImage).not.toHaveBeenCalled()
+    expect(state.notice.value).toBe(protoLocales.zh.feedbackTextRequired)
+    state.text.value = 'First image caption'
+    await state.send()
+    expect(publicReviewThreadsApi.createImage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ token: 'open', accessKey: 'grant', revisionId: 'r1' }),
+      expect.objectContaining({ revisionId: 'r1', pageId: 'page', text: 'First image caption' }),
+      selected,
+      'csrf',
+      expect.any(AbortSignal),
+    )
+    expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+    expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+    expect(state.selectedId.value).toBe('t1')
+    expect(state.messages.value).toEqual([saved])
+    expect(state.imageFile.value).toBeUndefined()
+    expect(state.text.value).toBe('')
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-1')
+    expect(publicReviewThreadsApi.image).not.toHaveBeenCalled()
+    await state.viewImage(saved)
+    expect(publicReviewThreadsApi.image).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      't1',
+      'm1',
+      { revisionId: 'r1', pageId: 'page' },
+      'csrf',
+      expect.any(AbortSignal),
+    )
+    expect(state.imageView.value?.url).toMatch(/^blob:/)
+  },
+)
+it('retains a new-thread image and exact receipt for manual unknown retry, with new keys for explicitly changed content', async () => {
   const { state } = setup()
   await flushPromises()
-  state.selectImage(file())
+  const selected = file()
+  state.selectImage(selected)
+  state.text.value = 'New thread retry'
+  vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValue(new ApiError('network', 0))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[0]![1]
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  expect(state.imageFile.value).toBe(selected)
+  expect(state.selectedId.value).toBeUndefined()
+  await state.load()
+  expect(publicReviewThreadsApi.createImage).toHaveBeenCalledTimes(1)
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]![1]).toEqual(first)
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]![2]).toBe(selected)
+  state.selectImage(file('image/png', 'different'))
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[2]![1].clientRequestId).not.toBe(
+    first.clientRequestId,
+  )
+  state.selectImage()
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValue(new ApiError('network', 0))
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1].clientRequestId).not.toBe(
+    vi.mocked(publicReviewThreadsApi.createImage).mock.calls[2]![1].clientRequestId,
+  )
+  expect(state.text.value).toBe('New thread retry')
+})
+it('preserves the new-thread image and key across same-actor expiry and fresh OTP without automatically creating', async () => {
+  const { state, identity, open } = setup()
+  await flushPromises()
+  const selected = file()
+  state.selectImage(selected)
+  state.text.value = 'First image after OTP'
+  identity.value = { ...context(), session: null }
+  await state.send()
+  expect(publicReviewThreadsApi.createImage).not.toHaveBeenCalled()
+  identity.value = context()
+  await flushPromises()
+  vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValueOnce(
+    new ApiError('expired', 403, 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED'),
+  )
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[0]![1]
+  expect(state.authenticationRequired.value).toBe(true)
+  expect(state.text.value).toBe('First image after OTP')
+  expect(state.imageFile.value).toBe(selected)
+  open.value = false
+  identity.value = { ...context(), session: null }
+  await flushPromises()
+  expect(state.imagePreview.value).toBe('')
+  expect(URL.revokeObjectURL).toHaveBeenCalled()
+  identity.value = { ...context(), csrfToken: 'fresh-csrf' }
+  open.value = true
+  await flushPromises()
+  expect(state.imageFile.value).toBe(selected)
+  expect(publicReviewThreadsApi.createImage).toHaveBeenCalledTimes(1)
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]![1]).toEqual(first)
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]![2]).toBe(selected)
+  expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]![3]).toBe('fresh-csrf')
+})
+it.each(['grant', 'page', 'actor', 'unmount'] as const)(
+  'clears a new-thread File on %s and rejects the late creation result',
+  async (change) => {
+    const { state, target, identity, wrapper } = setup()
+    await flushPromises()
+    state.text.value = 'Old target image'
+    state.selectImage(file())
+    const result = deferred<ReviewThread>()
+    vi.mocked(publicReviewThreadsApi.createImage).mockReturnValueOnce(result.promise)
+    const writing = state.send(),
+      signal = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[0]![4]!
+    if (change === 'unmount') wrapper.unmount()
+    else if (change === 'actor')
+      identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+    else {
+      const value = publicScope() as Extract<ReviewThreadScope, { kind: 'public' }>
+      if (change === 'grant') value.share.accessKey = 'new-grant'
+      else value.page.pageId = 'other-page'
+      target.value = value
+    }
+    expect(signal.aborted).toBe(true)
+    expect(state.imageFile.value).toBeUndefined()
+    expect(state.imagePreview.value).toBe('')
+    expect(URL.revokeObjectURL).toHaveBeenCalled()
+    result.resolve({ ...thread(), id: 'late-thread' })
+    await writing
+    await flushPromises()
+    expect(state.selectedId.value).not.toBe('late-thread')
+    expect(publicReviewThreadsApi.image).not.toHaveBeenCalled()
+  },
+)
+it('keeps new-thread validation errors and receipt conflicts as explicit actions with the image draft intact', async () => {
+  const { state } = setup()
+  await flushPromises()
+  const selected = file()
+  state.selectImage(selected)
+  state.text.value = 'Needs correction'
+  vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValueOnce(
+    new ApiError('invalid image', 400, 'PROTOTYPE_HUB_REVIEW_IMAGE_INVALID'),
+  )
+  await state.send()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackImageInvalid)
+  expect(state.imageFile.value).toBe(selected)
+  vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValueOnce(new ApiError('changed', 409))
+  await state.send()
+  expect(state.imageFile.value).toBe(selected)
+  expect(state.text.value).toBe('Needs correction')
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackConflict)
+  expect(publicReviewThreadsApi.createImage).toHaveBeenCalledTimes(2)
+})
+it('shows labelled single-image selection and removal for a new public draft before identity, without posting', async () => {
+  const { state, identity } = setup()
+  identity.value = { ...context(), session: null }
+  await flushPromises()
+  const wrapper = mount(ReviewThreadsDrawer, {
+    props: { open: true, page, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  const input = wrapper.get<HTMLInputElement>('#review-feedback-image'),
+    selected = file()
+  expect(input.attributes('accept')).toBe('image/png,image/jpeg')
+  expect(input.attributes('multiple')).toBeUndefined()
+  expect(wrapper.get('label[for="review-feedback-image"]').text()).toBe(
+    protoLocales.zh.feedbackImageSelect,
+  )
+  Object.defineProperty(input.element, 'files', { value: [selected] })
+  await input.trigger('change')
+  expect(state.imageFile.value).toBe(selected)
+  expect(wrapper.text()).not.toContain(selected.name)
+  expect(
+    wrapper.get(`img[alt="${protoLocales.zh.feedbackImageDraftAlt}"]`).attributes('src'),
+  ).toMatch(/^blob:/)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.feedbackImageRemove)!
+    .trigger('click')
   expect(state.imageFile.value).toBeUndefined()
-  expect(state.notice.value).toBe(protoLocales.zh.feedbackImageThreadRequired)
+  expect(URL.revokeObjectURL).toHaveBeenCalled()
+  expect(publicReviewThreadsApi.createImage).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+})
+it('only selects one hinted PNG/JPEG and uploads nothing until a text reply is sent', async () => {
+  const { state } = setup()
+  await flushPromises()
   state.choose(state.threads.value[0])
   await flushPromises()
   for (const invalid of [

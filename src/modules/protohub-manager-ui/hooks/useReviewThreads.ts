@@ -135,7 +135,7 @@ export function useReviewThreads(
   }
   function selectImage(file?: File) {
     if (busy.value) return
-    if (file && !selectedId.value) {
+    if (file && !selectedId.value && !isPublic.value) {
       notice.value = t('proto.feedbackImageThreadRequired')
       return
     }
@@ -425,10 +425,6 @@ export function useReviewThreads(
     if (state && (!thread || (target.kind === 'public' && state !== 'open'))) return
     if (!state && target.kind === 'member' && !thread) return
     const file = !state ? imageFile.value : undefined
-    if (file && !thread) {
-      notice.value = t('proto.feedbackImageThreadRequired')
-      return
-    }
     const body = text.value.trim()
     if (!state && (!body || body.length > 4000)) {
       notice.value = t('proto.feedbackTextRequired')
@@ -481,12 +477,21 @@ export function useReviewThreads(
       } else {
         const input = { ...page, text: body, clientRequestId: receipt.clientRequestId }
         if (target.kind === 'public' && !thread) {
-          const created = await publicReviewThreadsApi.create(
-            grant(target),
-            input,
-            identity.value!.csrfToken,
-            request.signal,
-          )
+          // Create the thread and first image message together; never leave a text-only shell.
+          const created = file
+            ? await publicReviewThreadsApi.createImage(
+                grant(target),
+                input,
+                file,
+                identity.value!.csrfToken,
+                request.signal,
+              )
+            : await publicReviewThreadsApi.create(
+                grant(target),
+                input,
+                identity.value!.csrfToken,
+                request.signal,
+              )
           if (epoch !== generation || request.signal.aborted) return
           if (created.revisionId !== page.revisionId || created.pageId !== page.pageId)
             throw new ApiError('Invalid feedback scope', 404)
