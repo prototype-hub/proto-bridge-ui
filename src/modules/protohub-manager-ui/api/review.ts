@@ -14,6 +14,7 @@ export interface ReviewProfile {
   displayName: string
   company?: string
 }
+export type UnverifiedReviewProfile = Omit<ReviewProfile, 'email'>
 
 /** This is the only public client that sends cookies, within its own same-origin review scope. */
 async function post<T>(
@@ -83,6 +84,19 @@ export const reviewApi = {
     csrf: string,
     signal?: AbortSignal,
   ) => post<ReviewContext>(grant, 'verify', { challengeId, code }, csrf, signal),
+  unverified: (
+    grant: ReviewGrant,
+    profile: UnverifiedReviewProfile,
+    csrf: string,
+    signal?: AbortSignal,
+  ) =>
+    post<ReviewContext>(
+      grant,
+      'unverified',
+      { displayName: profile.displayName, company: profile.company },
+      csrf,
+      signal,
+    ),
   logout: (grant: ReviewGrant, csrf: string, signal?: AbortSignal) =>
     post<{ loggedOut: true }>(grant, 'logout', {}, csrf, signal),
 }

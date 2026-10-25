@@ -10,7 +10,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
-import { reviewEnabled, reviewPolicy, reviewResponse, resetReview } from './review'
+import {
+  reviewEnabled,
+  reviewUnverifiedAllowed,
+  reviewPolicy,
+  reviewResponse,
+  resetReview,
+} from './review'
 import type {
   PrototypeListQuery,
   Project,
@@ -630,6 +636,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     const info: PublicShare = {
       reviewEnabled: access && reviewEnabled(record.id),
       reviewAvailable: access && reviewEnabled(record.id),
+      reviewUnverifiedAllowed: access && reviewUnverifiedAllowed(record.id),
       token: record.token,
       revisionId: rid,
       revisionMode: record.revisionMode,

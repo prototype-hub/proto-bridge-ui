@@ -9,6 +9,7 @@ import {
   Tag as ATag,
   Pagination as APagination,
   Button as AButton,
+  Select as ASelect,
 } from 'ant-design-vue'
 import { StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -43,7 +44,28 @@ const popupContainer = () => container.value || document.body
         aria-modal="true"
         :aria-label="t('proto.reviewGuests')"
       >
-        <a-alert type="info" show-icon :message="t('proto.reviewGuestsHint')" />
+        <label class="review-guests-filter">
+          <span>{{ t('proto.reviewVerificationLevel') }}</span>
+          <a-select
+            v-model:value="state.verificationLevel.value"
+            :aria-label="t('proto.reviewVerificationLevel')"
+            :options="[
+              { value: 'email', label: t('proto.reviewEmailVerified') },
+              { value: 'unverified', label: t('proto.reviewUnverified') },
+            ]"
+          />
+        </label>
+        <a-alert
+          :type="state.verificationLevel.value === 'email' ? 'info' : 'warning'"
+          show-icon
+          :message="
+            t(
+              state.verificationLevel.value === 'email'
+                ? 'proto.reviewGuestsHint'
+                : 'proto.reviewUnverifiedGuestsHint',
+            )
+          "
+        />
         <a-alert
           v-if="state.notice.value"
           type="info"
@@ -75,22 +97,44 @@ const popupContainer = () => container.value || document.body
                         :icon="item.enabled ? StopOutlined : CheckCircleOutlined"
                         :permission="p.share.save"
                         :danger="item.enabled"
-                        :disabled="state.busy.value || state.loading.value"
+                        :disabled="state.busy.value || state.loading.value || state.isExpired(item)"
                         :confirm="
                           t(
-                            item.enabled
-                              ? 'proto.reviewGuestDisableConfirm'
-                              : 'proto.reviewGuestEnableConfirm',
+                            item.verificationLevel === 'unverified'
+                              ? item.enabled
+                                ? 'proto.reviewUnverifiedDisableConfirm'
+                                : 'proto.reviewUnverifiedEnableConfirm'
+                              : item.enabled
+                                ? 'proto.reviewGuestDisableConfirm'
+                                : 'proto.reviewGuestEnableConfirm',
                           )
                         "
                         @action="state.setEnabled(item)"
                       />
                     </div>
-                    <div>{{ item.maskedEmail }}</div>
+                    <div v-if="item.maskedEmail">{{ item.maskedEmail }}</div>
                     <div v-if="item.company">{{ item.company }}</div>
                     <div class="review-guest-verification">
-                      {{ t('proto.reviewEmailVerified') }}
+                      <a-tag :color="item.verificationLevel === 'email' ? 'green' : 'warning'">{{
+                        t(
+                          item.verificationLevel === 'email'
+                            ? 'proto.reviewEmailVerified'
+                            : 'proto.reviewUnverified',
+                        )
+                      }}</a-tag>
                     </div>
+                    <template v-if="item.verificationLevel === 'unverified'">
+                      <div v-if="item.expiresAt">
+                        {{
+                          t('proto.reviewExpires', {
+                            time: new Date(item.expiresAt).toLocaleString(),
+                          })
+                        }}
+                      </div>
+                      <div v-if="state.isExpired(item)">
+                        {{ t('proto.reviewUnverifiedExpired') }}
+                      </div>
+                    </template>
                   </div>
                 </a-list-item>
               </template>
@@ -121,6 +165,12 @@ const popupContainer = () => container.value || document.body
 }
 .review-guests {
   position: relative;
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-guests-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
 }
 .review-guests,
 .review-guest {

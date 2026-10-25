@@ -4,11 +4,14 @@ import type { ReviewIdentity, Share } from '../../src/modules/protohub-manager-u
 
 // UI fixtures only: fixed codes and in-memory records never ship in production or prove DB security.
 const enabled = new Set<string>()
+const unverifiedAllowed = new Set<string>()
 const sessions = new Map<string, { scope: string; identity?: ReviewIdentity }>()
 const challenges = new Map<string, { cookie: string; scope: string; identity: ReviewIdentity }>()
 export const reviewEnabled = (id: string) => enabled.has(id)
+export const reviewUnverifiedAllowed = (id: string) => unverifiedAllowed.has(id)
 export function resetReview() {
   enabled.clear()
+  unverifiedAllowed.clear()
   sessions.clear()
   challenges.clear()
 }
@@ -16,11 +19,14 @@ export function reviewPolicy(record: Share, input?: Record<string, unknown>) {
   if (input) {
     if (input.enabled === true) enabled.add(record.id)
     else enabled.delete(record.id)
+    if (input.allowUnverified === true) unverifiedAllowed.add(record.id)
+    else if (input.allowUnverified === false) unverifiedAllowed.delete(record.id)
     record.configVersion++
   }
   return {
     enabled: reviewEnabled(record.id),
     mailAvailable: true,
+    allowUnverified: reviewUnverifiedAllowed(record.id),
     configVersion: record.configVersion,
   }
 }
@@ -62,12 +68,14 @@ export function reviewResponse(
       `mock-review=${cookie}; HttpOnly; SameSite=Strict; Path=/api/prototype-hub/public/shares/${record.token}/review`,
     )
   }
-  const selected = sessions.get(cookie)!
-  const csrf = createHash('sha256').update(cookie).digest('hex')
+  let selected = sessions.get(cookie)!
+  let csrf = createHash('sha256').update(cookie).digest('hex')
+  if (selected.identity && selected.identity.expiresAt <= Date.now()) selected.identity = undefined
   const context = () => ({
     revisionId: rid,
     enabled: true,
     mailAvailable: true,
+    allowUnverified: reviewUnverifiedAllowed(record.id),
     csrfToken: csrf,
     session: selected.identity || null,
   })
@@ -80,7 +88,42 @@ export function reviewResponse(
     send(res, 403, null, 'Review access unavailable')
     return true
   }
-  if (action === 'challenges') {
+  if (action === 'unverified') {
+    if (!reviewUnverifiedAllowed(record.id)) send(res, 403, null, 'Review access unavailable')
+    else if (selected.identity?.verificationLevel === 'email')
+      send(res, 409, null, 'Sign out the existing identity first')
+    else if (selected.identity) send(res, 200, context())
+    else if (
+      typeof data.displayName !== 'string' ||
+      !data.displayName.trim() ||
+      data.displayName.trim().length > 100 ||
+      (data.company !== undefined &&
+        (typeof data.company !== 'string' || data.company.trim().length > 200)) ||
+      'email' in data
+    )
+      send(res, 400, null, 'Invalid name or company')
+    else {
+      const identity: ReviewIdentity = {
+        guestId: randomUUID(),
+        displayName: data.displayName.trim(),
+        company: typeof data.company === 'string' ? data.company.trim() || null : null,
+        maskedEmail: null,
+        verificationLevel: 'unverified',
+        expiresAt: Date.now() + 8 * 3600000,
+      }
+      // The mock rotates only this scoped cookie, without putting credentials in any public response.
+      sessions.delete(cookie)
+      cookie = randomUUID()
+      selected = { scope, identity }
+      sessions.set(cookie, selected)
+      csrf = createHash('sha256').update(cookie).digest('hex')
+      res.setHeader(
+        'Set-Cookie',
+        `mock-review=${cookie}; HttpOnly; SameSite=Strict; Path=/api/prototype-hub/public/shares/${record.token}/review`,
+      )
+      send(res, 200, context())
+    }
+  } else if (action === 'challenges') {
     const email = String(data.email).trim().toLowerCase()
     const challengeId = randomUUID()
     const identity: ReviewIdentity = {

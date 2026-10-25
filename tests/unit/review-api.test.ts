@@ -92,3 +92,27 @@ it('preserves generic server error codes for localized UI without retrying an am
   ).rejects.toMatchObject({ status: 429 })
   expect(fetch).toHaveBeenCalledOnce()
 })
+it('creates an unverified identity only through its explicit CSRF action, with no email or OTP payload', async () => {
+  const profile = {
+    displayName: 'Visitor',
+    company: 'Self declared',
+    email: 'do-not-send@example.invalid',
+  }
+  await reviewApi.unverified(grant, profile, 'csrf')
+  const [url, options] = vi.mocked(fetch).mock.calls[0]!
+  expect(url).toBe('/api/prototype-hub/public/shares/share%2Fid/review/unverified')
+  expect(options).toMatchObject({
+    credentials: 'same-origin',
+    redirect: 'error',
+    cache: 'no-store',
+  })
+  expect(options!.headers).toMatchObject({ 'X-Review-CSRF': 'csrf' })
+  expect(options!.headers).not.toHaveProperty('X-Access-Token')
+  expect(JSON.parse(options!.body as string)).toEqual({
+    revisionId: 'r1',
+    accessKey: 'public-grant',
+    displayName: 'Visitor',
+    company: 'Self declared',
+  })
+  expect(fetch).toHaveBeenCalledOnce()
+})

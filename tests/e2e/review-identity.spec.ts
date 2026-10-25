@@ -56,7 +56,11 @@ test('share managers explicitly enable identity using current policy version and
   )
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   const response = await saving
-  expect(response.request().postDataJSON()).toEqual({ enabled: true, expectedVersion: 1 })
+  expect(response.request().postDataJSON()).toEqual({
+    enabled: true,
+    expectedVersion: 1,
+    allowUnverified: false,
+  })
   expect((await response.json()).result).toMatchObject({ enabled: true, configVersion: 2 })
   await expect(dialog).toBeHidden()
 })

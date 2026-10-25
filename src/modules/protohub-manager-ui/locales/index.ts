@@ -1,8 +1,8 @@
 export const protoLocales = {
   zh: {
-    reviewOriginDenied: '邮箱身份请求来源不匹配，请管理员检查可信前端地址配置。',
-    reviewCookieRequired: '邮箱身份 Cookie 不可用，请检查浏览器 Cookie 和 HTTPS 配置后重试。',
-    reviewCsrfChanged: '邮箱身份凭据已变化，请重新载入身份验证后重试。',
+    reviewOriginDenied: '访问者身份请求来源不匹配，请管理员检查可信前端地址配置。',
+    reviewCookieRequired: '访问者身份 Cookie 不可用，请检查浏览器 Cookie 和 HTTPS 配置后重试。',
+    reviewCsrfChanged: '访问者身份凭据已变化，请重新载入身份验证后重试。',
     folderPathIssues: '发现 {count} 个路径问题，请修正以下文件后重新选择；不会跳过文件。',
     folderPathIssuesTruncated: '仅显示前 {count} 项问题。',
     folderPathConflictWith: '与「{path}」冲突',
@@ -20,6 +20,27 @@ export const protoLocales = {
       duplicate: '与另一文件使用相同路径',
       fileDirectoryConflict: '同一路径同时用于文件和目录',
     },
+    reviewAllowUnverified: '允许未验证访客身份（默认关闭）',
+    reviewUnverified: '未验证身份',
+    reviewIdentityMethod: '身份方式',
+    reviewUseEmail: '使用邮箱验证（推荐）',
+    reviewUseUnverified: '仅填写姓名（未验证）',
+    reviewCreateUnverified: '创建未验证身份',
+    reviewNameRequired: '请填写姓名（最多 100 字），公司最多 200 字。',
+    reviewUnverifiedHint:
+      '姓名和公司均未经验证，此身份仅在当前浏览器有效 8 小时，不会自动续期。无法通过姓名或邮箱找回，也无法跨设备恢复；不会自动与邮箱身份合并。',
+    reviewIdentityConflict:
+      '当前已有另一种身份，请退出当前身份后再明确选择。不会自动切换或合并身份。',
+    reviewVerificationLevel: '验证类型',
+    reviewUnverifiedGuestsHint:
+      '此列表仅显示未验证身份，姓名和公司均为自行填写。8 小时后过期，不能找回或自动合并。禁用只针对该身份，访问者仍可能创建新身份，并不代表永久封禁此人。',
+    reviewUnverifiedDisableConfirm:
+      '禁用此未验证身份？现有会话将失效，重新启用也不会恢复旧 Cookie。访问者仍可能创建新身份，匿名预览不受影响。',
+    reviewUnverifiedEnableConfirm:
+      '重新启用此未验证身份？旧 Cookie 不会恢复，也不会延长 8 小时有效期。过期身份无法启用。',
+    reviewUnverifiedGuestUpdated:
+      '未验证身份状态已更新。旧 Cookie 不会恢复，有效期不会延长；访问者仍可能创建新身份。',
+    reviewUnverifiedExpired: '身份已过期，无法重新启用。',
     reviewGuests: '访问者管理',
     reviewGuestsHint:
       '仅显示已验证邮箱的访问者，邮箱经过脱敏。姓名和公司由访问者自行填写，未核实。此处不管理平台用户，也不影响匿名原型预览。',
@@ -40,7 +61,7 @@ export const protoLocales = {
     reviewIdentityHint:
       '验证邮箱以找回当前项目的访问者身份。姓名与公司为自行填写，仅验证邮箱持有权；不会创建平台账户。',
     reviewSettings: '访问者身份设置',
-    reviewEnable: '允许邮箱身份验证',
+    reviewEnable: '允许访问者身份',
     reviewPolicyHint:
       '保存会更新分享配置并使旧的预览和身份授权失效。请重新复制分享链接；开启不代表开启批注或消息提醒。',
     reviewPolicyUnavailable: '暂时无法读取或保存身份设置，请重试并核对最新分享状态。',
@@ -55,7 +76,7 @@ export const protoLocales = {
     reviewEmailVerified: '邮箱已验证',
     reviewExpires: '本次身份有效至 {time}',
     reviewLogout: '退出访问者身份',
-    reviewExpired: '本次身份已到期，请重试并重新验证邮箱。',
+    reviewExpired: '本次身份已到期，请重试后明确选择身份方式。',
     reviewCodeExpired: '验证码已过期，请手动重新发送。',
     reviewCodeInvalid: '验证码无效或已过期，请核对后重试或手动重新发送。',
     reviewCodeRequired: '请输入 6 位数字验证码。',
@@ -364,6 +385,28 @@ export const protoLocales = {
       duplicate: 'Another file uses the same path',
       fileDirectoryConflict: 'The same path is used for a file and a directory',
     },
+    reviewAllowUnverified: 'Allow unverified visitor identities (off by default)',
+    reviewUnverified: 'Unverified identity',
+    reviewIdentityMethod: 'Identity method',
+    reviewUseEmail: 'Verify email (recommended)',
+    reviewUseUnverified: 'Name only (unverified)',
+    reviewCreateUnverified: 'Create unverified identity',
+    reviewNameRequired:
+      'Enter your name (up to 100 characters). Company can be up to 200 characters.',
+    reviewUnverifiedHint:
+      'Name and company are unverified. This identity lasts 8 hours in this browser without renewal. It cannot be recovered by name or email, restored on another device, or automatically merged with an email identity.',
+    reviewIdentityConflict:
+      'Another identity is already active. Sign out before explicitly choosing a different method. Identities are never switched or merged automatically.',
+    reviewVerificationLevel: 'Verification type',
+    reviewUnverifiedGuestsHint:
+      'Only unverified identities appear here. Names and companies are self-declared. These identities expire after 8 hours and cannot be recovered or automatically merged. Disabling affects this identity only; the visitor can create another identity. This is not a permanent ban on a person.',
+    reviewUnverifiedDisableConfirm:
+      'Disable this unverified identity? Its sessions will stop working. Enabling it again will not restore old cookies. The visitor can still create another identity; anonymous preview remains available.',
+    reviewUnverifiedEnableConfirm:
+      'Enable this unverified identity again? Old cookies will not return and its 8-hour lifetime will not be extended. Expired identities cannot be enabled.',
+    reviewUnverifiedGuestUpdated:
+      'Unverified identity status updated. Old cookies are not restored and expiry is unchanged. The visitor can still create another identity.',
+    reviewUnverifiedExpired: 'This identity has expired and cannot be enabled again.',
     reviewGuests: 'Visitor management',
     reviewGuestsHint:
       'Only visitors with verified mailboxes are listed, with masked email addresses. Names and companies are self-declared and unverified. These are not platform users. Anonymous prototype preview remains available.',
@@ -388,7 +431,7 @@ export const protoLocales = {
     reviewIdentityHint:
       'Verify your mailbox to recover your visitor identity for this project. Name and company are self-declared; only mailbox ownership is verified. No platform account is created.',
     reviewSettings: 'Visitor identity settings',
-    reviewEnable: 'Allow email identity verification',
+    reviewEnable: 'Allow visitor identities',
     reviewPolicyHint:
       'Saving updates the share and invalidates previous preview and identity grants. Copy the updated link again. This does not enable comments or notifications.',
     reviewPolicyUnavailable:
@@ -405,7 +448,7 @@ export const protoLocales = {
     reviewEmailVerified: 'Email verified',
     reviewExpires: 'This identity expires at {time}',
     reviewLogout: 'Sign out visitor identity',
-    reviewExpired: 'This identity has expired. Retry and verify your mailbox again.',
+    reviewExpired: 'This identity has expired. Retry and explicitly choose an identity method.',
     reviewCodeExpired: 'This code has expired. Send another code manually.',
     reviewCodeInvalid:
       'Invalid or expired code. Check it and retry, or request another code manually.',

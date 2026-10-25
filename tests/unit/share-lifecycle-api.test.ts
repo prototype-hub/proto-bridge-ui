@@ -38,3 +38,24 @@ it('uses the existing authenticated share action namespace and sends version pre
     undefined,
   )
 })
+it.each([false, true])(
+  'sends an explicit unverified policy flag (%s) with the current CAS version',
+  async (allowUnverified) => {
+    vi.mocked(request.put).mockResolvedValue({
+      success: true,
+      status: 200,
+      result: { enabled: true, mailAvailable: true, configVersion: 12, allowUnverified },
+    })
+    const options = { signal: new AbortController().signal, silent: true }
+    await sharesApi.setReviewPolicy('id/with space', true, 11, allowUnverified, options)
+    expect(request.put).toHaveBeenLastCalledWith(
+      '/prototype-hub/shares/id%2Fwith%20space/review',
+      {
+        enabled: true,
+        expectedVersion: 11,
+        allowUnverified,
+      },
+      options,
+    )
+  },
+)
