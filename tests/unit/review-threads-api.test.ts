@@ -63,6 +63,35 @@ it('keeps assignment detail, paged candidates and CAS clear on member-only encod
   expect(fetch).not.toHaveBeenCalled()
   expect(publicReviewThreadsApi).not.toHaveProperty('assign')
 })
+it('creates an image thread atomically using two multipart parts, review credentials and no member endpoint', async () => {
+  const image = new File(['original bytes'], 'private-first-image.png', { type: 'image/png' }),
+    data = { revisionId: 'r1', pageId: 'page', text: 'First image', clientRequestId: 'create-key' },
+    signal = new AbortController().signal
+  await publicReviewThreadsApi.createImage(grant, data, image, 'csrf', signal)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  const [url, options] = vi.mocked(fetch).mock.calls[0]!
+  expect(url).toBe('/api/prototype-hub/public/shares/share%2Fid/review/threads/_with-image')
+  expect(options).toMatchObject({
+    method: 'POST',
+    credentials: 'same-origin',
+    redirect: 'error',
+    cache: 'no-store',
+  })
+  expect(options!.headers).toMatchObject({ 'X-Review-CSRF': 'csrf' })
+  expect(options!.headers).not.toHaveProperty('Content-Type')
+  expect(options!.headers).not.toHaveProperty('X-Access-Token')
+  const form = options!.body as FormData
+  expect([...form.keys()]).toEqual(['request', 'image'])
+  expect((form.get('request') as Blob).type).toBe('application/json')
+  expect(JSON.parse(await blobText(form.get('request') as Blob))).toEqual({
+    ...data,
+    accessKey: 'access',
+  })
+  expect((form.get('image') as File).name).toBe('image')
+  expect(await blobText(form.get('image') as Blob)).toBe('original bytes')
+  expect(request.post).not.toHaveBeenCalled()
+  expect(reviewThreadsApi).not.toHaveProperty('createImage')
+})
 it('sends precisely two multipart parts and only review credentials for a manual public image reply', async () => {
   const image = new File(['png'], 'private-filename.png', { type: 'image/png' })
   const data = { revisionId: 'r1', pageId: 'page', text: 'Caption', clientRequestId: 'key' }
