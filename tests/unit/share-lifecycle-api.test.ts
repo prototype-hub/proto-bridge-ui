@@ -44,16 +44,23 @@ it.each([false, true])(
     vi.mocked(request.put).mockResolvedValue({
       success: true,
       status: 200,
-      result: { enabled: true, mailAvailable: true, configVersion: 12, allowUnverified },
+      result: {
+        enabled: true,
+        mailAvailable: true,
+        configVersion: 12,
+        allowUnverified,
+        allowComment: false,
+      },
     })
     const options = { signal: new AbortController().signal, silent: true }
-    await sharesApi.setReviewPolicy('id/with space', true, 11, allowUnverified, options)
+    await sharesApi.setReviewPolicy('id/with space', true, 11, allowUnverified, false, options)
     expect(request.put).toHaveBeenLastCalledWith(
       '/prototype-hub/shares/id%2Fwith%20space/review',
       {
         enabled: true,
         expectedVersion: 11,
         allowUnverified,
+        allowComment: false,
       },
       options,
     )

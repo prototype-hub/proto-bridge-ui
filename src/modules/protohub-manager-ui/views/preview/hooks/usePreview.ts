@@ -6,12 +6,13 @@ import { previewIdentity } from '@/modules/protohub-manager-ui/utils/preview-loc
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
-import type { WorkspaceContext } from '@/modules/protohub-manager-ui/types'
+import type { WorkspaceContext, Project } from '@/modules/protohub-manager-ui/types'
 
 /** Exchange a member session only on entry or an explicit retry; expiry unmounts the untrusted frame. */
 export function usePreview() {
   const route = useRoute()
   const data = shallowRef<WorkspaceContext>()
+  const project = shallowRef<Project>()
   const loading = ref(false)
   const error = ref('')
   const expired = ref(false)
@@ -24,6 +25,7 @@ export function usePreview() {
     controller?.abort()
     clearTimeout(timer)
     data.value = undefined
+    project.value = undefined
   }
   async function load() {
     clear()
@@ -40,16 +42,16 @@ export function usePreview() {
     expired.value = false
     try {
       if (revisionId === null) throw new Error(t('proto.invalidPageTarget'))
-      const [project, version] = await Promise.all([
+      const [selectedProject, version] = await Promise.all([
         projectsApi.get(projectId, options),
         versionsApi.get(versionId, options),
       ])
       if (current !== generation || request.signal.aborted) return
       // URL IDs are untrusted; an accessible version cannot be paired with a different project title.
       if (
-        project.id !== projectId ||
+        selectedProject.id !== projectId ||
         version.projectId !== projectId ||
-        !projectAllows(project, 'read')
+        !projectAllows(selectedProject, 'read')
       )
         throw new Error(t('proto.projectUnavailable'))
       if (version.migrationRequired) throw new Error(t('proto.revisionMigrationRequired'))
@@ -73,10 +75,11 @@ export function usePreview() {
       if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now())
         throw new Error(t('proto.previewExpired'))
       runtimePageUrl(session.runtimeBaseUrl, revision.entryFile)
+      project.value = selectedProject
       data.value = {
         revisionId: revision.id,
         locationPath,
-        title: project.name,
+        title: selectedProject.name,
         versionName: revision.versionName,
         runtimeBaseUrl: session.runtimeBaseUrl,
         entryFile: revision.entryFile,
@@ -84,6 +87,7 @@ export function usePreview() {
       }
       timer = setTimeout(() => {
         data.value = undefined
+        project.value = undefined
         expired.value = true
         error.value = t('proto.previewExpired')
       }, session.expiresAt - Date.now())
@@ -116,5 +120,5 @@ export function usePreview() {
     { immediate: true, flush: 'sync' },
   )
   onScopeDispose(clear)
-  return { data, loading, error, expired, load }
+  return { data, project, loading, error, expired, load }
 }

@@ -18,12 +18,13 @@ export interface ReviewProfile {
 export type UnverifiedReviewProfile = Pick<ReviewProfile, 'displayName' | 'company'>
 
 /** This is the only public client that sends cookies, within its own same-origin review scope. */
-async function post<T>(
+export async function reviewRequest<T>(
   grant: ReviewGrant,
   action: string,
   input: object,
   csrf?: string,
   signal?: AbortSignal,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> {
   const base = new URL(config.apiBase.replace(/\/$/, '') + '/', window.location.origin)
   if (
@@ -42,7 +43,7 @@ async function post<T>(
   const timeout = setTimeout(abort, 30000)
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       credentials: 'same-origin',
       redirect: 'error',
       cache: 'no-store',
@@ -75,23 +76,23 @@ async function post<T>(
 }
 export const reviewApi = {
   context: (grant: ReviewGrant, signal?: AbortSignal) =>
-    post<ReviewContext>(grant, 'context', {}, undefined, signal),
+    reviewRequest<ReviewContext>(grant, 'context', {}, undefined, signal),
   challenge: (grant: ReviewGrant, profile: ReviewProfile, csrf: string, signal?: AbortSignal) =>
-    post<ReviewChallenge>(grant, 'challenges', profile, csrf, signal),
+    reviewRequest<ReviewChallenge>(grant, 'challenges', profile, csrf, signal),
   verify: (
     grant: ReviewGrant,
     challengeId: string,
     code: string,
     csrf: string,
     signal?: AbortSignal,
-  ) => post<ReviewContext>(grant, 'verify', { challengeId, code }, csrf, signal),
+  ) => reviewRequest<ReviewContext>(grant, 'verify', { challengeId, code }, csrf, signal),
   unverified: (
     grant: ReviewGrant,
     profile: UnverifiedReviewProfile,
     csrf: string,
     signal?: AbortSignal,
   ) =>
-    post<ReviewContext>(
+    reviewRequest<ReviewContext>(
       grant,
       'unverified',
       { displayName: profile.displayName, company: profile.company },
@@ -99,5 +100,5 @@ export const reviewApi = {
       signal,
     ),
   logout: (grant: ReviewGrant, csrf: string, signal?: AbortSignal) =>
-    post<{ loggedOut: true }>(grant, 'logout', {}, csrf, signal),
+    reviewRequest<{ loggedOut: true }>(grant, 'logout', {}, csrf, signal),
 }

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { defineComponent, h, ref } from 'vue'
+import { useReviewIdentity } from '@/modules/protohub-manager-ui/views/share/hooks/useReviewIdentity'
 import ReviewIdentityDrawer from '@/modules/protohub-manager-ui/views/share/components/ReviewIdentityDrawer.vue'
 import { reviewApi } from '@/modules/protohub-manager-ui/api/review'
 import { i18n } from '@/shared/i18n'
@@ -51,13 +53,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 function setup() {
-  wrapper = mount(ReviewIdentityDrawer, {
-    props: { share, open: true },
-    global: {
-      plugins: [i18n],
-      stubs: { ADrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' } },
+  wrapper = mount(
+    defineComponent({
+      setup() {
+        const state = useReviewIdentity(ref(share), ref(true))
+        return () => h(ReviewIdentityDrawer, { state, open: true })
+      },
+    }),
+    {
+      global: {
+        plugins: [i18n],
+        stubs: { ADrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' } },
+      },
     },
-  })
+  )
   return wrapper
 }
 it('requires explicit method choice and removes the email input entirely from name-only mode', async () => {

@@ -246,7 +246,7 @@ it('does not offer unverified fallback when invited mail is unavailable', async 
 })
 it('renders explicit invitation intent, emits abandon and successful use, and never exposes a name-only shortcut', async () => {
   wrapper = mount(ReviewIdentityDrawer, {
-    props: { share, open: true, invitation: token },
+    props: { state: setup().state, open: true, invitation: token },
     global: {
       plugins: [i18n],
       stubs: { ADrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' } },

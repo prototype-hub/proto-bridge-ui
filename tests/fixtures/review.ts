@@ -1,3 +1,5 @@
+import { resetThreads, threadResponse } from './review-thread'
+import type { PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 import { createHash, randomUUID } from 'node:crypto'
 import { resetInvitations, invitedChallenge, consumeInvitation } from './review-invitation'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -6,6 +8,7 @@ import type { ReviewIdentity, Share } from '../../src/modules/protohub-manager-u
 // UI fixtures only: fixed codes and in-memory records never ship in production or prove DB security.
 const enabled = new Set<string>()
 const unverifiedAllowed = new Set<string>()
+const commentsAllowed = new Set<string>()
 const sessions = new Map<string, { scope: string; identity?: ReviewIdentity }>()
 const challenges = new Map<
   string,
@@ -15,6 +18,8 @@ export const reviewEnabled = (id: string) => enabled.has(id)
 export const reviewUnverifiedAllowed = (id: string) => unverifiedAllowed.has(id)
 export function resetReview() {
   resetInvitations()
+  resetThreads()
+  commentsAllowed.clear()
   enabled.clear()
   unverifiedAllowed.clear()
   sessions.clear()
@@ -26,10 +31,13 @@ export function reviewPolicy(record: Share, input?: Record<string, unknown>) {
     else enabled.delete(record.id)
     if (input.allowUnverified === true) unverifiedAllowed.add(record.id)
     else if (input.allowUnverified === false) unverifiedAllowed.delete(record.id)
+    if (input.allowComment === true) commentsAllowed.add(record.id)
+    else if (input.allowComment === false) commentsAllowed.delete(record.id)
     record.configVersion++
   }
   return {
     enabled: reviewEnabled(record.id),
+    allowComment: reviewEnabled(record.id) && commentsAllowed.has(record.id),
     mailAvailable: true,
     allowUnverified: reviewUnverifiedAllowed(record.id),
     configVersion: record.configVersion,
@@ -51,13 +59,15 @@ export function reviewResponse(
   rid: string,
   grant: string,
   send: Send,
+  pages: PrototypePage[] = [],
 ) {
   if (!suffix.startsWith('/review/')) return false
   if (
     !reviewEnabled(record.id) ||
     data.revisionId !== rid ||
     data.accessKey !== grant ||
-    req.method !== 'POST' ||
+    (req.method !== 'POST' &&
+      !(req.method === 'PUT' && /\/threads\/[^/]+\/status$/.test(suffix))) ||
     req.headers['x-access-token']
   ) {
     send(res, 403, null, 'Review access unavailable')
@@ -79,6 +89,7 @@ export function reviewResponse(
   const context = () => ({
     revisionId: rid,
     enabled: true,
+    allowComment: commentsAllowed.has(record.id),
     mailAvailable: true,
     allowUnverified: reviewUnverifiedAllowed(record.id),
     csrfToken: csrf,
@@ -91,6 +102,24 @@ export function reviewResponse(
   }
   if (req.headers['x-review-csrf'] !== csrf) {
     send(res, 403, null, 'Review access unavailable')
+    return true
+  }
+  if (action.startsWith('threads')) {
+    if (!commentsAllowed.has(record.id) || record.revisionMode !== 'fixed')
+      send(res, 403, null, 'Feedback disabled', 'PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED')
+    else if (!selected.identity)
+      send(res, 403, null, 'Identity required', 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED')
+    else
+      threadResponse(
+        res,
+        record.versionId,
+        pages,
+        data,
+        action.slice('threads'.length),
+        req.method!,
+        send,
+        { share: record, identity: selected.identity },
+      )
     return true
   }
   if (action === 'unverified') {

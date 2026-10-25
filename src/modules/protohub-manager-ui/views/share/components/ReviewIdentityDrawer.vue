@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed } from 'vue'
 import {
   Drawer as ADrawer,
   Form as AForm,
@@ -11,17 +11,17 @@ import {
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import LoadState from '@/shared/components/LoadState.vue'
-import { useReviewIdentity } from '../hooks/useReviewIdentity'
-import type { PublicShare } from '@/modules/protohub-manager-ui/types'
+import type { ReviewIdentityController } from '../hooks/useReviewIdentity'
 
-const props = defineProps<{ share?: PublicShare; open: boolean; invitation?: string | null }>()
-const emit = defineEmits<{ close: []; invitationUsed: []; abandonInvitation: [] }>()
+const props = defineProps<{
+  state: ReviewIdentityController
+  open: boolean
+  invitation?: string | null
+  returnToFeedback?: boolean
+}>()
+const emit = defineEmits<{ close: []; invitationUsed: []; abandonInvitation: []; feedback: [] }>()
 const { t } = useI18n()
-const state = useReviewIdentity(
-  toRef(props, 'share'),
-  toRef(props, 'open'),
-  toRef(props, 'invitation'),
-)
+const state = props.state
 const session = computed(() => state.context.value?.session)
 async function verify() {
   if (await state.verify()) emit('invitationUsed')
@@ -228,6 +228,12 @@ async function verify() {
           t('common.retry')
         }}</a-button>
       </load-state>
+      <a-button
+        v-if="returnToFeedback"
+        class="review-invitation-abandon"
+        @click="emit('feedback')"
+        >{{ t('proto.feedbackReturn') }}</a-button
+      >
       <a-button @click="emit('close')">{{ t('common.close') }}</a-button>
     </section>
   </a-drawer>
