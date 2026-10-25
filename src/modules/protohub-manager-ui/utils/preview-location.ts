@@ -1,6 +1,29 @@
 import type { PrototypePage } from '../types'
 import { runtimePageUrl } from './urls'
 
+export interface ReviewThreadTarget {
+  revisionId: string
+  pageId: string
+  threadId: string
+}
+
+/** A thread link never fills missing scope IDs from the current page or a server response. */
+export function reviewThreadTarget(
+  query: Record<string, unknown>,
+): ReviewThreadTarget | null | undefined {
+  if (query.threadId === undefined) return undefined
+  const revisionId = previewIdentity(query.revisionId),
+    pageId = previewIdentity(query.pageId),
+    threadId = query.threadId
+  return revisionId &&
+    pageId &&
+    typeof threadId === 'string' &&
+    threadId.length === 43 &&
+    /^[A-Za-z0-9_-]{43}$/.test(threadId)
+    ? { revisionId, pageId, threadId }
+    : null
+}
+
 /** Route identities are single opaque values; duplicate keys and blank/control values are invalid. */
 export function previewIdentity(value: unknown): string | undefined | null {
   if (value === undefined) return undefined

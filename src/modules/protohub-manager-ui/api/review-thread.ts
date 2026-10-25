@@ -7,11 +7,19 @@ import type {
   ReviewThreadQuery,
   ReviewMessageInput,
   ReviewStatusInput,
+  ReviewThreadPage,
 } from '../types'
 const base = (versionId: string) =>
   `/prototype-hub/versions/${encodeURIComponent(versionId)}/review-threads`
 const threadPath = (id: string) => `threads/${encodeURIComponent(id)}`
 export const publicReviewThreadsApi = {
+  detail: (
+    grant: ReviewGrant,
+    id: string,
+    data: ReviewThreadPage,
+    csrf: string,
+    signal?: AbortSignal,
+  ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/_detail`, data, csrf, signal),
   query: (grant: ReviewGrant, data: ReviewThreadQuery, csrf: string, signal?: AbortSignal) =>
     reviewRequest<PageResult<ReviewThread>>(grant, 'threads/_query', data, csrf, signal),
   create: (grant: ReviewGrant, data: ReviewMessageInput, csrf: string, signal?: AbortSignal) =>
@@ -46,6 +54,14 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/status`, data, csrf, signal, 'PUT'),
 }
 export const reviewThreadsApi = {
+  detail: async (versionId: string, id: string, data: ReviewThreadPage, options?: RequestOptions) =>
+    (
+      await request.post<ReviewThread>(
+        `${base(versionId)}/${encodeURIComponent(id)}/_detail`,
+        data,
+        options,
+      )
+    ).result,
   query: async (versionId: string, data: ReviewThreadQuery, options?: RequestOptions) =>
     (await request.post<PageResult<ReviewThread>>(`${base(versionId)}/_query`, data, options))
       .result,

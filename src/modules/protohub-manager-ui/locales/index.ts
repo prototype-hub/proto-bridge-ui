@@ -9,6 +9,8 @@ export const protoLocales = {
       '请先验证访问者身份。当前页面的草稿已保留，请按需复制；验证返回后需自行提交。',
     feedbackDisabled: '此分享未启用页面反馈。',
     feedbackUnavailable: '无法读取或操作页面反馈，请刷新核对访问权限及当前页面。',
+    feedbackInvalidTarget: '反馈链接无效，需要完整且有效的修订、页面和反馈标识。',
+    feedbackCopyLink: '复制此反馈链接',
     feedbackTextRequired: '请输入 1–4000 字的纯文本内容，不能只输入空白。',
     feedbackConflict: '反馈状态已变化，已刷新当前记录。草稿仍保留，请核对后再操作，不会自动重试。',
     feedbackResultUnknown:
@@ -448,6 +450,9 @@ export const protoLocales = {
       'This feedback is not on the current list page. Your draft is kept. Copy it or select the feedback again before proceeding.',
     feedbackReturn: 'Return to page feedback (keep draft)',
     feedbackCopyDraft: 'Copy current draft',
+    feedbackInvalidTarget:
+      'This feedback link is invalid. A valid revision, page and thread are required.',
+    feedbackCopyLink: 'Copy this feedback link',
     feedbackState: 'Feedback state',
     feedbackOpen: 'Open',
     feedbackResolved: 'Resolved',

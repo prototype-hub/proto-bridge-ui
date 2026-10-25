@@ -228,28 +228,38 @@
 
 公开接口全部位于 `/prototype-hub/public/shares/{token}/review`，提交 `{revisionId,accessKey,pageId}`，沿用同源Cookie、受信Origin、`X-Review-CSRF`、no-store；新接口包含明确的PUT方法，不能把身份Cookie扩至runtime：
 
-| 请求                                       | 额外字段                                         | 结果                  |
-| ------------------------------------------ | ------------------------------------------------ | --------------------- |
-| `POST /threads/_query`                     | `{pageIndex,pageSize,state?}`                    | 本人线程分页          |
-| `POST /threads`                            | `{text,clientRequestId}`                         | Thread                |
-| `POST /threads/{threadId}/messages/_query` | `{pageIndex,pageSize}`                           | 仅公开消息分页        |
-| `POST /threads/{threadId}/messages`        | `{text,clientRequestId}`                         | 当前访客的公开Message |
-| `PUT /threads/{threadId}/status`           | `{state:'open',expectedVersion,clientRequestId}` | 重开后的Thread        |
+| 请求                                       | 额外字段                                         | 结果                     |
+| ------------------------------------------ | ------------------------------------------------ | ------------------------ |
+| `POST /threads/_query`                     | `{pageIndex,pageSize,state?}`                    | 本人线程分页             |
+| `POST /threads/{threadId}/_detail`         | 无                                               | 当前本人范围的单个Thread |
+| `POST /threads`                            | `{text,clientRequestId}`                         | Thread                   |
+| `POST /threads/{threadId}/messages/_query` | `{pageIndex,pageSize}`                           | 仅公开消息分页           |
+| `POST /threads/{threadId}/messages`        | `{text,clientRequestId}`                         | 当前访客的公开Message    |
+| `PUT /threads/{threadId}/status`           | `{state:'open',expectedVersion,clientRequestId}` | 重开后的Thread           |
 
 本人线程范围匹配同一项目、版本、分享、修订、页面及身份保障等级/guestId。另一分享不继承旧线程，已验证邮箱重新OTP仍须相同分享当前授权；未验证会话到期、丢失或退出后不能按姓名或邮箱恢复历史。公开列表不按客户端过滤内部数据，不展示其他访客或内部备注的内容、数量、时间或版本变化。
 
 成员从预览进入反馈，查询要求版本query与项目edit，写入要求版本save与项目edit；仅有项目read不能查看全部客户反馈或内部备注。管理接口基于 `/prototype-hub/versions/{versionId}/review-threads`，所有请求提交 `{revisionId,pageId}`：
 
-| 请求                               | 额外字段                      | 结果                                         |
-| ---------------------------------- | ----------------------------- | -------------------------------------------- | ------- |
-| `POST /_query`                     | `{pageIndex,pageSize,state?}` | Thread分页                                   |
-| `POST /{threadId}/messages/_query` | `{pageIndex,pageSize}`        | 全部公开/内部Message分页                     |
-| `POST /{threadId}/messages`        | `{text,visibility:'public'    | 'internal',clientRequestId}`                 | Message |
-| `PUT /{threadId}/status`           | `{state:'open'                | 'resolved',expectedVersion,clientRequestId}` | Thread  |
+| 请求                               | 额外字段                                                     | 结果                     |
+| ---------------------------------- | ------------------------------------------------------------ | ------------------------ |
+| `POST /_query`                     | `{pageIndex,pageSize,state?}`                                | Thread分页               |
+| `POST /{threadId}/_detail`         | 无                                                           | 当前管理范围的单个Thread |
+| `POST /{threadId}/messages/_query` | `{pageIndex,pageSize}`                                       | 全部公开/内部Message分页 |
+| `POST /{threadId}/messages`        | `{text,visibility:'public'\|'internal',clientRequestId}`     | Message                  |
+| `PUT /{threadId}/status`           | `{state:'open'\|'resolved',expectedVersion,clientRequestId}` | Thread                   |
 
 PM不能创建客户顶层线程。对客回复与内部备注使用明确不同的选择项和标识；内部备注永不进入公开列表。分享或访客停用后，当前有权PM仍可处理归档，项目/版本/修订不可用时拒绝。访客公开回复自动重开resolved，PM公开回复保持状态；访客只能明确重开，只有PM可解决。状态转换才增加configVersion，同版本同状态请求不重复转换；内部备注不改变公开updatedAt、状态、版本或排序。
 
 Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorCompany,verificationLevel,state,configVersion,createdAt,updatedAt}`；summary是首次公开文本前200个Java字符，首位作者资料/等级固定为投稿快照。Message为 `{id,threadId,text,authorType,authorName,authorCompany,verificationLevel,visibility,createdAt}`；作者种类为guest/member，成员等级为null。两者均不含原始作者ID、完整邮箱或凭据，不增加messageCount。纯文本使用转义插值显示，不解释HTML或Markdown。
+
+线程深链沿现有成员预览或公开分享外壳路由使用 `?revisionId={rid}&pageId={pageId}&threadId={threadId}`，threadId为43位URL安全随机标识。目标必须包含完整、单值且格式有效的三个标识；重复、空白、非法或缺少配套参数显示目标错误，不悄悄改为首页、另一线程或新建反馈。原有不含threadId的页面链接保持兼容。规范化页面地址须保留合法线程目标；明确选择页面会清除线程目标，浏览器前进后退可恢复有效目标。
+
+目标线程独立调用详情接口，再使用原消息分页，不要求它出现在当前线程分页或state筛选中，也不扫描全部分页、插入额外列表行或改写total。收到详情先验证id/revisionId/pageId；矛盾结果不得显示或用于发送。切换目标、范围或身份时清空旧内容并取消请求，迟到的详情和消息不能覆盖新目标。链接只定位线程，不定位某一消息页。
+
+链接不授予访问权。管理端仍检查项目edit与版本query，公开端仍检查同一分享、本人guest及身份等级；无权或错误范围不从threadId推断页面。外壳按正常流程要求分享密码、有效身份及待用邀请的新OTP，完成后恢复所请求线程；不自动发码、退出、放弃邀请或投稿。丢失的未验证身份不能凭链接找回。当前目标失效或越权时清除旧详情并显示错误，不能将同一输入降级为新建线程。
+
+“复制当前线程链接”仅重建当前外壳路径及revisionId/pageId/threadId，沿用router的base/hash支持和现有复制回退，不复制accessKey、CSRF、Cookie、邀请片段、正文、运行URL或其他参数，不自动把成员地址改成客户分享地址。“复制当前页面链接”仍只含修订与页面。目标标识仅用于外壳导航，线程数据和凭据不进入iframe、postMessage或持久存储。
 
 所有分页使用服务端total，页号0–10000、每页1–100，右侧显示分页器；线程按公开updatedAt降序、ID升序，消息按createdAt升序、ID升序。text经strip后1–4000个Java字符，Unicode纯空白无效；state/visibility仅接受精确字符串。每次写入的clientRequestId为1–128个可打印ASCII非空白字符，界面使用crypto.randomUUID并只存当前外壳内存。相同语义重试复用原键，不确定结果不自动重发；修改文本、可见性、expectedVersion或目标后创建新意图。同键不同内容返回409，不生成重复消息或事件；重放仍先重新授权，再返回原资源当前结果。
 

@@ -7,6 +7,7 @@ import {
   stablePageId,
   flattenPages,
   selectablePage,
+  reviewThreadTarget,
 } from '../utils/preview-location'
 import { copyText } from '@/shared/utils/feedback'
 import { t } from '@/shared/i18n'
@@ -82,11 +83,16 @@ export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: Work
       const id = page && stablePageId(page, context.value.pages)
       if (
         !pane &&
+        reviewThreadTarget(route.query) !== null &&
         context.value.revisionId &&
         (route.query.revisionId !== context.value.revisionId || (id && route.query.pageId !== id))
       ) {
         // Replace only the legacy entry; user page selections below create useful Back/Forward entries.
-        void router.replace({ path: route.path, query: query(id) })
+        const thread = reviewThreadTarget(route.query)
+        void router.replace({
+          path: route.path,
+          query: { ...query(id), ...(thread ? { threadId: thread.threadId } : {}) },
+        })
       }
     },
     { immediate: true },
@@ -139,7 +145,7 @@ export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: Work
   async function copyCurrentPage() {
     if (!canCopy.value) return false
     const href = router.resolve({ path: route.path, query: query(pageId.value) }).href
-    return copyText(new URL(href, window.location.origin).href)
+    return copyText(new URL(href, new URL(window.location.pathname, window.location.origin)).href)
   }
   return { currentPage, selectedPage, pageId, error, canCopy, select, copyCurrentPage }
 }
