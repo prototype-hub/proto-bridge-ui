@@ -32,3 +32,29 @@ it('encodes project and guest identifiers and sends only bounded-page fields or 
     options,
   )
 })
+it('keeps unverified pages and mutations explicitly separate from the default email mode', async () => {
+  const options = { signal: new AbortController().signal, silent: true }
+  await reviewGuestsApi.query(
+    'p/id',
+    { pageIndex: 0, pageSize: 20, verificationLevel: 'unverified' },
+    options,
+  )
+  await reviewGuestsApi.setEnabled('p/id', 'g/id', true, 8, options, 'unverified')
+  expect(request.post).toHaveBeenCalledExactlyOnceWith(
+    '/prototype-hub/projects/p%2Fid/review-guests/_query',
+    {
+      pageIndex: 0,
+      pageSize: 20,
+      verificationLevel: 'unverified',
+    },
+    options,
+  )
+  expect(request.put).toHaveBeenCalledExactlyOnceWith(
+    '/prototype-hub/projects/p%2Fid/review-guests/g%2Fid/enabled?verificationLevel=unverified',
+    {
+      enabled: true,
+      expectedVersion: 8,
+    },
+    options,
+  )
+})

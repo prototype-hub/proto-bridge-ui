@@ -18,6 +18,7 @@ const emit = defineEmits<{ close: []; saved: [policy: ReviewPolicy] }>()
 const { t } = useI18n()
 const policy = shallowRef<ReviewPolicy>()
 const enabled = ref(false),
+  allowUnverified = ref(false),
   loading = ref(false),
   busy = ref(false),
   error = ref('')
@@ -39,6 +40,7 @@ async function load() {
     if (epoch !== generation) return
     policy.value = result
     enabled.value = result.enabled
+    allowUnverified.value = result.allowUnverified === true
   } catch {
     if (epoch === generation) error.value = t('proto.reviewPolicyUnavailable')
   } finally {
@@ -56,6 +58,7 @@ async function save() {
       selected,
       enabled.value,
       policy.value.configVersion,
+      allowUnverified.value,
       { signal: controller?.signal, silent: true },
     )
     if (epoch !== generation) return
@@ -89,7 +92,7 @@ onScopeDispose(() => {
   <form-modal
     :open="true"
     :title="t('proto.reviewSettings')"
-    :model="{ enabled }"
+    :model="{ enabled, allowUnverified }"
     :busy="busy || loading"
     :error="error"
     width="min(520px, calc(100vw - 32px))"
@@ -111,6 +114,14 @@ onScopeDispose(() => {
           :disabled="busy || !policy"
         />
       </a-form-item>
+      <a-form-item name="allowUnverified" :label="t('proto.reviewAllowUnverified')">
+        <a-switch
+          v-model:checked="allowUnverified"
+          :aria-label="t('proto.reviewAllowUnverified')"
+          :disabled="busy || !policy || !enabled"
+        />
+      </a-form-item>
+      <a-alert type="warning" show-icon :message="t('proto.reviewUnverifiedHint')" />
     </load-state>
     <a-button v-if="!loading && !policy" @click="load">{{ t('common.retry') }}</a-button>
   </form-modal>

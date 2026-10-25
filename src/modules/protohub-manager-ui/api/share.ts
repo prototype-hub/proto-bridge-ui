@@ -15,12 +15,13 @@ export const sharesApi = {
     id: string,
     enabled: boolean,
     expectedVersion: number,
+    allowUnverified: boolean,
     options?: RequestOptions,
   ) =>
     (
       await request.put<ReviewPolicy>(
         `/prototype-hub/shares/${segment(id)}/review`,
-        { enabled, expectedVersion },
+        { enabled, expectedVersion, allowUnverified },
         options,
       )
     ).result,

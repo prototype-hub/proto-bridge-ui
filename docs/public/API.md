@@ -196,24 +196,39 @@
 
 ## 分享的邮箱访问者身份
 
-分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,expectedVersion}`。旧分享默认关闭，普通分享创建/编辑不自行开启身份验证。保存采用该设置接口返回的版本号；冲突刷新后需手动重新确认。变更使旧预览授权与访问者身份授权失效，界面刷新分享列表。邮件未配置时仍显示不可用原因，不影响原型预览。
+分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,allowUnverified,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,allowUnverified?,expectedVersion}`。旧分享的两个许可默认关闭，旧客户端省略allowUnverified或传null时保留其已有值；普通分享创建/编辑不会自行开启。保存使用刚读取的版本，409后刷新并要求手动重新确认；策略更新轮换原分享凭据，刷新分享列表。只有身份总开关与allowUnverified均开启才提供低保障入口。
 
-获得分享密码授权后，公开分享响应可提供 `reviewEnabled`、`reviewAvailable`；缺少字段按未启用兼容。可信外壳显示“访问者身份”，支持邮箱、姓名、选填公司、邮件验证码、当前身份与退出。仅邮箱持有权经过验证，姓名/公司为自述，不创建平台用户，也不提供批注、邀请或业务提醒。
+分享密码授权后的响应提供 `reviewEnabled/reviewAvailable/reviewUnverifiedAllowed`；最后一项仅在当前授权、身份总开关和低保障许可均有效时为true，context也返回allowUnverified。可信外壳保留邮箱OTP，并只在管理员允许时提供“未验证”方式：姓名必填、公司可选、不收集邮箱、不发送邮件。界面始终区分“邮箱已验证”和“未验证”；姓名/公司均为自述，邮箱持有权也不代表实名或企业认证。没有邮件服务或发码失败时仅提示原因，不自动选择或提交低保障方式。当前不创建平台用户，不提供邀请、人工身份关联、批注或业务提醒。
 
-以下均为 `POST /prototype-hub/public/shares/{token}/review/{action}`，请求体必须携带本次分享的 `{revisionId,accessKey}`，不放在查询字符串。动作包括 `context`、`challenges`、`verify`、`logout`；挑战额外提交 `{email,displayName,company?}`，校验额外提交 `{challengeId,code}`。context 响应为 `{revisionId,enabled,mailAvailable,csrfToken,session}`；校验成功返回同样形状并轮换 Cookie/CSRF。`session` 仅含 `{guestId,displayName,company,maskedEmail,verificationLevel:'email',expiresAt}`，不返回完整邮箱或会话密钥。登出成功后重新获取匿名 context。
+以下均为 `POST /prototype-hub/public/shares/{token}/review/{action}`，请求体必须携带本次分享的 `{revisionId,accessKey}`，不放在查询字符串；固定与跟随分享都以本次明确修订为范围，不隐式切换最新内容。
 
-这组接口使用独立同源 JSON fetch 客户端，浏览器仅向 review 路径发送 HttpOnly、SameSite=Strict 的限时 Cookie；生产 HTTPS 默认 Secure，不读取 Cookie、不附平台令牌，CSRF 仅放 `X-Review-CSRF` 请求头。公开预览客户端继续省略 Cookie，原型 iframe 的 opaque sandbox 与 postMessage 边界不变。反向代理需按后端文档明确配置受信任的应用 Origin，不应放宽 CORS 或全局 Cookie 策略。
+| action       | 额外输入                       | 响应                                                                   |
+| ------------ | ------------------------------ | ---------------------------------------------------------------------- |
+| `context`    | 无                             | `{revisionId,enabled,allowUnverified,mailAvailable,csrfToken,session}` |
+| `challenges` | `{email,displayName,company?}` | `{challengeId,expiresAt,resendAfter}`                                  |
+| `verify`     | `{challengeId,code}`           | 同context，成功后轮换Cookie/CSRF                                       |
+| `unverified` | `{displayName,company?}`       | 同context；须显式获准，返回未验证身份                                  |
+| `logout`     | 无                             | `{loggedOut:true}`，随后重新获取匿名context                            |
 
-身份接口的 `ORIGIN_DENIED` 提示管理员核对可信前端地址，`COOKIE_REQUIRED` 提示检查 Cookie 与 HTTPS 配置，`CSRF_INVALID` 提示重新载入身份验证。它们与分享撤销/过期分开显示；浏览器不会因诊断自动重新发送验证码。开发反向代理改写 Host 时也按明确配置的浏览器 Origin 校验，不能改为信任任意 Origin 或转发头。
+`session`只含 `{guestId,displayName,company,maskedEmail,verificationLevel,expiresAt}`；verificationLevel仅为email或unverified，低保障maskedEmail为null，邮箱身份只显示脱敏值。前端沿用trim整理姓名和公司；姓名须非空且最多100字符，公司可选且最多200字符。服务端独立校验收到的原始字段，拒绝Unicode控制字符后才strip，不依赖客户端校验。身份和CSRF只留在可信外壳内存，不传到原型iframe、postMessage、资源URL或全局store/localStorage。
 
-验证码为 6 位 ASCII 数字、有效 5 分钟；发送冷却、次数限制与一次性消费由服务端决定。发码不自动重试，网络结果不明确时由用户手动核对再发送；错误校验保留表单，修改邮箱/姓名/公司后须重新发码。身份最长 8 小时，关闭窗口会清空页面内身份信息；重开时重新验证 Cookie 和当前分享权限，分享变更、撤销、过期与删除均不能靠旧身份绕过。没有可用邮件服务时不能降级为未验证身份。
+接口使用独立同源JSON fetch客户端，浏览器仅向review路径发送HttpOnly、SameSite=Strict的限时Cookie；生产HTTPS默认Secure，不读取Cookie、不附平台令牌，除context外均使用 `X-Review-CSRF`。公开预览客户端继续省略Cookie，原型iframe的opaque sandbox边界不变。反向代理按后端文档设置精确受信Origin，不放宽CORS或全局Cookie策略。
+
+`ORIGIN_DENIED`提示管理员核对可信前端地址，`COOKIE_REQUIRED`提示检查Cookie与HTTPS配置，`CSRF_INVALID`提示重新载入身份验证；与分享撤销/过期分开显示，不因诊断自动发送验证码。缺失、null或其他站点的Origin不受信任，开发代理改写Host也不意味着接受任意Origin或转发头。
+
+验证码为6位ASCII数字、有效5分钟；发送冷却、次数限制及一次性消费由服务端决定。发码不自动重试，网络结果不明确时由用户显式核对再发送；修改邮箱/姓名/公司须重新发码。相同项目邮箱重新OTP找回同一邮箱身份，仍须满足当前分享与密码授权；不按姓名合并。
+
+未验证身份从首次签发起固定8小时；同一有效会话再次提交保留原ID、资料与到期时间，不改名或续期。当前已有有效邮箱身份时申请低保障身份返回409 / `PROTOTYPE_HUB_REVIEW_IDENTITY_EXISTS`，须先显式退出。未验证会话退出、丢失、到期或被撤销后，不能通过姓名、公司、邮箱或OTP找回，也不自动合并进后来验证的邮箱身份。分享配置换代后，重新取得当前分享证明再明确申请可获得另一随机身份，无须依赖清除旧Cookie；旧ID和期限不会恢复，未知会话等级仍拒绝。界面明确提示无自助/人工关联入口，需联系管理员线下处理；新申请是另一个身份。
+
+未验证新建采用独立的项目60次/小时、当前Cookie5次/小时及60秒冷却窗口，有效会话复用不计新建。此限制不识别人或设备；清除Cookie不能绕过项目总量上限。邮箱OTP额度与低保障创建额度分开，状态切换不退还。关闭抽屉清空页面内身份，重开仍从服务器校验Cookie和分享范围；分享变更、停用、撤销、过期或软删均不能靠旧身份绕过。
 
 ## 项目访问者管理
 
-项目详情的“访问者管理”在当前项目 `manageShares` 能力与分享 `query` 动作同时具备时显示。它不是系统用户管理，也不新增导航菜单；启用/禁用操作额外要求分享 `save` 动作。后端逐次校验项目范围，不能仅凭访问者 ID 操作其他项目。
+项目详情的“访问者管理”在当前项目manageShares能力与分享query动作同时具备时显示；启用/禁用额外要求分享save。它不属于系统用户管理、不新增导航菜单；后端逐次校验项目范围，不能仅凭访问者ID操作其他项目。
 
-- `POST /prototype-hub/projects/{projectId}/review-guests/_query` 提交 `{pageIndex:0,pageSize:20}`，返回现有 `{data,total,pageIndex,pageSize}` 分页结构。页号为 0–10000、页大小为 1–100；按更新时间倒序、ID 正序排列，超出范围返回空页。没有全量联系人、搜索邮箱或任意查询条件接口。
-- 列表与更新响应仅提供 `{id,displayName,company,maskedEmail,verificationLevel:'email',enabled,configVersion,createTime,modifyTime}`。姓名和公司仍是自述，只有邮箱持有权经过验证；不返回完整邮箱、邮箱哈希、Cookie 或会话凭据。尚未完成首次验证的邮箱不出现在列表。
-- `PUT /prototype-hub/projects/{projectId}/review-guests/{guestId}/enabled` 提交 `{enabled,expectedVersion}`。实际状态变更使该项目下该访问者的所有身份会话和验证码失效，不影响匿名原型预览，不退还发码限额，也不撤回已发送的邮件。重新启用不会恢复旧凭据，须重新发码验证。并发冲突返回 409，界面刷新当前页并要求重新确认，绝不自动重试写入。
+- `POST /prototype-hub/projects/{projectId}/review-guests/_query` 提交 `{verificationLevel:'email',pageIndex:0,pageSize:20}`，省略等级查email，切换未验证身份使用unverified。两类分别分页，不混合客户端过滤；等级无效返回400。页号0–10000、页大小1–100，按更新时间倒序、ID正序；超出范围保留真实total并返回空页，不提供邮箱搜索或任意查询条件。
+- 列表与更新仅返回 `{id,displayName,company,maskedEmail,verificationLevel,enabled,configVersion,createTime,modifyTime,expiresAt}`。email的expiresAt为null，unverified返回固定期限与null maskedEmail；不返回完整邮箱、邮箱哈希、Cookie或会话密钥。尚未完成首次OTP的收件人不出现在邮箱联系人列表。
+- `PUT /prototype-hub/projects/{projectId}/review-guests/{guestId}/enabled?verificationLevel=unverified` 提交 `{enabled,expectedVersion}`；省略查询参数时按email处理，等级只接受精确email/unverified，显式空值或重复查询参数返回400；跨项目、跨等级或已到期未验证身份的状态更新返回404。409后刷新并重新确认，不自动重试写入；同版本同状态不产生副作用。
+- 实际状态转换撤销对应身份的旧会话，邮箱身份还撤销该项目邮箱验证码；低保障操作不影响同名邮箱联系人。重新启用不复活Cookie或验证码，也不延长固定期限。邮箱联系人须新OTP才能继续；未验证身份没有恢复原ID的凭据，新申请不关联旧记录。
 
-抽屉关闭、切换项目/页码或权限变化时取消旧请求并清空本地数据，迟到结果不能重新展示旧项目访问者；不将访问者信息缓存到全局 store。发送中的邮件可能已被邮件服务器接受，但失效验证码不能恢复身份。生产 SMTP 配置与后续通知模块分离计划以配套后端文档为准。
+切换项目、身份等级、页码、关闭抽屉或权限变化时取消旧请求并清空数据，迟到结果不能覆盖当前列表；访问者信息不进入全局store。管理状态变更不影响匿名原型预览、不退还限额，也不能撤回已被SMTP受理的邮件。生产邮件配置及后续独立通知模块边界以后端运维文档为准。

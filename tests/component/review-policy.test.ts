@@ -53,11 +53,13 @@ beforeEach(() => {
   vi.mocked(sharesApi.reviewPolicy).mockResolvedValue({
     enabled: false,
     mailAvailable: true,
+    allowUnverified: false,
     configVersion: 9,
   })
   vi.mocked(sharesApi.setReviewPolicy).mockResolvedValue({
     enabled: true,
     mailAvailable: true,
+    allowUnverified: false,
     configVersion: 10,
   })
 })
@@ -68,17 +70,18 @@ afterEach(() => {
 it('saves the fetched policy CAS version, not a stale share list version', async () => {
   const wrapper = setup()
   await flushPromises()
-  await wrapper.get('[role=switch]').trigger('click')
+  await wrapper.get(`[role=switch][aria-label="${protoLocales.zh.reviewEnable}"]`).trigger('click')
   wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
   await flushPromises()
   expect(sharesApi.setReviewPolicy).toHaveBeenCalledWith(
     's1',
     true,
     9,
+    false,
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
   expect(wrapper.emitted('saved')).toEqual([
-    [{ enabled: true, mailAvailable: true, configVersion: 10 }],
+    [{ enabled: true, mailAvailable: true, allowUnverified: false, configVersion: 10 }],
   ])
 })
 it('refreshes after CAS conflict and requires another explicit save', async () => {
@@ -106,7 +109,33 @@ it('aborts a late policy response on unmount without emitting a saved event', as
   wrapper.unmount()
   wrappers.pop()
   expect(signal.aborted).toBe(true)
-  resolve({ enabled: true, mailAvailable: true, configVersion: 9 })
+  resolve({ enabled: true, mailAvailable: true, allowUnverified: false, configVersion: 9 })
   await flushPromises()
   expect(wrapper.emitted('saved')).toBeUndefined()
+})
+it('requires an explicit unverified opt-in and sends false again when it is turned off', async () => {
+  const wrapper = setup()
+  await flushPromises()
+  const main = wrapper.get(`[role=switch][aria-label="${protoLocales.zh.reviewEnable}"]`)
+  const unverified = wrapper.get(
+    `[role=switch][aria-label="${protoLocales.zh.reviewAllowUnverified}"]`,
+  )
+  expect(unverified.attributes('aria-checked')).toBe('false')
+  expect(unverified.attributes('disabled')).toBeDefined()
+  await main.trigger('click')
+  await unverified.trigger('click')
+  wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
+  await flushPromises()
+  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith('s1', true, 9, true, expect.anything())
+  await unverified.trigger('click')
+  wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
+  await flushPromises()
+  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith(
+    's1',
+    true,
+    10,
+    false,
+    expect.anything(),
+  )
+  expect(wrapper.text()).toContain(protoLocales.zh.reviewUnverifiedHint)
 })

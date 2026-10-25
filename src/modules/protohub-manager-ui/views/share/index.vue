@@ -24,6 +24,7 @@ watch(
     resource.data.value.share?.revisionId,
     resource.data.value.share?.accessKey,
     resource.data.value.share?.reviewEnabled,
+    resource.data.value.share?.reviewUnverifiedAllowed,
   ],
   () => {
     identityOpen.value = false
@@ -43,7 +44,8 @@ watch(
           <a-button
             v-if="resource.data.value.share?.reviewEnabled"
             :title="
-              resource.data.value.share.reviewAvailable
+              resource.data.value.share.reviewAvailable ||
+              resource.data.value.share.reviewUnverifiedAllowed
                 ? t('proto.reviewIdentity')
                 : t('proto.reviewMailUnavailable')
             "

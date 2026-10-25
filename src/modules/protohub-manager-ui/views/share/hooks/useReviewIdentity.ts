@@ -4,11 +4,12 @@ import type {
   PublicShare,
   ReviewContext,
   ReviewChallenge,
+  ReviewVerificationLevel,
 } from '@/modules/protohub-manager-ui/types'
 import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
 
-/** Keep mailbox identity in the trusted shell; never copy its cookie or CSRF into the workspace. */
+/** Keep visitor identity in the trusted shell; never copy its cookie or CSRF into the workspace. */
 export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref<boolean>) {
   const context = shallowRef<ReviewContext>()
   const challenge = shallowRef<ReviewChallenge>()
@@ -18,6 +19,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     error = ref(''),
     expired = ref(false)
   const now = ref(Date.now())
+  const mode = ref<ReviewVerificationLevel>('email')
   let controller: AbortController | undefined
   let clock: ReturnType<typeof setInterval> | undefined
   let generation = 0
@@ -30,13 +32,27 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
   const canSend = computed(
     () =>
       !!context.value?.mailAvailable &&
+      !context.value.session &&
+      mode.value === 'email' &&
       !busy.value &&
       !loading.value &&
       now.value >= (challenge.value?.resendAfter || 0),
   )
   const canVerify = computed(
     () =>
-      !!challenge.value && now.value < challenge.value.expiresAt && !busy.value && !!context.value,
+      mode.value === 'email' &&
+      !!challenge.value &&
+      now.value < challenge.value.expiresAt &&
+      !busy.value &&
+      !!context.value,
+  )
+  const canCreateUnverified = computed(
+    () =>
+      mode.value === 'unverified' &&
+      context.value?.allowUnverified === true &&
+      !context.value.session &&
+      !busy.value &&
+      !loading.value,
   )
   function clear() {
     generation++
@@ -46,11 +62,13 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     loading.value = busy.value = false
     expired.value = false
     error.value = ''
+    mode.value = 'email'
     Object.assign(form, { email: '', displayName: '', company: '', code: '' })
   }
   function message(cause: unknown) {
     if (cause instanceof ApiError) {
       if (cause.status === 429) return t('proto.reviewRateLimited')
+      if (cause.status === 409) return t('proto.reviewIdentityConflict')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_CODE_INVALID') return t('proto.reviewCodeInvalid')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_ORIGIN_DENIED') return t('proto.reviewOriginDenied')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_COOKIE_REQUIRED')
@@ -62,7 +80,12 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     return t('proto.reviewUnavailable')
   }
   function accept(result: ReviewContext, selected: ReviewGrant) {
-    if (result.revisionId !== selected.revisionId || !result.enabled || !result.csrfToken)
+    if (
+      result.revisionId !== selected.revisionId ||
+      !result.enabled ||
+      !result.csrfToken ||
+      (result.session && !['email', 'unverified'].includes(result.session.verificationLevel))
+    )
       throw new ApiError(t('proto.reviewAccessChanged'), 403)
     context.value = result
     expired.value = false
@@ -137,9 +160,48 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     await run(async (selected, signal) => {
       const result = await reviewApi.verify(selected, id, code, csrf, signal)
       if (signal.aborted) return
+      if (result.session?.verificationLevel !== 'email')
+        throw new ApiError(t('proto.reviewCodeInvalid'))
       accept(result, selected)
-      if (!result.session) throw new ApiError(t('proto.reviewCodeInvalid'))
       challenge.value = undefined
+      Object.assign(form, { email: '', displayName: '', company: '', code: '' })
+    })
+  }
+  function chooseMode(value: ReviewVerificationLevel) {
+    if (
+      busy.value ||
+      loading.value ||
+      context.value?.session ||
+      (value === 'unverified' && context.value?.allowUnverified !== true)
+    )
+      return
+    mode.value = value
+    challenge.value = undefined
+    error.value = ''
+    Object.assign(form, { email: '', displayName: '', company: '', code: '' })
+  }
+  async function createUnverified() {
+    if (!canCreateUnverified.value || !context.value) return
+    // This explicit action has no mailbox input and never invokes OTP or recovers an old identity.
+    const profile = {
+      displayName: form.displayName.trim(),
+      company: form.company.trim() || undefined,
+    }
+    if (
+      !profile.displayName ||
+      profile.displayName.length > 100 ||
+      (profile.company?.length || 0) > 200
+    ) {
+      error.value = t('proto.reviewNameRequired')
+      return
+    }
+    const csrf = context.value.csrfToken
+    await run(async (selected, signal) => {
+      const result = await reviewApi.unverified(selected, profile, csrf, signal)
+      if (signal.aborted) return
+      if (result.session?.verificationLevel !== 'unverified')
+        throw new ApiError(t('proto.reviewIdentityConflict'), 409)
+      accept(result, selected)
       Object.assign(form, { email: '', displayName: '', company: '', code: '' })
     })
   }
@@ -151,7 +213,10 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
       if (signal.aborted) return
       context.value = challenge.value = undefined
       const result = await reviewApi.context(selected, signal)
-      if (!signal.aborted) accept(result, selected)
+      if (!signal.aborted) {
+        mode.value = 'email'
+        accept(result, selected)
+      }
     })
   }
   watch(
@@ -169,6 +234,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
       share.value?.revisionId,
       share.value?.accessKey,
       share.value?.reviewEnabled,
+      share.value?.reviewUnverifiedAllowed,
     ],
     () => {
       clear()
@@ -197,6 +263,10 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     now,
     canSend,
     canVerify,
+    mode,
+    chooseMode,
+    canCreateUnverified,
+    createUnverified,
     load,
     send,
     verify,

@@ -2,7 +2,11 @@ import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
 import { reviewGuestsApi } from '@/modules/protohub-manager-ui/api/review-guest'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
-import type { Project, ReviewGuest } from '@/modules/protohub-manager-ui/types'
+import type {
+  Project,
+  ReviewGuest,
+  ReviewVerificationLevel,
+} from '@/modules/protohub-manager-ui/types'
 import { usePermissions } from '@/shared/auth/provider'
 import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
@@ -22,6 +26,11 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
   const busy = ref(false)
   const error = ref('')
   const notice = ref('')
+  const verificationLevel = ref<ReviewVerificationLevel>('email')
+  const now = ref(Date.now())
+  const clock = setInterval(() => {
+    if (open.value) now.value = Date.now()
+  }, 1000)
   let generation = 0
   let queryRequest: AbortController | undefined
   let mutationRequest: AbortController | undefined
@@ -48,10 +57,18 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
     try {
       const result = await reviewGuestsApi.query(
         id,
-        { pageIndex: pageIndex.value, pageSize: pageSize.value },
+        {
+          pageIndex: pageIndex.value,
+          pageSize: pageSize.value,
+          ...(verificationLevel.value === 'unverified'
+            ? { verificationLevel: 'unverified' as const }
+            : {}),
+        },
         { signal: request.signal, silent: true },
       )
       if (current !== generation || request.signal.aborted) return
+      if (result.data.some((row) => row.verificationLevel !== verificationLevel.value))
+        throw new ApiError(t('proto.reviewGuestsUnavailable'))
       rows.value = result.data
       total.value = result.total
     } catch (cause) {
@@ -65,6 +82,14 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
       if (current === generation) loading.value = false
     }
   }
+  function isExpired(guest: ReviewGuest) {
+    return (
+      guest.verificationLevel === 'unverified' &&
+      (typeof guest.expiresAt !== 'number' ||
+        !Number.isFinite(guest.expiresAt) ||
+        guest.expiresAt <= Math.max(now.value, Date.now()))
+    )
+  }
   function page(number: number, size = pageSize.value) {
     if (busy.value) return
     // The pager is one-based; the backend accepts only bounded zero-based pages.
@@ -76,7 +101,12 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
     if (!open.value || !editable.value || !project.value || busy.value || loading.value) return
     const selected = rows.value.find((row) => row.id === guest.id)
     // A confirmation opened before a refresh must never submit its stale snapshot.
-    if (selected !== guest) return
+    if (
+      selected !== guest ||
+      guest.verificationLevel !== verificationLevel.value ||
+      isExpired(guest)
+    )
+      return
     const current = generation
     const id = project.value.id
     const request = new AbortController()
@@ -84,13 +114,29 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
     busy.value = true
     notice.value = ''
     try {
-      await reviewGuestsApi.setEnabled(id, guest.id, !guest.enabled, guest.configVersion, {
+      const options = {
         signal: request.signal,
         silent: true,
-      })
+      }
+      if (guest.verificationLevel === 'unverified')
+        await reviewGuestsApi.setEnabled(
+          id,
+          guest.id,
+          !guest.enabled,
+          guest.configVersion,
+          options,
+          'unverified',
+        )
+      else
+        await reviewGuestsApi.setEnabled(id, guest.id, !guest.enabled, guest.configVersion, options)
       if (current !== generation || request.signal.aborted) return
       await load()
-      if (generation === current + 1 && !error.value) notice.value = t('proto.reviewGuestUpdated')
+      if (generation === current + 1 && !error.value)
+        notice.value = t(
+          guest.verificationLevel === 'unverified'
+            ? 'proto.reviewUnverifiedGuestUpdated'
+            : 'proto.reviewGuestUpdated',
+        )
     } catch (cause) {
       if (current !== generation || request.signal.aborted) return
       if (cause instanceof ApiError && cause.status === 409) {
@@ -107,14 +153,17 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
     }
   }
   watch(
-    () => [open.value, project.value?.id, readable.value, editable.value],
+    () => [open.value, project.value?.id, readable.value, editable.value, verificationLevel.value],
     () => {
       pageIndex.value = 0
       void load()
     },
     { immediate: true, flush: 'sync' },
   )
-  onScopeDispose(invalidate)
+  onScopeDispose(() => {
+    clearInterval(clock)
+    invalidate()
+  })
   return {
     readable,
     editable,
@@ -126,6 +175,8 @@ export function useReviewGuests(project: Ref<Project | undefined>, open: Ref<boo
     busy,
     error,
     notice,
+    verificationLevel,
+    isExpired,
     load,
     page,
     setEnabled,

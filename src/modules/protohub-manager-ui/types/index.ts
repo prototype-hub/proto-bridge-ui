@@ -224,6 +224,7 @@ export interface Share {
 export interface PublicShare {
   reviewEnabled?: boolean
   reviewAvailable?: boolean
+  reviewUnverifiedAllowed?: boolean
   revisionMode: ShareRevisionMode
   pagesUrl?: string
   token: string
@@ -240,13 +241,15 @@ export interface ReviewPolicy {
   enabled: boolean
   mailAvailable: boolean
   configVersion: number
+  allowUnverified: boolean
 }
+export type ReviewVerificationLevel = 'email' | 'unverified'
 export interface ReviewIdentity {
   guestId: string
   displayName: string
   company: string | null
-  maskedEmail: string
-  verificationLevel: 'email'
+  maskedEmail: string | null
+  verificationLevel: ReviewVerificationLevel
   expiresAt: number
 }
 /** Management projection: mailbox and session credentials never leave the public identity boundary. */
@@ -254,8 +257,9 @@ export interface ReviewGuest {
   id: string
   displayName: string
   company: string | null
-  maskedEmail: string
-  verificationLevel: 'email'
+  maskedEmail: string | null
+  verificationLevel: ReviewVerificationLevel
+  expiresAt?: number | null
   enabled: boolean
   configVersion: number
   createTime: number
@@ -265,6 +269,7 @@ export interface ReviewContext {
   revisionId: string
   enabled: boolean
   mailAvailable: boolean
+  allowUnverified: boolean
   csrfToken: string
   session: ReviewIdentity | null
 }

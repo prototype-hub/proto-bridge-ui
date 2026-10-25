@@ -244,7 +244,7 @@ it('renders masked identity, enabled state and honest verification copy, with re
     'aria-modal': 'true',
     'aria-label': protoLocales.zh.reviewGuests,
   })
-  expect(wrapper.text()).toContain(guest.maskedEmail)
+  expect(wrapper.text()).toContain(guest.maskedEmail!)
   expect(wrapper.text()).toContain(protoLocales.zh.reviewGuestEnabled)
   expect(wrapper.text()).toContain(protoLocales.zh.reviewEmailVerified)
   expect(wrapper.text()).toContain(protoLocales.zh.reviewGuestsHint)
@@ -260,7 +260,7 @@ it('renders masked identity, enabled state and honest verification copy, with re
   expect(reviewGuestsApi.setEnabled).not.toHaveBeenCalled()
   await wrapper.setProps({ open: false })
   await flushPromises()
-  expect(wrapper.text()).not.toContain(guest.maskedEmail)
+  expect(wrapper.text()).not.toContain(guest.maskedEmail!)
   expect(document.querySelector('.ant-popconfirm-message-title')).toBeNull()
 })
 it('shows retry and empty states without confusing an empty result with a load failure', async () => {
@@ -317,4 +317,119 @@ it('shows the project entry only when share query and project SHARE both apply',
   grants.value = [p.project.query, p.share.save]
   await flushPromises()
   expect(wrapper.find(`button[aria-label="${protoLocales.zh.reviewGuests}"]`).exists()).toBe(false)
+})
+const unverifiedGuest = (): ReviewGuest => ({
+  ...guest,
+  id: 'low-g1',
+  verificationLevel: 'unverified',
+  maskedEmail: null,
+  expiresAt: Date.now() + 8 * 3600000,
+})
+it('switches to a separate unverified page, resets pagination and rejects late email results', async () => {
+  const late = deferred<PageResult<ReviewGuest>>()
+  vi.mocked(reviewGuestsApi.query).mockReturnValueOnce(late.promise)
+  const { state } = setup()
+  const signal = vi.mocked(reviewGuestsApi.query).mock.calls[0]![2]!.signal as AbortSignal
+  vi.mocked(reviewGuestsApi.query).mockResolvedValueOnce(result([unverifiedGuest()]))
+  state.verificationLevel.value = 'unverified'
+  expect(signal.aborted).toBe(true)
+  expect(state.rows.value).toEqual([])
+  await flushPromises()
+  expect(reviewGuestsApi.query).toHaveBeenLastCalledWith(
+    'p1',
+    {
+      pageIndex: 0,
+      pageSize: 20,
+      verificationLevel: 'unverified',
+    },
+    expect.anything(),
+  )
+  late.resolve(result([guest], 99))
+  await flushPromises()
+  expect(state.rows.value[0]?.verificationLevel).toBe('unverified')
+  expect(state.total.value).toBe(1)
+  expect(state.pageIndex.value).toBe(0)
+})
+it('targets unverified CAS explicitly and discards its late mutation after switching type', async () => {
+  const { state } = setup()
+  await flushPromises()
+  vi.mocked(reviewGuestsApi.query).mockResolvedValueOnce(result([unverifiedGuest()]))
+  state.verificationLevel.value = 'unverified'
+  await flushPromises()
+  const late = deferred<ReviewGuest>()
+  vi.mocked(reviewGuestsApi.setEnabled).mockReturnValueOnce(late.promise)
+  const changing = state.setEnabled(state.rows.value[0]!)
+  const options = vi.mocked(reviewGuestsApi.setEnabled).mock.calls[0]![4]!
+  expect(reviewGuestsApi.setEnabled).toHaveBeenCalledExactlyOnceWith(
+    'p1',
+    'low-g1',
+    false,
+    3,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    'unverified',
+  )
+  state.verificationLevel.value = 'email'
+  expect((options.signal as AbortSignal).aborted).toBe(true)
+  await flushPromises()
+  late.resolve({ ...unverifiedGuest(), enabled: false })
+  await changing
+  expect(state.rows.value).toEqual([guest])
+  expect(state.notice.value).toBe('')
+  expect(reviewGuestsApi.query).toHaveBeenCalledTimes(3)
+})
+it('does not enable an expired unverified row or extend a near-expired confirmation', async () => {
+  vi.useFakeTimers()
+  const { state } = setup()
+  await flushPromises()
+  vi.mocked(reviewGuestsApi.query).mockResolvedValueOnce(
+    result([{ ...unverifiedGuest(), enabled: false, expiresAt: Date.now() + 1000 }]),
+  )
+  state.verificationLevel.value = 'unverified'
+  await flushPromises()
+  const visible = state.rows.value[0]!
+  expect(state.isExpired(visible)).toBe(false)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(state.isExpired(visible)).toBe(true)
+  await state.setEnabled(visible)
+  expect(reviewGuestsApi.setEnabled).not.toHaveBeenCalled()
+  vi.useRealTimers()
+})
+it('refreshes unverified CAS conflicts without retrying and never promises OTP recovery', async () => {
+  const { state } = setup()
+  await flushPromises()
+  vi.mocked(reviewGuestsApi.query).mockResolvedValue(result([unverifiedGuest()]))
+  state.verificationLevel.value = 'unverified'
+  await flushPromises()
+  vi.mocked(reviewGuestsApi.setEnabled).mockRejectedValueOnce(new ApiError('Conflict', 409))
+  await state.setEnabled(state.rows.value[0]!)
+  expect(reviewGuestsApi.setEnabled).toHaveBeenCalledOnce()
+  expect(state.notice.value).toBe(protoLocales.zh.reviewGuestConflict)
+  await state.setEnabled(state.rows.value[0]!)
+  expect(state.notice.value).toBe(protoLocales.zh.reviewUnverifiedGuestUpdated)
+})
+it('rejects mixed or incorrect verification types instead of labeling email rows as unverified', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.verificationLevel.value = 'unverified'
+  await flushPromises()
+  expect(state.rows.value).toEqual([])
+  expect(state.total.value).toBe(0)
+  expect(state.error.value).toBe(protoLocales.zh.reviewGuestsUnavailable)
+})
+it('blocks an expired enabled identity and rechecks the wall clock before submitting without waiting for a timer tick', async () => {
+  vi.useFakeTimers()
+  const { state } = setup()
+  await flushPromises()
+  const deadline = Date.now() + 500
+  vi.mocked(reviewGuestsApi.query).mockResolvedValueOnce(
+    result([{ ...unverifiedGuest(), enabled: true, expiresAt: deadline }]),
+  )
+  state.verificationLevel.value = 'unverified'
+  await flushPromises()
+  const visible = state.rows.value[0]!
+  expect(state.isExpired(visible)).toBe(false)
+  vi.setSystemTime(deadline)
+  await state.setEnabled(visible)
+  expect(state.isExpired(visible)).toBe(true)
+  expect(reviewGuestsApi.setEnabled).not.toHaveBeenCalled()
 })

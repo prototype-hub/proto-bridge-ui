@@ -8,7 +8,13 @@ import { i18n } from '@/shared/i18n'
 import { protoLocales } from '@/modules/protohub-manager-ui/locales'
 import type { PublicShare, ReviewContext } from '@/modules/protohub-manager-ui/types'
 vi.mock('@/modules/protohub-manager-ui/api/review', () => ({
-  reviewApi: { context: vi.fn(), challenge: vi.fn(), verify: vi.fn(), logout: vi.fn() },
+  reviewApi: {
+    context: vi.fn(),
+    challenge: vi.fn(),
+    verify: vi.fn(),
+    unverified: vi.fn(),
+    logout: vi.fn(),
+  },
 }))
 let scope: EffectScope
 const share = (): PublicShare => ({
@@ -26,6 +32,7 @@ const context = (authenticated = false): ReviewContext => ({
   revisionId: 'r1',
   enabled: true,
   mailAvailable: true,
+  allowUnverified: false,
   csrfToken: authenticated ? 'rotated-csrf' : 'csrf',
   session: authenticated
     ? {
@@ -212,3 +219,185 @@ it('expires an authenticated shell identity and stops timers after disposal', as
   scope.stop()
   expect(vi.getTimerCount()).toBe(0)
 })
+const unverifiedContext = (): ReviewContext => ({
+  ...context(),
+  allowUnverified: true,
+  csrfToken: 'unverified-rotated',
+  session: {
+    guestId: 'low-guest',
+    displayName: 'Visitor',
+    company: 'Self declared',
+    maskedEmail: null,
+    verificationLevel: 'unverified',
+    expiresAt: Date.now() + 8 * 3600000,
+  },
+})
+it('keeps email as the primary method and creates name-only identity only after an explicit allowed switch', async () => {
+  vi.mocked(reviewApi.context).mockResolvedValueOnce({ ...context(), allowUnverified: true })
+  vi.mocked(reviewApi.unverified).mockResolvedValueOnce(unverifiedContext())
+  const { state } = setup()
+  await flushPromises()
+  expect(state.mode.value).toBe('email')
+  state.form.displayName = 'Visitor'
+  await state.createUnverified()
+  expect(reviewApi.unverified).not.toHaveBeenCalled()
+  state.chooseMode('unverified')
+  expect(state.canSend.value).toBe(false)
+  state.form.email = 'must-not-send@example.invalid'
+  state.form.displayName = ' Visitor '
+  state.form.company = ' Self declared '
+  await state.createUnverified()
+  expect(reviewApi.unverified).toHaveBeenCalledExactlyOnceWith(
+    { token: 'open', revisionId: 'r1', accessKey: 'grant' },
+    { displayName: 'Visitor', company: 'Self declared' },
+    'csrf',
+    expect.any(AbortSignal),
+  )
+  expect(reviewApi.challenge).not.toHaveBeenCalled()
+  expect(reviewApi.verify).not.toHaveBeenCalled()
+  expect(state.context.value?.session).toMatchObject({
+    maskedEmail: null,
+    verificationLevel: 'unverified',
+  })
+  expect(state.context.value?.csrfToken).toBe('unverified-rotated')
+  expect(state.form.email).toBe('')
+  state.chooseMode('email')
+  expect(state.mode.value).toBe('unverified')
+  await state.createUnverified()
+  expect(reviewApi.unverified).toHaveBeenCalledOnce()
+})
+it('does not offer an unverified action without authoritative opt-in, or silently fall back after mail failure', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.chooseMode('unverified')
+  expect(state.mode.value).toBe('email')
+  Object.assign(state.form, { email: 'v@example.invalid', displayName: 'V' })
+  vi.mocked(reviewApi.challenge).mockRejectedValueOnce(new ApiError('mail down', 503))
+  await state.send()
+  expect(state.error.value).toBe(protoLocales.zh.reviewMailUnavailable)
+  expect(state.mode.value).toBe('email')
+  expect(reviewApi.unverified).not.toHaveBeenCalled()
+})
+it('allows a deliberate unverified choice with mail unavailable and validates name/company without a mailbox', async () => {
+  vi.mocked(reviewApi.context).mockResolvedValueOnce({
+    ...context(),
+    allowUnverified: true,
+    mailAvailable: false,
+  })
+  vi.mocked(reviewApi.unverified).mockResolvedValueOnce(unverifiedContext())
+  const { state } = setup()
+  await flushPromises()
+  expect(state.mode.value).toBe('email')
+  expect(state.canSend.value).toBe(false)
+  state.chooseMode('unverified')
+  state.form.displayName = '  '
+  await state.createUnverified()
+  expect(state.error.value).toBe(protoLocales.zh.reviewNameRequired)
+  state.form.displayName = 'a'.repeat(101)
+  await state.createUnverified()
+  state.form.displayName = 'V'
+  state.form.company = 'c'.repeat(201)
+  await state.createUnverified()
+  expect(reviewApi.unverified).not.toHaveBeenCalled()
+  state.form.company = ''
+  await state.createUnverified()
+  expect(reviewApi.unverified).toHaveBeenCalledOnce()
+  expect(reviewApi.challenge).not.toHaveBeenCalled()
+})
+it.each(['close', 'grant', 'unmount'])(
+  'aborts and ignores a late unverified identity on %s',
+  async (action) => {
+    vi.mocked(reviewApi.context).mockResolvedValue({ ...context(), allowUnverified: true })
+    let resolve!: (value: ReviewContext) => void
+    vi.mocked(reviewApi.unverified).mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const { state, visible, current } = setup()
+    await flushPromises()
+    state.chooseMode('unverified')
+    state.form.displayName = 'Visitor'
+    const pending = state.createUnverified()
+    const signal = vi.mocked(reviewApi.unverified).mock.calls[0]![3]!
+    if (action === 'close') visible.value = false
+    if (action === 'grant') current.value = { ...share(), accessKey: 'new-grant' }
+    if (action === 'unmount') scope.stop()
+    expect(signal.aborted).toBe(true)
+    resolve(unverifiedContext())
+    await pending
+    expect(state.context.value?.session).not.toBeTruthy()
+  },
+)
+it('reports a conflicting existing identity without switching method, merging or retrying', async () => {
+  vi.mocked(reviewApi.context).mockResolvedValueOnce({ ...context(), allowUnverified: true })
+  vi.mocked(reviewApi.unverified).mockRejectedValueOnce(
+    new ApiError('sensitive server detail', 409),
+  )
+  const { state } = setup()
+  await flushPromises()
+  state.chooseMode('unverified')
+  state.form.displayName = 'Visitor'
+  await state.createUnverified()
+  expect(state.error.value).toBe(protoLocales.zh.reviewIdentityConflict)
+  expect(state.context.value?.session).toBeNull()
+  expect(state.mode.value).toBe('unverified')
+  expect(reviewApi.unverified).toHaveBeenCalledOnce()
+  expect(reviewApi.logout).not.toHaveBeenCalled()
+  expect(reviewApi.challenge).not.toHaveBeenCalled()
+})
+it('expires an unverified session without renewal or an automatic new identity', async () => {
+  vi.useFakeTimers()
+  vi.mocked(reviewApi.context).mockResolvedValueOnce({
+    ...unverifiedContext(),
+    session: { ...unverifiedContext().session!, expiresAt: Date.now() + 1000 },
+  })
+  const { state } = setup()
+  await flushPromises()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(state.context.value).toBeUndefined()
+  expect(state.expired.value).toBe(true)
+  expect(reviewApi.unverified).not.toHaveBeenCalled()
+  expect(reviewApi.context).toHaveBeenCalledOnce()
+})
+it('signs out a low-trust session before allowing a separate email identity, without recovery or automatic send', async () => {
+  vi.mocked(reviewApi.context).mockResolvedValueOnce(unverifiedContext())
+  const { state } = setup()
+  await flushPromises()
+  state.chooseMode('unverified')
+  expect(state.context.value?.session?.verificationLevel).toBe('unverified')
+  await state.logout()
+  expect(reviewApi.logout).toHaveBeenCalledExactlyOnceWith(
+    expect.anything(),
+    'unverified-rotated',
+    expect.any(AbortSignal),
+  )
+  expect(state.mode.value).toBe('email')
+  expect(state.context.value?.session).toBeNull()
+  expect(reviewApi.challenge).not.toHaveBeenCalled()
+  expect(reviewApi.unverified).not.toHaveBeenCalled()
+})
+it.each(['email-in-unverified', 'unverified-in-email'])(
+  'never installs a contradictory success context (%s)',
+  async (action) => {
+    vi.mocked(reviewApi.context).mockResolvedValueOnce({ ...context(), allowUnverified: true })
+    const { state } = setup()
+    await flushPromises()
+    if (action === 'email-in-unverified') {
+      state.chooseMode('unverified')
+      state.form.displayName = 'Visitor'
+      vi.mocked(reviewApi.unverified).mockResolvedValueOnce(context(true))
+      await state.createUnverified()
+      expect(state.error.value).toBe(protoLocales.zh.reviewIdentityConflict)
+    } else {
+      Object.assign(state.form, { email: 'v@example.invalid', displayName: 'Visitor' })
+      await state.send()
+      state.form.code = '123456'
+      vi.mocked(reviewApi.verify).mockResolvedValueOnce(unverifiedContext())
+      await state.verify()
+      expect(state.error.value).toBe(protoLocales.zh.reviewUnavailable)
+    }
+    expect(state.context.value?.session).toBeNull()
+    expect(state.context.value?.csrfToken).toBe('csrf')
+  },
+)
