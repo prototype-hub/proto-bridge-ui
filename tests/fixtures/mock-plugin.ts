@@ -1163,6 +1163,16 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         send,
         undefined,
         reviewImage,
+        (projectMembers.get(activeVersion(versionId)!.projectId) || [])
+          .filter(
+            (member) =>
+              ['owner', 'editor'].includes(member.role) &&
+              users.some((user) => user.id === member.userId && user.status === 1),
+          )
+          .map((member) => ({
+            userId: member.userId,
+            name: String(users.find((user) => user.id === member.userId)!.name),
+          })),
       )
   } else if (/^\/prototype-hub\/shares\/[^/]+\/review-invitations(?:\/.*)?$/.test(path)) {
     const value = shares.find((item) => item.id === decodeURIComponent(path.split('/')[3]!))

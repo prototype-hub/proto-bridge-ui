@@ -35,6 +35,9 @@ vi.mock('@/modules/protohub-manager-ui/api/review-thread', () => ({
     status: vi.fn(),
   },
   reviewThreadsApi: {
+    assignment: vi.fn(),
+    assignees: vi.fn(),
+    assign: vi.fn(),
     detail: vi.fn(),
     query: vi.fn(),
     messages: vi.fn(),
@@ -200,6 +203,16 @@ beforeEach(() => {
     vi.mocked(api.status).mockReset().mockResolvedValue(thread())
   }
   vi.mocked(publicReviewThreadsApi.create).mockReset().mockResolvedValue(thread())
+  vi.mocked(reviewThreadsApi.assignment)
+    .mockReset()
+    .mockImplementation(async (_version, id) => ({
+      threadId: id,
+      assignmentVersion: 0,
+      updatedAt: null,
+      assignee: null,
+    }))
+  vi.mocked(reviewThreadsApi.assignees).mockReset().mockResolvedValue(pager([]))
+  vi.mocked(reviewThreadsApi.assign).mockReset()
   i18n.global.locale.value = 'zh'
   i18n.global.mergeLocaleMessage('zh', { proto: protoLocales.zh })
 })

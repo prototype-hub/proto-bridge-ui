@@ -16,6 +16,7 @@ import { projectAllows } from '../utils/project-access'
 import { ApiError } from '@/shared/api/errors'
 import { copyText } from '@/shared/utils/feedback'
 import { secureId } from '@/shared/utils/secure-id'
+import { useReviewAssignment } from './useReviewAssignment'
 import { t } from '@/shared/i18n'
 
 export type ReviewThreadScope =
@@ -119,6 +120,7 @@ export function useReviewThreads(
       (!targeted.value || !!selected.value) &&
       (isPublic.value || permissions.can(p.version.save)),
   )
+  const assignment = useReviewAssignment(scope, open, selectedId, readable)
   function abort() {
     generation++
     controller?.abort()
@@ -612,6 +614,7 @@ export function useReviewThreads(
     clearDraft()
   })
   return {
+    assignment,
     imageFile,
     imagePreview,
     imageView,

@@ -7,6 +7,8 @@ import type {
   Share,
   PrototypePage,
   ReviewImage,
+  ReviewAssignment,
+  ReviewAssignee,
 } from '../../src/modules/protohub-manager-ui/types'
 // UI fixtures model paging, visibility and receipt-shaped retries, not SQL/authentication guarantees.
 interface StoredThread {
@@ -14,6 +16,7 @@ interface StoredThread {
   shareId: string
   versionId: string
   owner: string
+  assignment?: ReviewAssignment
 }
 const threads = new Map<string, StoredThread>(),
   messages = new Map<string, ReviewMessage[]>()
@@ -69,6 +72,7 @@ export function threadResponse(
   send: Send,
   guest?: { share: Share; identity: ReviewIdentity },
   image?: ThreadImage,
+  assignees: ReviewAssignee[] = [],
 ) {
   const rid = String(input.revisionId),
     pageId = String(input.pageId),
@@ -96,6 +100,96 @@ export function threadResponse(
   const stored = id ? threads.get(decodeURIComponent(id)) : undefined
   if (suffix && (!stored || !allowed(stored))) {
     send(res, 404, null, 'Feedback unavailable', 'PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE')
+    return
+  }
+  if (action === 'assignment') {
+    if (guest) {
+      send(res, 404, null, 'Assignment unavailable')
+      return
+    }
+    const initial: ReviewAssignment = {
+      threadId: id!,
+      assignmentVersion: 0,
+      updatedAt: null,
+      assignee: null,
+    }
+    const current = () => {
+      const value = stored!.assignment || initial
+      return {
+        ...value,
+        assignee: value.assignee
+          ? {
+              ...value.assignee,
+              available: assignees.some((row) => row.userId === value.assignee!.userId),
+            }
+          : null,
+      }
+    }
+    if (query === '_detail' && method === 'POST') {
+      send(res, 200, current())
+      return
+    }
+    if (query === '_candidates' && method === 'POST') {
+      const index = input.pageIndex ?? 0,
+        size = input.pageSize ?? 20,
+        keyword = input.keyword ?? ''
+      if (
+        !Number.isInteger(index) ||
+        Number(index) < 0 ||
+        Number(index) > 10000 ||
+        !Number.isInteger(size) ||
+        Number(size) < 1 ||
+        Number(size) > 50 ||
+        typeof keyword !== 'string' ||
+        keyword.length > 100
+      ) {
+        send(res, 400, null, 'Invalid candidates query')
+        return
+      }
+      const rows = assignees
+        .filter((row) => row.name.toLowerCase().includes(keyword.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId))
+      send(res, 200, pageRows(rows, { pageIndex: index, pageSize: size }))
+      return
+    }
+    if (
+      method !== 'PUT' ||
+      query ||
+      (input.assigneeId !== null &&
+        (typeof input.assigneeId !== 'string' || !input.assigneeId.trim())) ||
+      !Number.isSafeInteger(input.expectedVersion) ||
+      Number(input.expectedVersion) < 0 ||
+      !/^[\x21-\x7e]{1,128}$/.test(String(input.clientRequestId || ''))
+    ) {
+      send(res, 400, null, 'Invalid assignment')
+      return
+    }
+    const key = JSON.stringify(['assignment', versionId, rid, pageId, id, input.clientRequestId]),
+      body = JSON.stringify(input),
+      existing = receipts.get(key)
+    if (existing) {
+      send(res, existing.body === body ? 200 : 409, existing.body === body ? current() : null)
+      return
+    }
+    const before = current(),
+      target = assignees.find((row) => row.userId === input.assigneeId)
+    if (before.assignmentVersion !== input.expectedVersion) {
+      send(res, 409, null, 'Assignment changed', 'PROTOTYPE_HUB_REVIEW_ASSIGNMENT_CONFLICT')
+      return
+    }
+    if (input.assigneeId !== null && !target) {
+      send(res, 400, null, 'Assignee unavailable', 'PROTOTYPE_HUB_REVIEW_ASSIGNEE_INVALID')
+      return
+    }
+    if ((before.assignee?.userId || null) !== input.assigneeId)
+      stored!.assignment = {
+        threadId: id!,
+        assignmentVersion: before.assignmentVersion + 1,
+        updatedAt: Date.now(),
+        assignee: target ? { ...target, available: true } : null,
+      }
+    receipts.set(key, { body, id: id!, message: false })
+    send(res, 200, current())
     return
   }
   if (action === '_detail' && method === 'POST') {

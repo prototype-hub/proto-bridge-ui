@@ -387,3 +387,19 @@ export interface ReviewStatusInput extends ReviewThreadPage {
   expectedVersion: number
   clientRequestId: string
 }
+/** Internal assignment is deliberately separate from the visitor-visible thread/state version. */
+export interface ReviewAssignment {
+  threadId: string
+  assignmentVersion: number
+  updatedAt: number | null
+  assignee: { userId: string; name: string; available: boolean } | null
+}
+export interface ReviewAssignee {
+  userId: string
+  name: string
+}
+export interface ReviewAssignmentInput extends ReviewThreadPage {
+  assigneeId: string | null
+  expectedVersion: number
+  clientRequestId: string
+}

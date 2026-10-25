@@ -31,6 +31,38 @@ const blobText = (value: Blob) =>
     reader.onerror = () => reject(reader.error)
     reader.readAsText(value)
   })
+it('keeps assignment detail, paged candidates and CAS clear on member-only encoded scope', async () => {
+  const options = { signal: new AbortController().signal, silent: true }
+  const target = { revisionId: 'r1', pageId: 'page' }
+  await reviewThreadsApi.assignment('version/id', 'thread/id', target, options)
+  await reviewThreadsApi.assignees(
+    'version/id',
+    'thread/id',
+    { ...target, pageIndex: 2, pageSize: 20, keyword: '%_ name' },
+    options,
+  )
+  const clear = { ...target, assigneeId: null, expectedVersion: 4, clientRequestId: 'key' }
+  await reviewThreadsApi.assign('version/id', 'thread/id', clear, options)
+  expect(request.post).toHaveBeenNthCalledWith(
+    1,
+    '/prototype-hub/versions/version%2Fid/review-threads/thread%2Fid/assignment/_detail',
+    target,
+    options,
+  )
+  expect(request.post).toHaveBeenNthCalledWith(
+    2,
+    '/prototype-hub/versions/version%2Fid/review-threads/thread%2Fid/assignment/_candidates',
+    { ...target, pageIndex: 2, pageSize: 20, keyword: '%_ name' },
+    options,
+  )
+  expect(request.put).toHaveBeenCalledWith(
+    '/prototype-hub/versions/version%2Fid/review-threads/thread%2Fid/assignment',
+    clear,
+    options,
+  )
+  expect(fetch).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi).not.toHaveProperty('assign')
+})
 it('sends precisely two multipart parts and only review credentials for a manual public image reply', async () => {
   const image = new File(['png'], 'private-filename.png', { type: 'image/png' })
   const data = { revisionId: 'r1', pageId: 'page', text: 'Caption', clientRequestId: 'key' }
