@@ -98,6 +98,7 @@ const popupContainer = () => container.value || document.body
           </load-state>
           <a-pagination
             v-if="state.total.value > 0 || state.pageIndex.value > 0"
+            class="review-guests-pagination"
             :current="current"
             :page-size="state.pageSize.value"
             :total="state.total.value"
@@ -113,6 +114,11 @@ const popupContainer = () => container.value || document.body
   </a-drawer>
 </template>
 <style scoped>
+.review-guests-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: var(--space-3);
+}
 .review-guests {
   position: relative;
 }

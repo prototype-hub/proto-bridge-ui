@@ -19,13 +19,9 @@ vi.mock('@/shared/api/client', () => ({
 vi.mock('@/shared/api/public-client', () => ({ publicRequest: { get: vi.fn(), post: vi.fn() } }))
 vi.mock('@/shared/utils/feedback', () => ({ saved: vi.fn(), deleted: vi.fn() }))
 vi.mock('ant-design-vue', () => ({ message: { error: vi.fn(), success: vi.fn() } }))
-vi.mock('@/modules/protohub-manager-ui/utils/folder-archive', () => ({
+vi.mock('@/modules/protohub-manager-ui/utils/folder-archive', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/protohub-manager-ui/utils/folder-archive')>()),
   prepareFolderArchive: vi.fn(),
-  FolderArchiveError: class extends Error {
-    constructor(public code: string) {
-      super(code)
-    }
-  },
 }))
 const wrappers: VueWrapper[] = []
 const source = [new File(['<html>中文</html>'], 'index.html')]
@@ -135,6 +131,74 @@ it('keeps an existing valid selection when the native folder picker is cancelled
   await state.chooseFolder([])
   expect(state.file.value).toBe(zip)
   expect(prepareFolderArchive).not.toHaveBeenCalled()
+})
+
+it('retains actionable diagnostics on picker cancel and clears them on a new ZIP or folder selection', async () => {
+  const { state } = await render()
+  const issues = [
+    { path: 'root/.DS_Store', reason: 'hiddenEntry' as const },
+    { path: 'root/index.html', reason: 'duplicate' as const, conflictingPath: 'root/index.html' },
+  ]
+  vi.mocked(prepareFolderArchive).mockRejectedValueOnce(
+    new FolderArchiveError('invalidPath', issues, 24),
+  )
+  await state.chooseFolder(source)
+  expect(state.folderPathIssues.value).toEqual(issues)
+  expect(state.folderPathIssueCount.value).toBe(24)
+  expect(state.task.error.value).toContain('24')
+  expect(state.file.value).toBeUndefined()
+  expect(request.post).not.toHaveBeenCalled()
+  await state.chooseFolder([])
+  expect(state.folderPathIssues.value).toEqual(issues)
+  state.choose(zip)
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  expect(state.task.error.value).toBe('')
+
+  vi.mocked(prepareFolderArchive).mockRejectedValueOnce(
+    new FolderArchiveError('invalidPath', issues),
+  )
+  await state.chooseFolder(source)
+  const work = pending<FolderArchiveResult>()
+  vi.mocked(prepareFolderArchive).mockReturnValueOnce(work.promise)
+  const preparation = state.chooseFolder(source)
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  state.cancelPacking()
+  work.reject(new FolderArchiveError('invalidPath', issues))
+  await preparation
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  expect(state.task.error.value).toBe('')
+})
+
+it('clears path diagnostics on a target switch, close/reopen and disposal, ignoring old failures', async () => {
+  const { state, context, open, wrapper } = await render()
+  const issues = [{ path: 'root/.DS_Store', reason: 'hiddenEntry' as const }]
+  const invalid = () => new FolderArchiveError('invalidPath', issues)
+  vi.mocked(prepareFolderArchive).mockRejectedValueOnce(invalid())
+  await state.chooseFolder(source)
+  context.value = { projectId: 'p2' }
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  await nextTick()
+  vi.mocked(prepareFolderArchive).mockRejectedValueOnce(invalid())
+  await state.chooseFolder(source)
+  state.cancel()
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  open.value = true
+  await nextTick()
+  expect(state.task.error.value).toBe('')
+  const work = pending<FolderArchiveResult>()
+  vi.mocked(prepareFolderArchive).mockReturnValueOnce(work.promise)
+  const preparation = state.chooseFolder(source)
+  wrapper.unmount()
+  work.reject(invalid())
+  await preparation
+  expect(state.folderPathIssues.value).toEqual([])
+  expect(state.folderPathIssueCount.value).toBe(0)
+  expect(state.task.error.value).toBe('')
 })
 
 it.each(['invalidPath', 'tooManyFiles', 'tooLarge', 'noHtml', 'unsupported', 'failed'] as const)(

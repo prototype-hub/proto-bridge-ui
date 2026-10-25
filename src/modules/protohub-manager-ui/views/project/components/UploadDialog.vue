@@ -28,6 +28,8 @@ const {
   form,
   file,
   folder,
+  folderPathIssues,
+  folderPathIssueCount,
   phase,
   packingProgress,
   progress,
@@ -79,10 +81,22 @@ const beforeUpload = (selected: File) => {
       "
     />
     <a-alert v-if="outcomeUnknown" type="warning" :message="t('proto.uploadUnknown')" />
-    <a-alert v-if="task.error.value" type="error" :message="task.error.value" /><a-form
-      layout="vertical"
-      :model="form"
-      @finish="submit"
+    <a-alert v-if="task.error.value" type="error" :message="task.error.value">
+      <template v-if="folderPathIssues.length" #description>
+        <ul class="folder-path-issues">
+          <li v-for="(issue, index) in folderPathIssues" :key="index">
+            <code class="folder-path">{{ issue.path }}</code>
+            <span>{{ t(`proto.folderPathReasons.${issue.reason}`) }}</span>
+            <span v-if="issue.conflictingPath" class="folder-path">{{
+              t('proto.folderPathConflictWith', { path: issue.conflictingPath })
+            }}</span>
+          </li>
+        </ul>
+        <p v-if="folderPathIssueCount > folderPathIssues.length">
+          {{ t('proto.folderPathIssuesTruncated', { count: folderPathIssues.length }) }}
+        </p>
+      </template> </a-alert
+    ><a-form layout="vertical" :model="form" @finish="submit"
       ><a-form-item
         name="versionName"
         :label="t('proto.versionName')"
@@ -160,6 +174,21 @@ const beforeUpload = (selected: File) => {
   >
 </template>
 <style scoped>
+.folder-path-issues {
+  max-height: 16rem;
+  overflow: auto;
+  padding-inline-start: var(--space-4);
+}
+.folder-path-issues li + li {
+  margin-top: var(--space-2);
+}
+.folder-path-issues span {
+  display: block;
+}
+.folder-path {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .upload-actions {
   display: flex;
   justify-content: flex-end;

@@ -13,7 +13,7 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   await login(page)
   await page.goto('prototype-hub/projects/p1')
   const opening = page.waitForEvent('popup')
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: '预览', exact: true }).click()
   const current = await opening
   await expect(current.locator('.frame-stage > iframe')).toHaveAttribute('src', /\/runtime\/v1\//)
   const originalRuntime = await current.locator('.frame-stage > iframe').getAttribute('src')
@@ -59,7 +59,7 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   await drawer
     .getByRole('row')
     .filter({ has: page.getByText('r-v1', { exact: true }) })
-    .getByRole('button', { name: 'Preview', exact: true })
+    .getByRole('button', { name: '预览', exact: true })
     .click()
   const historical = await historicalOpening
   await historyRequest
@@ -97,7 +97,7 @@ test('uploading a revision keeps old shares and short grants, and history opens 
     .waitForEvent('request', (outgoing) =>
       outgoing.url().endsWith(`/revisions/${updated.currentRevisionId}/preview-session`),
     )
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: '预览', exact: true }).click()
   const latest = await latestOpening
   await latestRequest
   await expect(latest.getByText('V1 revision two', { exact: true })).toBeVisible()
@@ -161,6 +161,6 @@ test('legacy rows remain visible with all revision content actions disabled', as
       exact: true,
     }),
   ).toBeVisible()
-  for (const name of ['Preview', '上传新修订', '分享管理', '历史修订'])
+  for (const name of ['预览', '上传新修订', '分享管理', '历史修订'])
     await expect(page.getByRole('button', { name, exact: true })).toBeDisabled()
 })

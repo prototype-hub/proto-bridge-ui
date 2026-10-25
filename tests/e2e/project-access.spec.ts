@@ -36,7 +36,7 @@ test('project viewer controls intersect server scope even when platform actions 
   await login(page)
   await page.goto('prototype-hub/projects/p1')
   await expect(page.getByRole('heading', { name: 'Viewer project', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '预览', exact: true })).toBeVisible()
   for (const name of ['上传版本', '上传新修订', '项目成员', '分享管理', '删除'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
 })
@@ -49,7 +49,7 @@ test('owner manages members without global user administration and member change
   await login(page)
   await page.goto('prototype-hub/projects/p1')
   const popupReady = context.waitForEvent('page')
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: '预览', exact: true }).click()
   const popup = await popupReady
   const frame = popup.locator('.frame-stage > iframe')
   await expect(frame).toHaveAttribute('src', /\/runtime\/v1\/[^/]+\/index\.html$/)

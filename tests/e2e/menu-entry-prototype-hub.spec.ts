@@ -103,7 +103,7 @@ test('canonical and legacy prototype menus use the new API and keep detail, stan
       new URL(response.url()).pathname ===
         '/api/prototype-hub/versions/v1/revisions/r-v1/preview-session',
   )
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: '预览', exact: true }).click()
   const popup = await popupPromise
   await expect(popup).toHaveURL(/\/tools\/preview\/p1\/v1$/)
   const sessionResponse = await previewSession

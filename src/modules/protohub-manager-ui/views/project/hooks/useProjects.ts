@@ -1,4 +1,4 @@
-import { ref, onMounted, onScopeDispose, watch } from 'vue'
+import { ref, onMounted, onScopeDispose, watch, type Ref } from 'vue'
 import { projectsApi } from '@/modules/protohub-manager-ui/api'
 import { createCreationIntent } from '@/modules/protohub-manager-ui/utils/creation-intent'
 import { useResource } from '@/shared/composables/useResource'
@@ -10,8 +10,8 @@ import { usePrototypeList } from './usePrototypeList'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
-export function useProjects() {
-  const trash = ref(false)
+export function useProjects(trash: Ref<boolean> = ref(false)) {
+  const restoredProject = ref<Project>()
   const permissions = usePermissions()
   let generation = 0
   const list = usePrototypeList<Project>(
@@ -97,6 +97,7 @@ export function useProjects() {
       }
       if (submitted !== generation) return
       saved()
+      restoredProject.value = project
       await refresh()
     })
   }
@@ -128,6 +129,7 @@ export function useProjects() {
     trash,
     () => {
       generation++
+      restoredProject.value = undefined
       open.value = false
       task.error.value = ''
       list.resetScope()
@@ -150,6 +152,7 @@ export function useProjects() {
   return {
     resource,
     trash,
+    restoredProject,
     restore,
     usage,
     loadUsage,

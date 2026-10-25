@@ -46,6 +46,7 @@ async function render(
   page: 'projects' | 'detail',
   actualPage = false,
   can: (value: string | string[]) => boolean = () => true,
+  recycled = false,
 ) {
   let projects!: ReturnType<typeof useProjects>
   let detail!: ReturnType<typeof useProjectDetail>
@@ -71,6 +72,7 @@ async function render(
   const wrapper = mount(
     actualPage ? (page === 'projects' ? ProjectsView : ProjectDetailView) : harness,
     {
+      props: actualPage && page === 'projects' ? { recycled } : {},
       global: {
         plugins: [createPinia(), router, i18n],
         provide: { [permissionKey]: { can } },
@@ -215,7 +217,7 @@ it('retains version preview/replacement/deletion when no new version can be uplo
       .find((button) => button.text() === '上传版本')
       ?.attributes('disabled'),
   ).toBeDefined()
-  for (const label of ['Preview', '上传新修订', '删除'])
+  for (const label of ['预览', '上传新修订', '删除'])
     expect(wrapper.find(`button[aria-label="${label}"]`).attributes('disabled')).toBeUndefined()
 })
 
@@ -492,8 +494,8 @@ it('hides project restore without the save action even when the server reports o
     'projects',
     true,
     (value) => value !== 'prototype-hub-project:save',
+    true,
   )
-  await wrapper.get('input[type="radio"][value="true"]').setValue()
   await flushPromises()
   expect(wrapper.text()).toContain(project.name)
   expect(wrapper.find('button[aria-label="恢复"]').exists()).toBe(false)

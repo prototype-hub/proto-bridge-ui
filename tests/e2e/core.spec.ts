@@ -351,7 +351,7 @@ test('page hierarchy, nav collapse, Inspect, highlight and copy', async ({ page,
   await page.getByRole('button', { name: '隐藏页面目录' }).click()
   const after = await page.locator('iframe').boundingBox()
   expect(after!.width).toBeGreaterThan(before!.width)
-  await page.getByText('Inspect', { exact: true }).click()
+  await page.getByText('检查', { exact: true }).click()
   const frame = page.frameLocator('iframe')
   await frame.getByRole('button', { name: 'Contract element' }).hover()
   await expect(frame.locator('#overlay')).toBeVisible()
@@ -372,7 +372,7 @@ test('standalone preview skips menus and opens through a new window', async ({ p
   await login(page)
   await page.goto('protohub/projects/p1')
   const popupPromise = page.waitForEvent('popup')
-  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('button', { name: '预览', exact: true }).click()
   const popup = await popupPromise
   const requests: string[] = []
   popup.on('request', (request) => requests.push(request.url()))
@@ -604,7 +604,7 @@ test('desktop and narrow public preview remain operable', async ({ page }, testI
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.getByText('Child page', { exact: true }).click()
       await expect(page.getByRole('dialog')).not.toBeVisible()
-      await page.getByText('Inspect', { exact: true }).click()
+      await page.getByText('检查', { exact: true }).click()
       await page.frameLocator('iframe').getByRole('button', { name: 'Contract element' }).click()
       await expect(page.getByText('BUTTON#u1', { exact: true })).toBeVisible()
       await page

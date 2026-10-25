@@ -1,13 +1,12 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
 import { useRoute, useRouter } from 'vue-router'
+import { toRef } from 'vue'
 import {
   Pagination as APagination,
   Card as ACard,
   Space as ASpace,
   Alert as AAlert,
-  RadioGroup as ARadioGroup,
-  RadioButton as ARadioButton,
 } from 'ant-design-vue'
 import {
   ClockCircleOutlined,
@@ -29,12 +28,14 @@ import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+const props = withDefaults(defineProps<{ recycled?: boolean }>(), { recycled: false })
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const {
   resource,
   trash,
+  restoredProject,
   restore,
   usage,
   loadUsage,
@@ -52,15 +53,16 @@ const {
   edit,
   save,
   remove,
-} = useProjects()
+} = useProjects(toRef(props, 'recycled'))
 function openDetail(id: string) {
   void router.push({ name: 'project-detail', params: { id }, query: { ...route.query } })
 }
 </script>
 <template>
-  <page-container :title="t('proto.projects')"
+  <page-container :title="t(trash ? 'proto.recycleBin' : 'proto.projects')"
     ><template #actions
       ><permission-button
+        v-if="!trash"
         :permission="p.project.save"
         type="primary"
         :disabled="trash || usage.data.value?.projects.canCreate === false"
@@ -68,15 +70,27 @@ function openDetail(id: string) {
         >{{ t('proto.newProject') }}</permission-button
       ></template
     >
-    <a-radio-group
-      v-model:value="trash"
-      class="prototype-list-mode"
-      :aria-label="t('proto.listMode')"
-    >
-      <a-radio-button :value="false">{{ t('proto.activeProjects') }}</a-radio-button>
-      <a-radio-button :value="true">{{ t('proto.recycleBin') }}</a-radio-button>
-    </a-radio-group>
     <a-alert v-if="trash" type="info" show-icon :message="t('proto.recycleHint')" />
+    <a-alert
+      v-if="trash && restoredProject"
+      type="success"
+      show-icon
+      :message="t('proto.projectRestored')"
+    >
+      <template #action
+        ><permission-button
+          :permission="p.version.query"
+          @click="
+            router.push({
+              name: 'project-detail',
+              params: { id: restoredProject.id },
+              query: { recycle: 'versions' },
+            })
+          "
+          >{{ t('proto.openVersionRecycle') }}</permission-button
+        ></template
+      >
+    </a-alert>
     <prototype-list-toolbar
       v-model:keyword="search"
       :sort="sort"
@@ -176,10 +190,10 @@ function openDetail(id: string) {
   /></page-container>
 </template>
 <style scoped>
-.prototype-list-mode {
-  margin-bottom: var(--space-4);
-}
 .project-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   margin-top: var(--space-4);
 }
 .project-grid {

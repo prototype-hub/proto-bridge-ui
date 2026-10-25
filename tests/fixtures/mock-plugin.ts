@@ -86,6 +86,16 @@ const initialMenus: ServerMenu[] = [
           }),
         ),
       },
+      {
+        ...menu(
+          'prototype-hub-recycle',
+          'prototype-hub/Recycle',
+          '回收站',
+          '/prototype-hub/recycle-bin',
+          [],
+        ),
+        permissions: [{ permission: 'prototype-hub-project', actions: ['query', 'save'] }],
+      },
     ],
   },
   menu('users', 'system/User', '用户管理', '/system/user', [

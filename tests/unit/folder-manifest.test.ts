@@ -3,6 +3,7 @@ import { expect, it } from 'vitest'
 import {
   buildFolderManifest,
   FOLDER_LIMITS,
+  FolderArchiveError,
 } from '@/modules/protohub-manager-ui/utils/folder-manifest'
 
 function selected(path: string, bytes = 'content'): File {
@@ -51,6 +52,109 @@ it.each([
 
 it('does not normalize a valid surrogate pair or Unicode filename', () => {
   expect(buildFolderManifest([selected('原型/😀.html')]).entries[0]?.path).toBe('😀.html')
+})
+
+it('strips a hidden outer root without relaxing the inner hidden-file or traversal rules', () => {
+  const manifest = buildFolderManifest([
+    selected('.中文导出/index.html'),
+    selected('.中文导出/resources/scripts/axure/axQuery.js'),
+    selected('.中文导出/start_c_1.html'),
+    selected(".中文导出/页面 (1)/O'Brien.html"),
+  ])
+  expect(manifest.rootName).toBe('.中文导出')
+  expect(manifest.entries.map(({ path }) => path)).toContain("页面 (1)/O'Brien.html")
+  for (const path of ['./index.html', '../index.html', '.export/.DS_Store', '.export/.cache/a.js'])
+    expect(() => buildFolderManifest([selected(path)])).toThrow(
+      expect.objectContaining({ code: 'invalidPath' }),
+    )
+})
+
+it('preserves case and composed/decomposed Unicode paths without incorrectly deduplicating', () => {
+  const paths = ['root/index.html', 'root/Index.html', 'root/é.html', 'root/e\u0301.html']
+  const manifest = buildFolderManifest(paths.map((path) => selected(path)))
+  expect(manifest.entries.map(({ path }) => path)).toEqual([
+    'Index.html',
+    'e\u0301.html',
+    'index.html',
+    'é.html',
+  ])
+})
+
+it.each([
+  ['root/.DS_Store', 'hiddenEntry'],
+  ['root/a\\b/index.html', 'invalidCharacters'],
+  ['root/\ud800/index.html', 'invalidUnicode'],
+  ['root/' + 'a'.repeat(4096) + '/index.html', 'pathTooLong'],
+  ['/root/index.html', 'absolutePath'],
+  ['root//index.html', 'emptySegment'],
+  ['root/../index.html', 'traversal'],
+] as const)('explains the exact offending path %j with reason %s', (path, reason) => {
+  expect(() => buildFolderManifest([selected(path)])).toThrow(
+    expect.objectContaining({
+      code: 'invalidPath',
+      issues: [{ path, reason }],
+      totalIssueCount: 1,
+    }),
+  )
+})
+
+it('identifies both source paths for duplicates and file/directory conflicts in either order', () => {
+  for (const [first, second, reason] of [
+    ['root/index.html', 'root/index.html', 'duplicate'],
+    ['root/index.html', 'root/index.html/nested.html', 'fileDirectoryConflict'],
+    ['root/index.html/nested.html', 'root/index.html', 'fileDirectoryConflict'],
+  ])
+    expect(() => buildFolderManifest([selected(first!), selected(second!)])).toThrow(
+      expect.objectContaining({
+        issues: [{ path: second, reason, conflictingPath: first }],
+        totalIssueCount: 1,
+      }),
+    )
+})
+
+it('reports missing paths, mixed roots and misleading leaf names precisely', () => {
+  const misleading = selected('root/actual.html')
+  Object.defineProperty(misleading, 'name', { value: 'mismatch.html' })
+  expect(() =>
+    buildFolderManifest([
+      selected('root/index.html'),
+      new File(['x'], 'loose.txt'),
+      selected('other/page.html'),
+      misleading,
+    ]),
+  ).toThrow(
+    expect.objectContaining({
+      issues: [
+        { path: 'loose.txt', reason: 'missingRelativePath' },
+        { path: 'other/page.html', reason: 'mixedRoots' },
+        { path: 'root/actual.html', reason: 'nameMismatch' },
+      ],
+      totalIssueCount: 3,
+    }),
+  )
+})
+
+it('bounds displayed issues at 20 while counting the full selection without reading file bytes', () => {
+  const files = [selected('root/index.html')]
+  for (let index = 0; index < 25; index++) files.push(selected(`root/.hidden-${index}.js`))
+  files.forEach((file) => {
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: () => {
+        throw new Error('Validation must not read any file, including a valid first file')
+      },
+    })
+  })
+  let failure: FolderArchiveError | undefined
+  try {
+    buildFolderManifest(files)
+  } catch (cause) {
+    if (cause instanceof FolderArchiveError) failure = cause
+    else throw cause
+  }
+  expect(failure?.code).toBe('invalidPath')
+  expect(failure?.issues).toHaveLength(20)
+  expect(failure?.totalIssueCount).toBe(25)
+  expect(failure?.issues[19]).toEqual({ path: 'root/.hidden-19.js', reason: 'hiddenEntry' })
 })
 
 it('rejects mixed roots, duplicate files, misleading leaf names and file-directory collisions in either order', () => {

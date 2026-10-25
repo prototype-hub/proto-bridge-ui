@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Request as BrowserRequest } from '@playwright/test'
-import { mkdtemp, mkdir, writeFile, rm, open } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, open, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createHash, randomBytes } from 'node:crypto'
 import { join, dirname } from 'node:path'
@@ -269,6 +269,75 @@ test('cancelling real Worker compression leaves no upload and no stale prepared 
     await page.getByRole('button', { name: '上传版本', exact: true }).click()
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
     expect(uploads).toBe(0)
+  } finally {
+    await rm(fixture.parent, { recursive: true, force: true })
+  }
+})
+
+test('native directory paths identify hidden files on mobile and allow a stripped dot-prefixed root after repair', async ({
+  page,
+}, testInfo) => {
+  const fixture = await fixtureFolder()
+  try {
+    await mkdir(join(fixture.root, 'Unicode 页面'))
+    await writeFile(join(fixture.root, 'Unicode 页面', 'e\u0301.html'), '<html>Unicode page</html>')
+    await writeFile(join(fixture.root, "Page (1) O'Brien😀.HTML"), '<html>Axure-style page</html>')
+    await writeFile(join(fixture.root, '.DS_Store'), 'synthetic hidden metadata')
+    await mkdir(join(fixture.root, '.cache'))
+    await writeFile(join(fixture.root, '.cache', 'old.js'), 'synthetic hidden resource')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await login(page)
+    let uploads = 0
+    let archive: Awaited<ReturnType<typeof uploaded>> | undefined
+    await page.route('**/api/prototype-hub/projects/p1/versions', async (route) => {
+      if (route.request().method() === 'POST') archive = await uploaded(route.request())
+      await route.continue()
+    })
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        request.url().endsWith('/api/prototype-hub/projects/p1/versions')
+      )
+        uploads++
+    })
+    await page.getByRole('button', { name: '上传版本', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('版本名称').fill('Repaired folder')
+    const selected = await selectFolder(page, fixture.root)
+    expect(selected.map((entry) => entry.webkitRelativePath)).toContain('中文原型 导出/.DS_Store')
+    const alert = dialog.locator('.ant-alert-error')
+    await expect(alert).toContainText('发现 2 个路径问题')
+    await expect(alert).toContainText('中文原型 导出/.DS_Store')
+    await expect(alert).toContainText('中文原型 导出/.cache/old.js')
+    await expect(alert).toContainText('不支持以点开头的隐藏文件或目录')
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
+    expect(uploads).toBe(0)
+    expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await page.screenshot({
+      path: testInfo.outputPath('folder-path-issues-mobile.png'),
+      animations: 'disabled',
+    })
+
+    await rm(join(fixture.root, '.DS_Store'))
+    await rm(join(fixture.root, '.cache'), { recursive: true })
+    const dotRoot = join(fixture.parent, '.中文原型 导出')
+    await rename(fixture.root, dotRoot)
+    const repaired = await selectFolder(page, dotRoot)
+    await expect(dialog.getByText(/已打包「.中文原型 导出」：9 个文件/)).toBeVisible()
+    await expect(alert).toHaveCount(0)
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    expect(uploads).toBe(0)
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(page.getByRole('cell', { name: 'Repaired folder', exact: true })).toBeVisible()
+    expect(uploads).toBe(1)
+    // Native filesystem normalization is retained exactly as Chromium reports it, including NFD.
+    expect(Object.keys(unzipSync(archive!.bytes)).sort()).toEqual(
+      repaired
+        .map(({ webkitRelativePath }) =>
+          webkitRelativePath.slice(webkitRelativePath.indexOf('/') + 1),
+        )
+        .sort(),
+    )
   } finally {
     await rm(fixture.parent, { recursive: true, force: true })
   }

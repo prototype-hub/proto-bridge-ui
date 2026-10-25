@@ -33,6 +33,7 @@ describe('build-time menu entry resolution', () => {
         'system/Log/Access',
         'system/Log/System',
         'prototype-hub/Project',
+        'prototype-hub/Recycle',
       ]),
     )
     for (const code of [
@@ -47,6 +48,33 @@ describe('build-time menu entry resolution', () => {
     expect(user.default).toHaveProperty('name', 'UsersView')
     expect(project.default).toHaveProperty('name', 'ProjectsView')
   }, 20000)
+
+  it('registers the separate recycle entry only through an authorized server menu', async () => {
+    const entry = await componentMap['prototype-hub/Recycle']!()
+    expect(entry.default).toHaveProperty('name', 'RecycleView')
+    const allowed = adaptMenus([
+      menu('prototype-hub/Project', '/prototype-hub'),
+      menu('prototype-hub/Recycle', '/prototype-hub/recycle-bin'),
+    ])
+    expect(allowed.routes.map((route) => route.path)).toContain('/prototype-hub/recycle-bin')
+    expect(
+      allowed.routes.find((route) => route.path === '/prototype-hub/recycle-bin')?.meta,
+    ).toMatchObject({ menuComponentCode: 'prototype-hub/Recycle' })
+    for (const extra of [{ granted: false }, { options: { show: false } }]) {
+      const denied = adaptMenus([
+        menu('prototype-hub/Recycle', '/prototype-hub/recycle-bin', extra),
+      ])
+      expect(denied.routes).toEqual([])
+      expect(denied.links).toEqual([])
+    }
+    expect(protectedRoutes.some((route) => route.path === '/prototype-hub/recycle-bin')).toBe(false)
+    expect(
+      resolveMenuComponent(
+        menu('custom-recycle', '/prototype-hub/recycle-bin'),
+        '/prototype-hub/recycle-bin',
+      )?.code,
+    ).toBe('prototype-hub/Recycle')
+  })
 
   it('uses current registered code or URL before a preserved legacy binding', () => {
     expect(
