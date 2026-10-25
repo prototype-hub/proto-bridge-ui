@@ -335,8 +335,22 @@ export interface ReviewPage {
   name: string
   path: string
 }
+/** A static root document position, never an element identity or an authorization grant. */
+export interface ReviewAnchor {
+  space: 'root-document-css-px-v1'
+  shape: 'point' | 'rect' | 'ellipse'
+  x: number
+  y: number
+  width: number
+  height: number
+  documentWidth: number
+  documentHeight: number
+  viewportWidth: number
+  viewportHeight: number
+}
 export type ReviewThreadState = 'open' | 'resolved'
 export interface ReviewThread {
+  anchor?: ReviewAnchor | null
   id: string
   revisionId: string
   pageId: string
@@ -381,6 +395,9 @@ export interface ReviewThreadQuery extends ReviewThreadPage {
 export interface ReviewMessageInput extends ReviewThreadPage {
   text: string
   clientRequestId: string
+}
+export interface ReviewCreateInput extends ReviewMessageInput {
+  anchor?: ReviewAnchor | null
 }
 export interface ReviewStatusInput extends ReviewThreadPage {
   state: ReviewThreadState

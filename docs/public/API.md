@@ -224,7 +224,7 @@
 
 ## 固定页面文字反馈
 
-反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前支持文字线程、对客回复、内部备注、open/resolved状态、成员专用线程负责人及访客初始投稿和已有线程回复中的单张手动图片；不含几何圈选、通用附件、全局分派队列、编辑删除或业务邮件。
+反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前支持文字线程、对客回复、内部备注、open/resolved状态、成员专用线程负责人、访客创建时的根页面点/矩形/椭圆位置快照及访客初始投稿和已有线程回复中的单张手动图片；不含跨frame或语义元素定位、通用附件、全局分派队列、编辑删除或业务邮件。
 
 公开接口全部位于 `/prototype-hub/public/shares/{token}/review`，提交 `{revisionId,accessKey,pageId}`，沿用同源Cookie、受信Origin、`X-Review-CSRF`、no-store；新接口包含明确的PUT方法，不能把身份Cookie扩至runtime：
 
@@ -232,7 +232,7 @@
 | ------------------------------------------ | ------------------------------------------------ | ------------------------ |
 | `POST /threads/_query`                     | `{pageIndex,pageSize,state?}`                    | 本人线程分页             |
 | `POST /threads/{threadId}/_detail`         | 无                                               | 当前本人范围的单个Thread |
-| `POST /threads`                            | `{text,clientRequestId}`                         | Thread                   |
+| `POST /threads`                            | `{text,clientRequestId,anchor?}`                 | Thread                   |
 | `POST /threads/_with-image`                | multipart中的request含原创建字段，另含image      | Thread，首条公开消息附图 |
 | `POST /threads/{threadId}/messages/_query` | `{pageIndex,pageSize}`                           | 仅公开消息分页           |
 | `POST /threads/{threadId}/messages`        | `{text,clientRequestId}`                         | 当前访客的公开Message    |
@@ -252,7 +252,7 @@
 
 PM不能创建客户顶层线程。对客回复与内部备注使用明确不同的选择项和标识；内部备注永不进入公开列表。分享或访客停用后，当前有权PM仍可处理归档，项目/版本/修订不可用时拒绝。访客公开回复自动重开resolved，PM公开回复保持状态；访客只能明确重开，只有PM可解决。状态转换才增加configVersion，同版本同状态请求不重复转换；内部备注不改变公开updatedAt、状态、版本或排序。
 
-Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorCompany,verificationLevel,state,configVersion,createdAt,updatedAt}`；summary是首次公开文本前200个Java字符，首位作者资料/等级固定为投稿快照。Message为 `{id,threadId,text,authorType,authorName,authorCompany,verificationLevel,visibility,createdAt}`；作者种类为guest/member，成员等级为null。两者均不含原始作者ID、完整邮箱或凭据，不增加messageCount。纯文本使用转义插值显示，不解释HTML或Markdown。
+Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorCompany,verificationLevel,state,configVersion,createdAt,updatedAt,anchor}`；summary是首次公开文本前200个Java字符，首位作者资料/等级固定为投稿快照。Message为 `{id,threadId,text,authorType,authorName,authorCompany,verificationLevel,visibility,createdAt}`；作者种类为guest/member，成员等级为null。两者均不含原始作者ID、完整邮箱或凭据，不增加messageCount。纯文本使用转义插值显示，不解释HTML或Markdown。
 
 线程深链沿现有成员预览或公开分享外壳路由使用 `?revisionId={rid}&pageId={pageId}&threadId={threadId}`，threadId为43位URL安全随机标识。目标必须包含完整、单值且格式有效的三个标识；重复、空白、非法或缺少配套参数显示目标错误，不悄悄改为首页、另一线程或新建反馈。原有不含threadId的页面链接保持兼容。规范化页面地址须保留合法线程目标；明确选择页面会清除线程目标，浏览器前进后退可恢复有效目标。
 
@@ -260,13 +260,29 @@ Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorComp
 
 链接不授予访问权。管理端仍检查项目edit与版本query，公开端仍检查同一分享、本人guest及身份等级；无权或错误范围不从threadId推断页面。外壳按正常流程要求分享密码、有效身份及待用邀请的新OTP，完成后恢复所请求线程；不自动发码、退出、放弃邀请或投稿。丢失的未验证身份不能凭链接找回。当前目标失效或越权时清除旧详情并显示错误，不能将同一输入降级为新建线程。
 
-“复制当前线程链接”仅重建当前外壳路径及revisionId/pageId/threadId，沿用router的base/hash支持和现有复制回退，不复制accessKey、CSRF、Cookie、邀请片段、正文、运行URL或其他参数，不自动把成员地址改成客户分享地址。“复制当前页面链接”仍只含修订与页面。目标标识仅用于外壳导航，线程数据和凭据不进入iframe、postMessage或持久存储。
+“复制当前线程链接”仅重建当前外壳路径及revisionId/pageId/threadId，沿用router的base/hash支持和现有复制回退，不复制accessKey、CSRF、Cookie、邀请片段、正文、运行URL或其他参数，不自动把成员地址改成客户分享地址。“复制当前页面链接”仍只含修订与页面。目标标识仅用于外壳导航，复制不包含anchor；线程数据和凭据不进入iframe、postMessage或持久存储。用户明确采集/定位时仅几何通过独立根文档通道传递。
 
-所有分页使用服务端total，页号0–10000、每页1–100，右侧显示分页器；线程按公开updatedAt降序、ID升序，消息按createdAt升序、ID升序。text经strip后1–4000个Java字符，Unicode纯空白无效；state/visibility仅接受精确字符串。每次写入的clientRequestId为1–128个可打印ASCII非空白字符，界面使用crypto.randomUUID并只存当前外壳内存。相同语义重试复用原键，不确定结果不自动重发；修改文本、可见性、expectedVersion或目标后创建新意图。同键不同内容返回409，不生成重复消息或事件；重放仍先重新授权，再返回原资源当前结果。
+所有分页使用服务端total，页号0–10000、每页1–100，右侧显示分页器；线程按公开updatedAt降序、ID升序，消息按createdAt升序、ID升序。text经strip后1–4000个Java字符，Unicode纯空白无效；state/visibility仅接受精确字符串。每次写入的clientRequestId为1–128个可打印ASCII非空白字符，界面使用crypto.randomUUID并只存当前外壳内存。相同语义重试复用原键，不确定结果不自动重发；修改文本、创建锚点、可见性、expectedVersion或目标后创建新意图。同键不同内容返回409，不生成重复消息或事件；重放仍先重新授权，再返回原资源当前结果。
 
-身份与反馈抽屉共用一个身份hook，切换时先打开目标再关闭来源。草稿仅在当前外壳内存：同目标关闭重开、OTP返回或会话过期保留文字；会话过期提供显式复制与重新验证，验证成功不会自动投稿。分享/修订/页面/线程或实际身份变化、分享证明/页面失效会清理错误范围草稿；缺失/过期会话与范围失效分开处理。取消请求与代次检查阻止切换后的旧结果覆盖新目标。409刷新当前状态并保留同目标未发送文字，由用户重新确认；凭据、草稿、姓名、线程数据不进入iframe、workspace runtime、postMessage或持久存储，页面选择事件仅含修订及页面身份和名称/路径。
+身份与反馈抽屉共用一个身份hook，切换时先打开目标再关闭来源。草稿仅在当前外壳内存：同目标关闭重开、OTP返回或会话过期保留文字；会话过期提供显式复制与重新验证，验证成功不会自动投稿。分享/修订/页面/线程或实际身份变化、分享证明/页面失效会清理错误范围草稿；缺失/过期会话与范围失效分开处理。取消请求与代次检查阻止切换后的旧结果覆盖新目标。409刷新当前状态并保留同目标未发送文字，由用户重新确认；凭据、完整草稿、姓名、线程数据不进入iframe、workspace runtime、postMessage或持久存储；只有用户明确采集/定位所需的几何经独立根文档通道传递，页面选择事件仍仅含修订及页面身份和名称/路径。
 
 错误码 `PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED` 为403，`PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED` 为403且允许明确重新验证；缺失或越权线程统一404 / `PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE`，无效页面为404 / `PROTOTYPE_HUB_REVIEW_PAGE_INVALID`，陈旧状态版本为409 / `PROTOTYPE_HUB_REVIEW_THREAD_CONFLICT`。访客新写入独立限频为项目300次/小时、每保障等级/guestId 60次/小时；幂等重放不重复占次数。基础只在同一事务保存领域事件，事件30天后有界清理，不派发业务消息，不显示已发送邮件或通知。
+
+### 根页面几何锚点
+
+访客可在新建反馈时明确绘制点、矩形或椭圆，正文仍必填，可同时选择一张图片；JSON创建与附图创建的request均可包含anchor，回复不提交或修改锚点，PM没有新建客户顶层线程入口。anchor省略/null与旧请求一致，旧线程返回null；非空值创建后不可编辑，不能迁移到其他页面或修订。
+
+结构为 `{space:'root-document-css-px-v1',shape:'point'|'rect'|'ellipse',x,y,width,height,documentWidth,documentHeight,viewportWidth,viewportHeight}`。八个数值均为JSON整数CSS像素；文档宽高1–1000000，视口宽高1–16384，位置及宽高非负且右/下边界不超文档。point宽高为0，rect/ellipse宽高至少1，不接受小数或数字字符串。它是用户提供的静态位置，不是DOM证据或权限凭据，不保存选择器、frame路径、HTML或任意上下文。
+
+绘制只作用于sandbox根文档，覆盖子frame但不读取或转换其内部坐标。点选、区域绘制与键盘操作均需用户明确完成，Escape取消，零面积区域不提交；与原inspect模式互斥。页面、范围、根iframe代次或文档/视口尺寸变化会取消当前捕获，覆盖层本身不得扩大文档尺寸。绘制时关闭再打开反馈抽屉保留原文字、File及请求键，不自动上传。
+
+已选线程只有用户明确点击后才定位，不在详情返回时自动执行。运行文档及视口宽高须同时精确匹配原快照，匹配时滚动到位置并显示标记；不匹配或之后尺寸变化则隐藏并显示不可定位，不拉伸、夹紧、重锚或改变页面选择。即使尺寸一致，动态内容也可能不同，界面须提示静态位置不跟踪元素。
+
+几何消息使用独立的 `PROTOTYPE_REVIEW_ANCHOR_COMMAND` / `PROTOTYPE_REVIEW_ANCHOR_EVENT` 通道。外壳只接受当前根iframe的精确event.source、null origin、当前随机channel和generation及有界类型化数据；不沿原inspect的递归frame来源规则接受几何。channel用于排除迟到消息，不构成授权。runtime用不带anchor的capturing状态确认采集初始化，只有合法当前ACK才能解除外壳的有界初始化等待；人的绘图过程没有完成时限，只有captured可携带anchor。每次ready、采集及定位，runtime以自身pathname精确比对外壳从已验证运行地址计算的encoded相对路径和前缀长度，且拒绝query/hash；状态不回传原始地址或资源标识。此边界防止正常内部导航误绑，不证明恶意上传脚本可信。
+
+原型只接收几何、模式及非授权地址提示/通道代次，不接收线程/页面/修订标识、作者、正文、File、图片字节、分享证明、Cookie、CSRF或平台token。仍保留allow-scripts/allow-forms sandbox、无allow-same-origin与no-referrer。anchor不加入复制URL或浏览器持久存储。实际作者和范围不变的OTP往返、未知响应保留完整原锚点/图片/请求键供明确重试；修改锚点创建新意图。相同键与相同语义重放原线程，改变锚点或无/有锚点互换返回409；省略/null保持历史指纹。
+
+维护几何协议时，真实运行脚本验证使用独立入口：`PROTOTYPE_HUB_TEST_INSPECTOR_PATH=/absolute/path/to/inspector.js pnpm exec playwright test --config tests/playwright.anchors.config.ts`。显式指定当前后端的原始inspector.js，专项直接使用该资源，不复制协议实现；缺少变量时明确失败，不静默跳过。默认 `pnpm test:e2e` 仍运行原mock目录，不需要本机后端路径，此测试变量不是产品运行配置。
 
 ### 成员线程负责人
 
@@ -294,7 +310,7 @@ Message新增 `image:null|{contentType,size,width,height}`，size为字节、宽
 
 可信外壳校验响应MIME/字节长度和消息元数据后创建Blob object URL，不直接将鉴权API作为img src，不向原型iframe、postMessage、URL、本地存储或遥测传File、图片字节、Blob URL或凭据。替换、关闭查看、范围/actor/thread/message切换或卸载时撤销object URL并取消请求；迟到响应不能覆盖新目标。拒绝或缺失时隐藏旧图并显示不可用状态，已合法下载的图片不可能由服务端召回。
 
-同目标同作者身份验证往返保留本地文字、File及请求键且不自动上传；范围、授权或作者变化依现有草稿规则清空。未知响应保留File和原clientRequestId供明确重试；文字和附图创建共用创建操作范围，同键同文字和真实图bytes返回原线程，不重复首消息、事件或限频。已有图片回复仍按原操作范围返回原消息。修改内容生成新意图，同键改文字、改图或文字与图片互换返回409。成功创建清除草稿与File，选择新线程；取消、替换及销毁沿原规则撤销Blob URL，迟到结果不能跳转旧范围。不得为了LAN HTTP要求crypto.subtle。支持zh/en及窄屏手动选择、移除、发送和查看；不提供几何、自动截图、单图编辑删除或业务通知。
+同目标同作者身份验证往返保留本地文字、File及请求键且不自动上传；范围、授权或作者变化依现有草稿规则清空。未知响应保留File和原clientRequestId供明确重试；文字和附图创建共用创建操作范围，同键同文字和真实图bytes返回原线程，不重复首消息、事件或限频。已有图片回复仍按原操作范围返回原消息。修改内容生成新意图，同键改文字、改图或文字与图片互换返回409。成功创建清除草稿与File，选择新线程；取消、替换及销毁沿原规则撤销Blob URL，迟到结果不能跳转旧范围。不得为了LAN HTTP要求crypto.subtle。支持zh/en及窄屏手动选择、移除、发送和查看；不提供跨frame定位、自动截图、单图编辑删除或业务通知。
 
 图片错误为400 / `PROTOTYPE_HUB_REVIEW_IMAGE_INVALID`（实际格式、解码或维度）、400 / `PROTOTYPE_HUB_REVIEW_IMAGE_TOO_LARGE`（服务端原图字节预算）、400 / `PROTOTYPE_HUB_REVIEW_IMAGE_PARTS_INVALID`（part、JSON、请求校验或multipart解析预算）、404 / `PROTOTYPE_HUB_REVIEW_IMAGE_UNAVAILABLE`（无图、缺文件或完整性失败）。解析期超限也可能先返回PARTS_INVALID，不能依赖唯一超限码。原Origin、CSRF、会话、权限与409幂等错误保持；不能因错误自动换键或重发图片。
 

@@ -5,9 +5,16 @@ import { identityResponse } from './identity-handler'
 import { systemResponse } from './system-handler'
 import { resetSystem } from './system-data'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { runtimeHtml } from './runtime'
+import { runtimeHtml, anchorRuntimeHtml, anchorNestedHtml } from './runtime'
+// Geometry acceptance explicitly supplies the real backend resource; ordinary FE fixtures stay standalone.
+function runtimeDocument(path: string) {
+  if (!process.env.PROTOTYPE_HUB_TEST_INSPECTOR_PATH) return runtimeHtml
+  return path.endsWith('/nested.html') ? anchorNestedHtml : anchorRuntimeHtml
+}
+
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
 import { threadResponse, type ThreadImage } from './review-thread'
@@ -569,6 +576,15 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, 200, true)
     return true
   }
+  if (
+    path === '/prototype-hub/public/inspector.js' &&
+    process.env.PROTOTYPE_HUB_TEST_INSPECTOR_PATH
+  ) {
+    res.setHeader('Content-Type', 'application/javascript')
+    res.setHeader('Cache-Control', 'no-store')
+    res.end(readFileSync(process.env.PROTOTYPE_HUB_TEST_INSPECTOR_PATH))
+    return true
+  }
   if (path.startsWith('/prototype-hub/runtime/')) {
     const [, , , versionId, key] = path.split('/')
     const session = previewSessions.get(key)
@@ -585,7 +601,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     res.end(
       session.revisionId.startsWith('compare-')
         ? `<!doctype html><h1>${session.revisionId === 'compare-left' ? 'Left revision' : 'Right revision'}</h1><p>${path.split('/').slice(5).join('/')}</p>`
-        : runtimeHtml,
+        : runtimeDocument(path),
     )
     return true
   }
@@ -659,7 +675,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       if (canonical[3] === 'pages') send(res, 200, revisionPages(rid))
       else {
         res.setHeader('Content-Type', 'text/html')
-        res.end(runtimeHtml)
+        res.end(runtimeDocument(path))
       }
       return true
     }

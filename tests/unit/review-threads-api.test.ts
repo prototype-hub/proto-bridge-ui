@@ -323,3 +323,51 @@ it('uses authenticated version scope, explicit visibility and status CAS for PM 
     options,
   )
 })
+
+it('adds create-only anchor to JSON and multipart request parts while preserving cookie/CSRF isolation', async () => {
+  const anchor = {
+    space: 'root-document-css-px-v1',
+    shape: 'point',
+    x: 1,
+    y: 2,
+    width: 0,
+    height: 0,
+    documentWidth: 800,
+    documentHeight: 1000,
+    viewportWidth: 800,
+    viewportHeight: 600,
+  } as const
+  const input = {
+    revisionId: 'r1',
+    pageId: 'page',
+    text: 'Snapshot',
+    clientRequestId: 'anchor-key',
+    anchor,
+  }
+  await publicReviewThreadsApi.create(grant, input, 'csrf')
+  expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body))).toEqual({
+    ...input,
+    accessKey: 'access',
+  })
+  await publicReviewThreadsApi.createImage(
+    grant,
+    input,
+    new File(['png'], 'private.png', { type: 'image/png' }),
+    'csrf',
+  )
+  const data = vi.mocked(fetch).mock.calls[1]![1]!.body as FormData
+  expect([...data.keys()]).toEqual(['request', 'image'])
+  expect(JSON.parse(await blobText(data.get('request') as Blob))).toEqual({
+    ...input,
+    accessKey: 'access',
+  })
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.every(
+        ([, options]) =>
+          options?.credentials === 'same-origin' &&
+          !(options.headers as Record<string, string>)['X-Access-Token'],
+      ),
+  ).toBe(true)
+})

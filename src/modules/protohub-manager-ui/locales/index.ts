@@ -24,6 +24,20 @@ export const protoLocales = {
     feedbackAllow: '允许所选页面文本反馈（默认关闭）',
     feedbackPolicyHint:
       '仅固定修订支持页面反馈；访问者需先建立有效身份。关闭身份验证时也会关闭反馈。',
+    anchorTitle: '页面位置',
+    anchorHint: '可选：标注顶层页面的位置。嵌套框架只定位外框，不会自动截图。',
+    anchorpoint: '标记点位',
+    anchorrect: '标记矩形',
+    anchorellipse: '标记椭圆',
+    anchorSelected: '已选择{shape}：x={x}，y={y} CSS 像素。',
+    anchorRemove: '移除位置',
+    anchorLocate: '定位页面位置',
+    anchorHide: '隐藏位置',
+    anchorSnapshotHint: '这是静态位置快照，不跟踪元素或嵌套内容；仅在页面及布局尺寸相同时定位。',
+    anchorDrawingHint:
+      '点位：点击；区域：拖动或点选两个角。方向键移动，Enter 定点，Esc 取消。需要滚动时可先取消绘图。',
+    anchorUnavailable:
+      '当前位置无法定位：页面或布局已变化。请通过平台页面树重新打开原页，并恢复捕获时的窗口尺寸。',
     feedbackPageHint: '反馈针对壳层当前所选页面，不跟踪原型内部或嵌套框架中的跳转。',
     feedbackAuthenticate:
       '请先验证访问者身份。当前页面的草稿已保留，请按需复制；验证返回后需自行提交。',
@@ -489,6 +503,22 @@ export const protoLocales = {
     feedbackAllow: 'Allow selected-page text feedback (off by default)',
     feedbackPolicyHint:
       'Page feedback requires a fixed revision and a valid visitor identity. Disabling identity verification also disables feedback.',
+    anchorTitle: 'Page position',
+    anchorHint:
+      'Optional: mark a position in the root page. Nested frames are covered as outer frames only. No screenshot is taken.',
+    anchorpoint: 'Mark point',
+    anchorrect: 'Mark rectangle',
+    anchorellipse: 'Mark ellipse',
+    anchorSelected: '{shape} selected: x={x}, y={y} CSS pixels.',
+    anchorRemove: 'Remove position',
+    anchorLocate: 'Locate page position',
+    anchorHide: 'Hide position',
+    anchorSnapshotHint:
+      'A static position snapshot, not element or nested content tracking. Location requires the same page and layout dimensions.',
+    anchorDrawingHint:
+      'Point: click. Region: drag or select two corners. Arrow keys move, Enter sets a point, Escape cancels. Cancel drawing first to scroll.',
+    anchorUnavailable:
+      'Position unavailable: the page or layout changed. Reopen the original page in the platform page tree and restore the window size used during capture.',
     feedbackPageHint:
       'Feedback targets the page selected in this shell. It does not follow navigation inside the prototype or nested frames.',
     feedbackAuthenticate:

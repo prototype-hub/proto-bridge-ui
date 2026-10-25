@@ -14,7 +14,7 @@ import {
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import LoadState from '@/shared/components/LoadState.vue'
-import type { ReviewPage } from '../types'
+import type { ReviewPage, ReviewAnchor } from '../types'
 import type { ReviewThreadsController } from '../hooks/useReviewThreads'
 const props = defineProps<{
   open: boolean
@@ -22,7 +22,13 @@ const props = defineProps<{
   state: ReviewThreadsController
   identityLoading?: boolean
 }>()
-const emit = defineEmits<{ close: []; authenticate: []; copyThread: [event: MouseEvent] }>()
+const emit = defineEmits<{
+  close: []
+  authenticate: []
+  copyThread: [event: MouseEvent]
+  captureAnchor: [shape: ReviewAnchor['shape']]
+  locateAnchor: [anchor: ReviewAnchor]
+}>()
 const { t } = useI18n()
 const state = props.state
 const assignment = state.assignment
@@ -154,6 +160,14 @@ function selectImage(event: Event) {
           >
           <template v-if="state.selected.value">
             <h3>{{ state.selected.value.summary }}</h3>
+            <template v-if="state.selected.value.anchor">
+              <p>{{ t('proto.anchorSnapshotHint') }}</p>
+              <a-button
+                :disabled="state.busy.value || state.loading.value"
+                @click="emit('locateAnchor', state.selected.value.anchor)"
+                >{{ t('proto.anchorLocate') }}</a-button
+              >
+            </template>
             <section
               v-if="!state.isPublic.value"
               class="stack feedback-assignment"
@@ -374,6 +388,36 @@ function selectImage(event: Event) {
           (state.isPublic.value || state.selectedId.value)
         "
       >
+        <section
+          v-if="state.isPublic.value && !state.selectedId.value"
+          class="stack anchor-draft"
+          :aria-label="t('proto.anchorTitle')"
+        >
+          <p>{{ t('proto.anchorHint') }}</p>
+          <div class="feedback-status-actions">
+            <a-button
+              v-for="shape in ['point', 'rect', 'ellipse'] as const"
+              :key="shape"
+              :disabled="state.busy.value"
+              @click="emit('captureAnchor', shape)"
+              >{{ t(`proto.anchor${shape}`) }}</a-button
+            >
+          </div>
+          <template v-if="state.anchor.value">
+            <p role="status">
+              {{
+                t('proto.anchorSelected', {
+                  shape: t(`proto.anchor${state.anchor.value.shape}`),
+                  x: state.anchor.value.x,
+                  y: state.anchor.value.y,
+                })
+              }}
+            </p>
+            <a-button :disabled="state.busy.value" @click="state.selectAnchor()">{{
+              t('proto.anchorRemove')
+            }}</a-button>
+          </template>
+        </section>
         <label for="review-feedback-text">{{
           t(state.selectedId.value ? 'proto.feedbackReply' : 'proto.feedbackNew')
         }}</label>

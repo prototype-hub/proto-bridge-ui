@@ -15,6 +15,7 @@ import type {
   ReviewContext,
   ReviewMessage,
   Project,
+  ReviewAnchor,
 } from '@/modules/protohub-manager-ui/types'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { permissionKey } from '@/shared/auth/provider'
@@ -1177,4 +1178,67 @@ it('renders labelled selection, a removable local preview and explicit saved-ima
   await wrapper.get(`img[alt="${protoLocales.zh.feedbackImageAlt}"]`).trigger('error')
   expect(wrapper.text()).toContain(protoLocales.zh.feedbackImageUnavailable)
   expect(wrapper.find(`img[alt="${protoLocales.zh.feedbackImageAlt}"]`).exists()).toBe(false)
+})
+
+const anchorDraft: ReviewAnchor = {
+  space: 'root-document-css-px-v1',
+  shape: 'ellipse',
+  x: 5,
+  y: 7,
+  width: 25,
+  height: 30,
+  documentWidth: 800,
+  documentHeight: 1200,
+  viewportWidth: 800,
+  viewportHeight: 600,
+}
+it('keeps the complete create anchor, File, text and key across unknown result and same-actor OTP, then selects the committed thread', async () => {
+  const { state, identity } = setup()
+  await flushPromises()
+  const image = file()
+  state.text.value = 'Anchored first image'
+  state.selectImage(image)
+  state.selectAnchor(anchorDraft)
+  vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[0]!
+  expect(first[1]).toMatchObject({ anchor: anchorDraft, text: 'Anchored first image' })
+  expect(first[2]).toBe(image)
+  identity.value = undefined
+  await flushPromises()
+  expect(state.anchor.value).toEqual(anchorDraft)
+  identity.value = context()
+  await flushPromises()
+  await state.send()
+  const second = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]!
+  expect(second[1]).toEqual(first[1])
+  expect(second[2]).toBe(first[2])
+  expect(state.anchor.value).toBeUndefined()
+  expect(state.selectedId.value).toBe('t1')
+})
+it('uses a new key on explicit geometry edits and clears anchor with actor/page scope changes, without altering reply/assignment', async () => {
+  const { state, identity, target } = setup()
+  await flushPromises()
+  state.text.value = 'Position snapshot'
+  state.selectAnchor(anchorDraft)
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValue(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1]
+  state.selectAnchor({ ...anchorDraft, x: 6 })
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1].clientRequestId).not.toBe(
+    first.clientRequestId,
+  )
+  identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+  await flushPromises()
+  expect(state.anchor.value).toBeUndefined()
+  state.selectAnchor(anchorDraft)
+  target.value = { ...publicScope(), page: { ...page, pageId: 'other' } }
+  await flushPromises()
+  expect(state.anchor.value).toBeUndefined()
+  expect(reviewThreadsApi.assign).not.toHaveBeenCalled()
+  const member = setup(memberScope()).state
+  await flushPromises()
+  member.selectAnchor(anchorDraft)
+  expect(member.anchor.value).toBeUndefined()
 })
