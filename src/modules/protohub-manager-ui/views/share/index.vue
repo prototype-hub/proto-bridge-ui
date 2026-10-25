@@ -10,9 +10,12 @@ import {
 import { useI18n } from 'vue-i18n'
 import { ref, watch, defineAsyncComponent } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
+import { useShareInvitation } from './hooks/useShareInvitation'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 const { t } = useI18n()
+// Capture and clean before workspace setup can canonicalize its page link and drop the fragment.
+const invitation = useShareInvitation()
 const { resource, task, password, verify } = usePublicShare()
 const ReviewIdentityDrawer = defineAsyncComponent(
   () => import('./components/ReviewIdentityDrawer.vue'),
@@ -34,11 +37,11 @@ watch(
 <template>
   <div class="fullscreen">
     <load-state
-      :loading="resource.loading.value"
-      :error="resource.error.value"
-      @retry="resource.load"
+      :loading="resource.loading.value || !invitation.ready.value"
+      :error="resource.error.value || invitation.error.value"
+      @retry="invitation.ready.value ? resource.load() : invitation.clean()"
       ><prototype-workspace
-        v-if="resource.data.value.context"
+        v-if="invitation.ready.value && resource.data.value.context"
         :context="resource.data.value.context"
         ><template #actions>
           <a-button
@@ -50,7 +53,13 @@ watch(
                 : t('proto.reviewMailUnavailable')
             "
             @click="identityOpen = true"
-            >{{ t('proto.reviewIdentity') }}</a-button
+            >{{
+              t(
+                invitation.invitation.value !== undefined
+                  ? 'proto.reviewInvitationUse'
+                  : 'proto.reviewIdentity',
+              )
+            }}</a-button
           >
         </template></prototype-workspace
       >
@@ -58,6 +67,12 @@ watch(
         <section class="panel public-card">
           <h1>{{ resource.data.value.share.projectName }}</h1>
           <p>{{ resource.data.value.share.versionName }}</p>
+          <a-alert
+            v-if="invitation.invitation.value !== undefined"
+            type="info"
+            show-icon
+            :message="t('proto.reviewInvitationAccessHint')"
+          />
           <a-alert v-if="task.error.value" :message="task.error.value" type="error" /><a-form
             layout="vertical"
             :model="{ password }"
@@ -82,6 +97,9 @@ watch(
     v-if="identityOpen"
     :share="resource.data.value.share"
     :open="identityOpen"
+    :invitation="invitation.invitation.value"
     @close="identityOpen = false"
+    @invitation-used="invitation.abandon"
+    @abandon-invitation="invitation.abandon"
   />
 </template>

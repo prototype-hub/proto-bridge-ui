@@ -1,5 +1,42 @@
 export const protoLocales = {
   zh: {
+    reviewInvitations: '邮箱邀请',
+    reviewInvitationManagementHint:
+      '为指定邮箱创建一次性邀请，最长 24 小时且不超过分享有效期。不会自动发送邀请邮件，请手动复制链接交给收件人；收件人仍需正常访问分享并获取新的邮箱验证码。',
+    reviewInvitationFixedOnly: '仅固定修订分享支持创建邀请，请先在分享编辑中改为固定修订。',
+    reviewInvitationEnableFirst: '请先启用有效分享及访问者身份验证，再创建邀请。',
+    reviewInvitationRecipient: '收件人邮箱',
+    reviewInvitationEmailRequired: '请输入有效收件人邮箱（最多 254 字符）。',
+    reviewInvitationCreate: '创建一次性邀请',
+    reviewInvitationCopyOnce:
+      '此链接仅在当前弹窗展示，关闭后无法找回。请手动复制并妥善转交给指定邮箱的收件人；列表不会再次返回完整链接。',
+    reviewInvitationLink: '一次性邀请链接',
+    reviewInvitationRevoke: '撤销邀请',
+    reviewInvitationRevokeConfirm: '撤销此邀请？撤销后不能用于验证，不会退出已经成功验证的访问者。',
+    reviewInvitationConflict:
+      '分享或邀请已变化，列表已刷新。请核对最新状态后重新操作，不会自动重试。',
+    reviewInvitationRateLimited: '邀请创建过于频繁，请稍后再试。验证码发送限制单独计算。',
+    reviewInvitationMutationUnknown:
+      '操作结果未确认，请刷新列表核对。不会自动重试；已创建链接无法再次读取。',
+    reviewInvitationsUnavailable: '暂时无法读取邮箱邀请，请重试或关闭后刷新分享。',
+    reviewInvitationStatuses: {
+      pending: '待使用',
+      consumed: '已使用',
+      revoked: '已撤销',
+      expired: '已过期',
+      invalidated: '已失效',
+    },
+    reviewInvitationUse: '使用邮箱邀请',
+    reviewInvitationAccessHint:
+      '此链接包含邮箱邀请，但不会授予原型访问权限。请先完成分享访问验证，再主动获取邮箱验证码。',
+    reviewInvitationRecipientHint:
+      '正在使用一次性邀请。请输入邀请指定的邮箱并获取新的验证码；仅打开链接不会使用邀请，也不会自动发送邮件。',
+    reviewInvitationLogoutFirst:
+      '当前已有访问者身份。请先退出，再为邀请指定的邮箱获取新验证码；不会自动切换或合并身份。',
+    reviewInvitationInvalid:
+      '邀请无法使用，请核对指定邮箱或联系分享者重新创建邀请。不会自动改用普通验证。',
+    reviewInvitationAbandon: '放弃此邀请，使用普通身份验证',
+    reviewInvitationCleanFailed: '无法清理邀请链接，请重试。清理完成前不会打开原型。',
     reviewOriginDenied: '访问者身份请求来源不匹配，请管理员检查可信前端地址配置。',
     reviewCookieRequired: '访问者身份 Cookie 不可用，请检查浏览器 Cookie 和 HTTPS 配置后重试。',
     reviewCsrfChanged: '访问者身份凭据已变化，请重新载入身份验证后重试。',
@@ -362,6 +399,49 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    reviewInvitations: 'Email invitations',
+    reviewInvitationManagementHint:
+      'Create a single-use invitation for a specific mailbox. It lasts up to 24 hours and never beyond the share expiry. No invitation email is sent automatically. Copy the link manually; the recipient still needs normal share access and a fresh email verification code.',
+    reviewInvitationFixedOnly:
+      'Invitations require a fixed revision. Edit this share to use a fixed revision first.',
+    reviewInvitationEnableFirst:
+      'Enable a valid share and visitor identity verification before creating an invitation.',
+    reviewInvitationRecipient: 'Recipient email',
+    reviewInvitationEmailRequired: 'Enter a valid recipient email (up to 254 characters).',
+    reviewInvitationCreate: 'Create single-use invitation',
+    reviewInvitationCopyOnce:
+      'This link is shown only in this dialog and cannot be recovered after closing. Copy it manually and share it securely with the intended mailbox owner. The list never returns the full link again.',
+    reviewInvitationLink: 'Single-use invitation link',
+    reviewInvitationRevoke: 'Revoke invitation',
+    reviewInvitationRevokeConfirm:
+      'Revoke this invitation? It can no longer be used for verification. Already verified visitors will not be signed out.',
+    reviewInvitationConflict:
+      'The share or invitation changed. The list has been refreshed. Check the latest state before acting again; no automatic retry is made.',
+    reviewInvitationRateLimited:
+      'Too many invitations. Try again later. Verification-code limits are counted separately.',
+    reviewInvitationMutationUnknown:
+      'The result was not confirmed. Refresh the list to check before retrying manually. A created link cannot be retrieved again.',
+    reviewInvitationsUnavailable:
+      'Email invitations could not be loaded. Retry, or close this dialog and refresh the share.',
+    reviewInvitationStatuses: {
+      pending: 'Pending',
+      consumed: 'Used',
+      revoked: 'Revoked',
+      expired: 'Expired',
+      invalidated: 'Invalidated',
+    },
+    reviewInvitationUse: 'Use email invitation',
+    reviewInvitationAccessHint:
+      'This link contains an email invitation, which does not grant prototype access. Complete normal share access first, then request a verification code explicitly.',
+    reviewInvitationRecipientHint:
+      'You are using a single-use invitation. Enter the intended recipient email and request a fresh code. Opening this link neither uses the invitation nor sends mail automatically.',
+    reviewInvitationLogoutFirst:
+      'A visitor identity is already active. Sign out first, then request a fresh code for the invited mailbox. Identities are never switched or merged automatically.',
+    reviewInvitationInvalid:
+      'This invitation cannot be used. Check the intended mailbox or ask the sharer for a new invitation. Ordinary verification is never used as a fallback.',
+    reviewInvitationAbandon: 'Abandon invitation and use ordinary verification',
+    reviewInvitationCleanFailed:
+      'The invitation link could not be cleaned. Retry. The prototype will open only after the link is cleaned.',
     reviewOriginDenied:
       'The identity request origin is not trusted. Ask an administrator to check the trusted frontend origin.',
     reviewCookieRequired:

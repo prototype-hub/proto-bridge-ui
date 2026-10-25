@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
+import { invitationManagement } from './review-invitation'
 import {
   reviewEnabled,
   reviewUnverifiedAllowed,
@@ -1085,11 +1086,16 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       send(res, 200, value)
     }
+  } else if (/^\/prototype-hub\/shares\/[^/]+\/review-invitations(?:\/.*)?$/.test(path)) {
+    const value = shares.find((item) => item.id === decodeURIComponent(path.split('/')[3]!))
+    if (!value) send(res, 404, null, 'Share unavailable')
+    else invitationManagement(res, value, path, method, data, reviewEnabled(value.id), send)
   } else if (/^\/prototype-hub\/shares\/[^/]+\/review$/.test(path)) {
     const id = decodeURIComponent(path.split('/')[3]!)
     const value = shares.find((item) => item.id === id)
-    if (!value || value.revoked) send(res, 404, null, 'Share unavailable')
+    if (!value) send(res, 404, null, 'Share unavailable')
     else if (method === 'GET') send(res, 200, reviewPolicy(value))
+    else if (value.revoked) send(res, 404, null, 'Share unavailable')
     else if (method === 'PUT' && data.expectedVersion === value.configVersion) {
       const policy = reviewPolicy(value, data)
       send(res, 200, policy)

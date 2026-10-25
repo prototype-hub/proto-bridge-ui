@@ -13,8 +13,9 @@ export interface ReviewProfile {
   email: string
   displayName: string
   company?: string
+  invitationToken?: string
 }
-export type UnverifiedReviewProfile = Omit<ReviewProfile, 'email'>
+export type UnverifiedReviewProfile = Pick<ReviewProfile, 'displayName' | 'company'>
 
 /** This is the only public client that sends cookies, within its own same-origin review scope. */
 async function post<T>(
