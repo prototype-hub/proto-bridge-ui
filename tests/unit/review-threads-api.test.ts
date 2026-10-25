@@ -24,6 +24,29 @@ beforeEach(() => {
   )
 })
 afterEach(() => vi.unstubAllGlobals())
+it('looks up a known scoped detail with the same anonymous CSRF or member transport, never a query grant', async () => {
+  const target = { revisionId: 'r1', pageId: 'page' }
+  const signal = new AbortController().signal
+  await publicReviewThreadsApi.detail(grant, 'thread/id', target, 'csrf', signal)
+  expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+    '/api/prototype-hub/public/shares/share%2Fid/review/threads/thread%2Fid/_detail',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+      redirect: 'error',
+      cache: 'no-store',
+      headers: expect.objectContaining({ 'X-Review-CSRF': 'csrf' }),
+      body: JSON.stringify({ revisionId: 'r1', accessKey: 'access', pageId: 'page' }),
+    }),
+  ])
+  expect(vi.mocked(fetch).mock.calls[0]![1]!.headers).not.toHaveProperty('X-Access-Token')
+  await reviewThreadsApi.detail('version/id', 'thread/id', target, { signal, silent: true })
+  expect(request.post).toHaveBeenCalledWith(
+    '/prototype-hub/versions/version%2Fid/review-threads/thread%2Fid/_detail',
+    target,
+    { signal, silent: true },
+  )
+})
 it('uses only same-origin CSRF review endpoints and keeps author, body and credentials out of URLs', async () => {
   await publicReviewThreadsApi.query(grant, page, 'csrf')
   await publicReviewThreadsApi.create(

@@ -20,7 +20,7 @@ const props = defineProps<{
   state: ReviewThreadsController
   identityLoading?: boolean
 }>()
-const emit = defineEmits<{ close: []; authenticate: [] }>()
+const emit = defineEmits<{ close: []; authenticate: []; copyThread: [event: MouseEvent] }>()
 const { t } = useI18n()
 const state = props.state
 const canSend = computed(
@@ -145,6 +145,11 @@ const canSend = computed(
             <h3>{{ state.selected.value.summary }}</h3>
             <div class="feedback-status-actions">
               <a-button
+                :disabled="state.loading.value || state.busy.value"
+                @click="emit('copyThread', $event)"
+                >{{ t('proto.feedbackCopyLink') }}</a-button
+              >
+              <a-button
                 v-if="!state.isPublic.value && state.selected.value.state === 'open'"
                 :disabled="!state.writable.value || state.busy.value"
                 @click="state.status('resolved')"
@@ -195,7 +200,12 @@ const canSend = computed(
           </template>
         </template>
       </load-state>
-      <template v-if="state.isPublic.value || state.selectedId.value">
+      <template
+        v-if="
+          (!state.targeted.value || state.selected.value) &&
+          (state.isPublic.value || state.selectedId.value)
+        "
+      >
         <label for="review-feedback-text">{{
           t(state.selectedId.value ? 'proto.feedbackReply' : 'proto.feedbackNew')
         }}</label>

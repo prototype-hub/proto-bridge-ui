@@ -27,6 +27,7 @@ export function useReviewThreads(
   scope: Ref<ReviewThreadScope | undefined>,
   open: Ref<boolean>,
   identity: Ref<ReviewContext | undefined> = shallowRef(),
+  location?: { threadId: Ref<string | null | undefined>; select: (thread?: ReviewThread) => void },
 ) {
   const permissions = usePermissions()
   const threads = shallowRef<ReviewThread[]>([]),
@@ -34,6 +35,7 @@ export function useReviewThreads(
   const selectedId = ref<string>(),
     text = ref(''),
     visibility = ref<ReviewMessage['visibility']>('public')
+  const detail = shallowRef<ReviewThread>()
   const filter = ref<ReviewThreadState | ''>(''),
     pageIndex = ref(0),
     messagesPageIndex = ref(0),
@@ -47,9 +49,11 @@ export function useReviewThreads(
   let generation = 0,
     controller: AbortController | undefined,
     lastScope = '',
-    lastActor = ''
+    lastActor = '',
+    lastTarget: string | null | undefined
   let pending: { semantic: string; clientRequestId: string; expectedVersion?: number } | undefined
-  const selected = computed(() => threads.value.find((row) => row.id === selectedId.value))
+  const selected = computed(() => detail.value)
+  const targeted = computed(() => location?.threadId.value !== undefined)
   const isPublic = computed(() => scope.value?.kind === 'public')
   const scopeKey = computed(() => {
     const target = scope.value
@@ -104,7 +108,10 @@ export function useReviewThreads(
   }
   const readable = computed(() => authorized())
   const writable = computed(
-    () => readable.value && (isPublic.value || permissions.can(p.version.save)),
+    () =>
+      readable.value &&
+      (!targeted.value || !!selected.value) &&
+      (isPublic.value || permissions.can(p.version.save)),
   )
   function abort() {
     generation++
@@ -119,6 +126,7 @@ export function useReviewThreads(
   function clearData() {
     threads.value = []
     messages.value = []
+    detail.value = undefined
     total.value = messagesTotal.value = 0
   }
   function grant(target: Extract<ReviewThreadScope, { kind: 'public' }>): ReviewGrant {
@@ -139,7 +147,7 @@ export function useReviewThreads(
       if (cause.status === 403 || cause.status === 404) {
         clearDraft()
         clearData()
-        selectedId.value = undefined
+        if (!targeted.value) selectedId.value = undefined
         error.value = t(
           cause.code === 'PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED'
             ? 'proto.feedbackDisabled'
@@ -159,6 +167,10 @@ export function useReviewThreads(
     clearData()
     error.value = ''
     notice.value = ''
+    if (location?.threadId.value === null) {
+      error.value = t('proto.feedbackInvalidTarget')
+      return
+    }
     if (!open.value || !authorized()) return
     const target = scope.value!,
       epoch = generation,
@@ -195,11 +207,26 @@ export function useReviewThreads(
         throw new ApiError('Invalid feedback scope', 404)
       threads.value = result.data
       total.value = result.total
-      if (id && !result.data.some((row) => row.id === id)) {
-        notice.value = t('proto.feedbackThreadMissing')
-        return
-      }
-      if (selectedId.value) {
+      if (id) {
+        // A known thread is independent of the list's current page and status filter.
+        const input = { revisionId: target.page.revisionId, pageId: target.page.pageId }
+        const row =
+          target.kind === 'public'
+            ? await publicReviewThreadsApi.detail(
+                grant(target),
+                id,
+                input,
+                identity.value!.csrfToken,
+                request.signal,
+              )
+            : await reviewThreadsApi.detail(target.versionId, id, input, {
+                signal: request.signal,
+                silent: true,
+              })
+        if (epoch !== generation || request.signal.aborted) return
+        if (row.id !== id || row.revisionId !== input.revisionId || row.pageId !== input.pageId)
+          throw new ApiError('Invalid feedback scope', 404)
+        detail.value = row
         const query = {
           revisionId: target.page.revisionId,
           pageId: target.page.pageId,
@@ -210,12 +237,12 @@ export function useReviewThreads(
           target.kind === 'public'
             ? await publicReviewThreadsApi.messages(
                 grant(target),
-                selectedId.value,
+                id,
                 query,
                 identity.value!.csrfToken,
                 request.signal,
               )
-            : await reviewThreadsApi.messages(target.versionId, selectedId.value, query, {
+            : await reviewThreadsApi.messages(target.versionId, id, query, {
                 signal: request.signal,
                 silent: true,
               })
@@ -224,8 +251,7 @@ export function useReviewThreads(
         if (
           rows.data.some(
             (row) =>
-              row.threadId !== selectedId.value ||
-              (target.kind === 'public' && row.visibility !== 'public'),
+              row.threadId !== id || (target.kind === 'public' && row.visibility !== 'public'),
           )
         )
           throw new ApiError('Invalid feedback scope', 404)
@@ -240,6 +266,10 @@ export function useReviewThreads(
   }
   function choose(thread?: ReviewThread) {
     if (busy.value || (thread && !threads.value.includes(thread))) return
+    if (location) {
+      location.select(thread)
+      return
+    }
     if (selectedId.value !== thread?.id) clearDraft()
     selectedId.value = thread?.id
     messagesPageIndex.value = 0
@@ -247,8 +277,10 @@ export function useReviewThreads(
   }
   function page(number: number) {
     if (busy.value) return
-    selectedId.value = undefined
-    clearDraft()
+    if (!targeted.value) {
+      selectedId.value = undefined
+      clearDraft()
+    }
     pageIndex.value = Math.max(0, Math.min(10000, number - 1))
     void load()
   }
@@ -260,8 +292,10 @@ export function useReviewThreads(
   function changeFilter(value: ReviewThreadState | '') {
     if (busy.value) return
     filter.value = value
-    selectedId.value = undefined
-    clearDraft()
+    if (!targeted.value) {
+      selectedId.value = undefined
+      clearDraft()
+    }
     pageIndex.value = 0
     void load()
   }
@@ -270,6 +304,7 @@ export function useReviewThreads(
       thread = selected.value
     if (!target || !open.value || !authorized() || !writable.value || busy.value || loading.value)
       return
+    if (targeted.value && !thread) return
     if (selectedId.value && !thread) return
     if (state && (!thread || (target.kind === 'public' && state !== 'open'))) return
     if (!state && target.kind === 'member' && !thread) return
@@ -334,6 +369,7 @@ export function useReviewThreads(
           if (created.revisionId !== page.revisionId || created.pageId !== page.pageId)
             throw new ApiError('Invalid feedback scope', 404)
           selectedId.value = created.id
+          location?.select(created)
           pageIndex.value = 0
           filter.value = ''
         } else if (target.kind === 'public')
@@ -386,9 +422,17 @@ export function useReviewThreads(
     { flush: 'sync' },
   )
   watch(
-    [scopeKey, open, readable, actor, () => identity.value?.csrfToken],
+    [
+      scopeKey,
+      open,
+      readable,
+      actor,
+      () => identity.value?.csrfToken,
+      () => location?.threadId.value,
+    ],
     () => {
-      if (scopeKey.value !== lastScope) {
+      const changedScope = scopeKey.value !== lastScope
+      if (changedScope) {
         lastScope = scopeKey.value
         lastActor = ''
         selectedId.value = undefined
@@ -399,16 +443,22 @@ export function useReviewThreads(
       }
       if (actor.value) {
         if (lastActor && actor.value !== lastActor) {
-          selectedId.value = undefined
+          selectedId.value = location?.threadId.value || undefined
           clearDraft()
         }
         lastActor = actor.value
+      }
+      if (location && (changedScope || location.threadId.value !== lastTarget)) {
+        lastTarget = location.threadId.value
+        selectedId.value = lastTarget || undefined
+        clearDraft()
+        messagesPageIndex.value = 0
       }
       if (
         (scope.value?.kind === 'member' && !authorized()) ||
         (scope.value?.kind === 'public' && identity.value && identity.value.allowComment !== true)
       ) {
-        selectedId.value = undefined
+        selectedId.value = location?.threadId.value || undefined
         clearDraft()
       }
       void load()
@@ -425,6 +475,7 @@ export function useReviewThreads(
     messages,
     selected,
     selectedId,
+    targeted,
     text,
     visibility,
     filter,

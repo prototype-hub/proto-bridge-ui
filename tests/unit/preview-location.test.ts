@@ -3,6 +3,7 @@ import {
   previewIdentity,
   resolvePreviewPage,
   stablePageId,
+  reviewThreadTarget,
 } from '@/modules/protohub-manager-ui/utils/preview-location'
 import {
   filterPageNodes,
@@ -11,6 +12,37 @@ import {
 } from '@/modules/protohub-manager-ui/utils/pages'
 import type { PrototypePage } from '@/modules/protohub-manager-ui/types'
 const base = '/api/prototype-hub/runtime/v1/key'
+const threadId = 'a'.repeat(43)
+it('requires the complete single-valued thread triple while leaving ordinary page links compatible', () => {
+  expect(reviewThreadTarget({ revisionId: 'r1' })).toBeUndefined()
+  expect(reviewThreadTarget({ revisionId: 'r1', pageId: 'page', threadId })).toEqual({
+    revisionId: 'r1',
+    pageId: 'page',
+    threadId,
+  })
+})
+it.each([
+  { threadId },
+  { revisionId: 'r1', threadId },
+  { pageId: 'page', threadId },
+  { revisionId: '', pageId: 'page', threadId },
+  { revisionId: ['r1', 'r1'], pageId: 'page', threadId },
+  { revisionId: 'r1', pageId: ['page'], threadId },
+  { revisionId: 'r1', pageId: ' page', threadId },
+  ...[
+    '',
+    ' ',
+    null,
+    [threadId],
+    [threadId, threadId],
+    'a'.repeat(42),
+    'a'.repeat(44),
+    `${'a'.repeat(42)}/`,
+    `${'a'.repeat(43)}\n`,
+  ].map((value) => ({ revisionId: 'r1', pageId: 'page', threadId: value })),
+])('rejects an invalid/partial thread target without guessing scope %j', (query) => {
+  expect(reviewThreadTarget(query)).toBeNull()
+})
 const pages: PrototypePage[] = [
   {
     name: 'Group',

@@ -25,13 +25,20 @@ import { hookHarness } from '../fixtures/hook-harness'
 import { ownerProjectAccess } from '../fixtures/project-access'
 vi.mock('@/modules/protohub-manager-ui/api/review-thread', () => ({
   publicReviewThreadsApi: {
+    detail: vi.fn(),
     query: vi.fn(),
     create: vi.fn(),
     messages: vi.fn(),
     reply: vi.fn(),
     status: vi.fn(),
   },
-  reviewThreadsApi: { query: vi.fn(), messages: vi.fn(), reply: vi.fn(), status: vi.fn() },
+  reviewThreadsApi: {
+    detail: vi.fn(),
+    query: vi.fn(),
+    messages: vi.fn(),
+    reply: vi.fn(),
+    status: vi.fn(),
+  },
 }))
 const page = { revisionId: 'r1', pageId: 'page', name: 'Page', path: 'index.html' }
 const publicScope = (): ReviewThreadScope => ({
@@ -108,15 +115,32 @@ const message = (): ReviewMessage => ({
 })
 const pager = <T>(data: T[], total = data.length) => ({ data, total, pageIndex: 0, pageSize: 20 })
 const wrappers: VueWrapper[] = []
-function setup(value: ReviewThreadScope | null = publicScope(), active = true) {
+function setup(
+  value: ReviewThreadScope | null = publicScope(),
+  active = true,
+  requested?: string | null,
+) {
   const target = ref<ReviewThreadScope | undefined>(value ?? undefined),
     open = ref(active),
     identity = shallowRef<ReviewContext | undefined>(context()),
-    grants = ref([p.version.query, p.version.save] as string[])
+    grants = ref([p.version.query, p.version.save] as string[]),
+    threadId = ref(requested)
   let state!: ReturnType<typeof useReviewThreads>
   const wrapper = mount(
     hookHarness(() => {
-      state = useReviewThreads(target, open, identity)
+      state = useReviewThreads(
+        target,
+        open,
+        identity,
+        requested === undefined
+          ? undefined
+          : {
+              threadId,
+              select: (thread) => {
+                threadId.value = thread?.id
+              },
+            },
+      )
     }),
     {
       global: {
@@ -125,7 +149,7 @@ function setup(value: ReviewThreadScope | null = publicScope(), active = true) {
     },
   )
   wrappers.push(wrapper)
-  return { state, target, open, identity, grants }
+  return { state, target, open, identity, grants, threadId }
 }
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -144,6 +168,9 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
   }))
   for (const api of [publicReviewThreadsApi, reviewThreadsApi]) {
+    vi.mocked(api.detail)
+      .mockReset()
+      .mockImplementation(async () => thread())
     vi.mocked(api.query)
       .mockReset()
       .mockImplementation(async () => pager([thread()]))
@@ -471,3 +498,161 @@ it('uses the existing cryptographic fallback on LAN HTTP and retains its key on 
   await state.send()
   expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1]).toEqual(first)
 })
+
+it('keeps a direct detail outside the paged/filtered list without changing server totals or losing its reply draft', async () => {
+  const id = 'a'.repeat(43)
+  vi.mocked(publicReviewThreadsApi.query).mockResolvedValue(pager([], 42))
+  vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({ ...thread(), id })
+  vi.mocked(publicReviewThreadsApi.messages).mockResolvedValue(
+    pager([{ ...message(), threadId: id }]),
+  )
+  const { state } = setup(publicScope(), true, id)
+  await flushPromises()
+  expect(state.selected.value?.id).toBe(id)
+  expect(state.threads.value).toEqual([])
+  expect(state.total.value).toBe(42)
+  state.text.value = 'Same-target reply'
+  state.page(2)
+  await flushPromises()
+  state.changeFilter('resolved')
+  await flushPromises()
+  expect(state.selected.value).toMatchObject({ id, state: 'open' })
+  expect(state.text.value).toBe('Same-target reply')
+  expect(state.total.value).toBe(42)
+  expect(publicReviewThreadsApi.query).toHaveBeenLastCalledWith(
+    expect.anything(),
+    { revisionId: 'r1', pageId: 'page', pageIndex: 0, pageSize: 20, state: 'resolved' },
+    'csrf',
+    expect.any(AbortSignal),
+  )
+  expect(publicReviewThreadsApi.detail).toHaveBeenLastCalledWith(
+    expect.anything(),
+    id,
+    { revisionId: 'r1', pageId: 'page' },
+    'csrf',
+    expect.any(AbortSignal),
+  )
+})
+
+it('does not look up a target before identity/invitation completion and resumes the same target only afterwards', async () => {
+  const id = 'a'.repeat(43)
+  vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({ ...thread(), id })
+  vi.mocked(publicReviewThreadsApi.messages).mockResolvedValue(pager([]))
+  const value = publicScope() as Extract<ReviewThreadScope, { kind: 'public' }>
+  value.pendingInvitation = true
+  const { state, identity, target } = setup(value, true, id)
+  identity.value = { ...context(), session: null }
+  await flushPromises()
+  expect(publicReviewThreadsApi.detail).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.messages).not.toHaveBeenCalled()
+  identity.value = context()
+  await flushPromises()
+  expect(publicReviewThreadsApi.detail).not.toHaveBeenCalled()
+  target.value = publicScope()
+  await flushPromises()
+  expect(state.selected.value?.id).toBe(id)
+  expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+})
+
+it('never queries a PM detail when project EDIT or version query permission is absent', async () => {
+  const { state, grants, target, open } = setup(memberScope(), false, 'a'.repeat(43))
+  grants.value = []
+  open.value = true
+  await flushPromises()
+  state.text.value = 'Not authorized'
+  expect(reviewThreadsApi.detail).not.toHaveBeenCalled()
+  expect(reviewThreadsApi.messages).not.toHaveBeenCalled()
+  target.value = {
+    ...memberScope(),
+    project: { ...project, capabilities: { ...project.capabilities, edit: false } },
+  } as ReviewThreadScope
+  grants.value = [p.version.query]
+  await state.load()
+  expect(reviewThreadsApi.detail).not.toHaveBeenCalled()
+})
+
+it('keeps malformed or missing deep targets in an error state, never silently enabling top-level creation', async () => {
+  const { state, threadId } = setup(publicScope(), true, null)
+  await flushPromises()
+  expect(state.error.value).toBe(protoLocales.zh.feedbackInvalidTarget)
+  expect(publicReviewThreadsApi.query).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.detail).not.toHaveBeenCalled()
+  state.text.value = 'Must not create'
+  await state.send()
+  expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+  threadId.value = 'a'.repeat(43)
+  vi.mocked(publicReviewThreadsApi.detail).mockRejectedValue(new ApiError('hidden', 404))
+  await state.load()
+  expect(state.selected.value).toBeUndefined()
+  expect(state.selectedId.value).toBe(threadId.value)
+  expect(state.writable.value).toBe(false)
+  await state.send()
+  expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.messages).not.toHaveBeenCalled()
+})
+
+it.each(['id', 'revisionId', 'pageId'] as const)(
+  'rejects contradictory detail %s before messages/render/send',
+  async (key) => {
+    const id = 'a'.repeat(43)
+    vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({
+      ...thread(),
+      id,
+      [key]: 'foreign',
+    })
+    const { state } = setup(publicScope(), true, id)
+    await flushPromises()
+    expect(state.selected.value).toBeUndefined()
+    expect(state.messages.value).toEqual([])
+    expect(state.writable.value).toBe(false)
+    expect(publicReviewThreadsApi.messages).not.toHaveBeenCalled()
+    await state.send()
+    expect(publicReviewThreadsApi.create).not.toHaveBeenCalled()
+  },
+)
+
+it('preserves a direct-target reply through SESSION_REQUIRED and CSRF reauthentication without automatic submission', async () => {
+  const id = 'a'.repeat(43)
+  vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({ ...thread(), id })
+  vi.mocked(publicReviewThreadsApi.messages).mockResolvedValue(pager([]))
+  const { state, identity, open } = setup(publicScope(), true, id)
+  await flushPromises()
+  state.text.value = 'Keep target draft'
+  vi.mocked(publicReviewThreadsApi.detail).mockRejectedValueOnce(
+    new ApiError('hidden', 403, 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED'),
+  )
+  await state.load()
+  expect(state.authenticationRequired.value).toBe(true)
+  expect(state.text.value).toBe('Keep target draft')
+  open.value = false
+  identity.value = { ...context(), csrfToken: 'fresh' }
+  open.value = true
+  await flushPromises()
+  expect(state.selected.value?.id).toBe(id)
+  expect(state.text.value).toBe('Keep target draft')
+  expect(publicReviewThreadsApi.reply).not.toHaveBeenCalled()
+})
+
+it.each(['target', 'actor', 'scope', 'close'] as const)(
+  'aborts late direct details on changed %s without installing old data',
+  async (change) => {
+    const id = 'a'.repeat(43)
+    const pending = deferred<ReviewThread>()
+    vi.mocked(publicReviewThreadsApi.detail).mockReturnValueOnce(pending.promise)
+    const { state, threadId, identity, target, open } = setup(publicScope(), true, id)
+    await flushPromises()
+    const signal = vi.mocked(publicReviewThreadsApi.detail).mock.calls[0]![4]!
+    state.text.value = 'Old target draft'
+    if (change === 'target') threadId.value = 'b'.repeat(43)
+    if (change === 'actor')
+      identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+    if (change === 'scope') target.value = undefined
+    if (change === 'close') open.value = false
+    expect(signal.aborted).toBe(true)
+    pending.resolve({ ...thread(), id, summary: 'Late old detail' })
+    await flushPromises()
+    expect(state.selected.value?.summary).not.toBe('Late old detail')
+    expect(state.messages.value).toEqual([])
+    if (change !== 'close') expect(state.text.value).toBe('')
+  },
+)

@@ -17,6 +17,7 @@ import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/usePreview'
+import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
 const { data, project, loading, error, expired, load } = usePreview()
 const { t } = useI18n()
 const route = useRoute(),
@@ -38,10 +39,29 @@ const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
       }
     : undefined,
 )
-const feedback = useReviewThreads(feedbackScope, feedbackOpen)
+const threadLocation = useReviewThreadLocation(
+  selectedPage,
+  feedbackOpen,
+  computed(
+    () => !!data.value && projectAllows(project.value, 'edit') && permissions.can(p.version.query),
+  ),
+)
+const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, threadLocation)
 </script>
 <template>
   <div class="fullscreen">
+    <a-alert
+      v-if="threadLocation.invalid.value"
+      type="error"
+      show-icon
+      :message="t('proto.feedbackInvalidTarget')"
+    />
+    <a-alert
+      v-else-if="data && threadLocation.unavailable.value"
+      type="warning"
+      show-icon
+      :message="t('proto.feedbackUnavailable')"
+    />
     <a-alert v-if="expired" type="warning" :message="error" show-icon>
       <template #action
         ><a-button @click="load">{{ t('proto.reauthorizePreview') }}</a-button></template
@@ -66,6 +86,7 @@ const feedback = useReviewThreads(feedbackScope, feedbackOpen)
     "
     :page="selectedPage"
     :state="feedback"
-    @close="feedbackOpen = false"
+    @close="threadLocation.close"
+    @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
   />
 </template>

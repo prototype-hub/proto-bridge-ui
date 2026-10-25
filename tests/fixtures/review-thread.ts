@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, randomBytes } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
 import type {
   ReviewThread,
@@ -90,6 +90,10 @@ export function threadResponse(
     send(res, 404, null, 'Feedback unavailable', 'PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE')
     return
   }
+  if (action === '_detail' && method === 'POST') {
+    send(res, 200, stored!.thread)
+    return
+  }
   if (action === 'messages' && query === '_query' && method === 'POST') {
     const rows = (messages.get(id!) || []).filter(
       (message) => !guest || message.visibility === 'public',
@@ -162,7 +166,7 @@ export function threadResponse(
     initial = suffix === ''
   const thread = initial
     ? {
-        id: randomUUID(),
+        id: randomBytes(32).toString('base64url'),
         revisionId: rid,
         pageId,
         pageName: matches[0]!.name,

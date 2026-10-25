@@ -12,6 +12,7 @@ import { computed, ref, watch, defineAsyncComponent } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
 import { useReviewIdentity } from './hooks/useReviewIdentity'
+import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
 import {
   useReviewThreads,
   type ReviewThreadScope,
@@ -50,7 +51,18 @@ const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
       }
     : undefined,
 )
-const feedback = useReviewThreads(feedbackScope, feedbackOpen, identity.context)
+const threadLocation = useReviewThreadLocation(
+  selectedPage,
+  feedbackOpen,
+  computed(
+    () =>
+      !!resource.data.value.context &&
+      !!share.value?.accessKey &&
+      share.value.reviewEnabled === true &&
+      share.value.revisionMode === 'fixed',
+  ),
+)
+const feedback = useReviewThreads(feedbackScope, feedbackOpen, identity.context, threadLocation)
 function authenticate() {
   identityOpen.value = true
   feedbackOpen.value = false
@@ -83,6 +95,18 @@ watch(
 </script>
 <template>
   <div class="fullscreen">
+    <a-alert
+      v-if="threadLocation.invalid.value"
+      type="error"
+      show-icon
+      :message="t('proto.feedbackInvalidTarget')"
+    />
+    <a-alert
+      v-else-if="resource.data.value.context && threadLocation.unavailable.value"
+      type="warning"
+      show-icon
+      :message="t('proto.feedbackUnavailable')"
+    />
     <load-state
       :loading="resource.loading.value || !invitation.ready.value"
       :error="resource.error.value || invitation.error.value"
@@ -163,7 +187,8 @@ watch(
     :page="selectedPage"
     :state="feedback"
     :identity-loading="identity.loading.value"
-    @close="feedbackOpen = false"
+    @close="threadLocation.close"
     @authenticate="authenticate"
+    @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
   />
 </template>
