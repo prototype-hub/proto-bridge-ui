@@ -36,6 +36,12 @@ export function useReviewThreads(
     text = ref(''),
     visibility = ref<ReviewMessage['visibility']>('public')
   const detail = shallowRef<ReviewThread>()
+  const imageFile = shallowRef<File>(),
+    imagePreview = ref(''),
+    imageView = shallowRef<{ messageId: string; url?: string; loading?: boolean; error?: string }>()
+  let imageSequence = 0,
+    viewSequence = 0,
+    imageController: AbortController | undefined
   const filter = ref<ReviewThreadState | ''>(''),
     pageIndex = ref(0),
     messagesPageIndex = ref(0),
@@ -117,13 +123,121 @@ export function useReviewThreads(
     generation++
     controller?.abort()
     loading.value = busy.value = false
+    clearImageView()
+  }
+  function clearImageView() {
+    viewSequence++
+    imageController?.abort()
+    if (imageView.value?.url) URL.revokeObjectURL(imageView.value.url)
+    imageView.value = undefined
+  }
+  function selectImage(file?: File) {
+    if (busy.value) return
+    if (file && !selectedId.value) {
+      notice.value = t('proto.feedbackImageThreadRequired')
+      return
+    }
+    if (
+      file &&
+      (!['image/png', 'image/jpeg'].includes(file.type) ||
+        !file.size ||
+        file.size > 5 * 1024 * 1024)
+    ) {
+      notice.value = t('proto.feedbackImageInvalid')
+      return
+    }
+    imageSequence++
+    imageFile.value = file
+    notice.value = ''
+  }
+  watch(
+    [imageFile, open, messages],
+    () => {
+      if (imagePreview.value) URL.revokeObjectURL(imagePreview.value)
+      imagePreview.value = imageFile.value && open.value ? URL.createObjectURL(imageFile.value) : ''
+    },
+    { flush: 'sync' },
+  )
+  async function viewImage(message: ReviewMessage) {
+    if (imageView.value?.messageId === message.id && !imageView.value.error) {
+      clearImageView()
+      return
+    }
+    if (
+      !open.value ||
+      !authorized() ||
+      !selected.value ||
+      !messages.value.includes(message) ||
+      !message.image
+    )
+      return
+    clearImageView()
+    const target = scope.value!,
+      id = selected.value.id,
+      epoch = generation,
+      viewEpoch = viewSequence,
+      request = new AbortController(),
+      info = message.image
+    imageController = request
+    imageView.value = { messageId: message.id, loading: true }
+    try {
+      const page = { revisionId: target.page.revisionId, pageId: target.page.pageId }
+      const blob =
+        target.kind === 'public'
+          ? await publicReviewThreadsApi.image(
+              grant(target),
+              id,
+              message.id,
+              page,
+              identity.value!.csrfToken,
+              request.signal,
+            )
+          : await reviewThreadsApi.image(target.versionId, id, message.id, page, {
+              signal: request.signal,
+              silent: true,
+            })
+      if (epoch !== generation || viewEpoch !== viewSequence || request.signal.aborted) return
+      if (
+        !['image/png', 'image/jpeg'].includes(info.contentType) ||
+        blob.type !== info.contentType ||
+        !Number.isInteger(info.size) ||
+        info.size <= 0 ||
+        info.size > 5 * 1024 * 1024 ||
+        blob.size !== info.size ||
+        !Number.isInteger(info.width) ||
+        !Number.isInteger(info.height) ||
+        info.width < 1 ||
+        info.height < 1 ||
+        info.width > 16384 ||
+        info.height > 16384 ||
+        info.width * info.height > 16000000
+      )
+        throw new ApiError(t('proto.feedbackImageUnavailable'))
+      imageView.value = { messageId: message.id, url: URL.createObjectURL(blob) }
+    } catch (cause) {
+      if (epoch !== generation || viewEpoch !== viewSequence || request.signal.aborted) return
+      if (
+        cause instanceof ApiError &&
+        (cause.status === 403 ||
+          (cause.status === 404 && cause.code !== 'PROTOTYPE_HUB_REVIEW_IMAGE_UNAVAILABLE'))
+      )
+        failed(cause)
+      else imageView.value = { messageId: message.id, error: t('proto.feedbackImageUnavailable') }
+    }
+  }
+  function imageFailed(messageId: string) {
+    if (imageView.value?.messageId !== messageId) return
+    clearImageView()
+    imageView.value = { messageId, error: t('proto.feedbackImageUnavailable') }
   }
   function clearDraft() {
     text.value = ''
     visibility.value = 'public'
     pending = undefined
+    imageFile.value = undefined
   }
   function clearData() {
+    clearImageView()
     threads.value = []
     messages.value = []
     detail.value = undefined
@@ -308,6 +422,11 @@ export function useReviewThreads(
     if (selectedId.value && !thread) return
     if (state && (!thread || (target.kind === 'public' && state !== 'open'))) return
     if (!state && target.kind === 'member' && !thread) return
+    const file = !state ? imageFile.value : undefined
+    if (file && !thread) {
+      notice.value = t('proto.feedbackImageThreadRequired')
+      return
+    }
     const body = text.value.trim()
     if (!state && (!body || body.length > 4000)) {
       notice.value = t('proto.feedbackTextRequired')
@@ -318,9 +437,10 @@ export function useReviewThreads(
       scopeKey.value,
       actor.value,
       thread?.id || '',
-      state ? 'status' : 'text',
+      state ? 'status' : file ? 'image' : 'text',
       state || body,
       state ? '' : target.kind === 'member' ? visibility.value : 'public',
+      ...(file ? [imageSequence] : []),
     ])
     if (pending?.semantic !== semantic)
       pending = {
@@ -372,7 +492,24 @@ export function useReviewThreads(
           location?.select(created)
           pageIndex.value = 0
           filter.value = ''
-        } else if (target.kind === 'public')
+        } else if (file && target.kind === 'public')
+          await publicReviewThreadsApi.replyImage(
+            grant(target),
+            thread!.id,
+            input,
+            file,
+            identity.value!.csrfToken,
+            request.signal,
+          )
+        else if (file && target.kind === 'member')
+          await reviewThreadsApi.replyImage(
+            target.versionId,
+            thread!.id,
+            { ...input, visibility: visibility.value },
+            file,
+            { signal: request.signal, silent: true },
+          )
+        else if (target.kind === 'public')
           await publicReviewThreadsApi.reply(
             grant(target),
             thread!.id,
@@ -401,6 +538,8 @@ export function useReviewThreads(
         await load()
         if (generation === epoch + 1) notice.value = t('proto.feedbackConflict')
       } else if (cause instanceof ApiError && [403, 404, 429].includes(cause.status)) failed(cause)
+      else if (file && cause instanceof ApiError && [400, 413].includes(cause.status))
+        notice.value = t('proto.feedbackImageInvalid')
       else notice.value = t('proto.feedbackResultUnknown')
     } finally {
       if (epoch === generation) busy.value = false
@@ -467,10 +606,18 @@ export function useReviewThreads(
   )
   onScopeDispose(() => {
     abort()
+    if (imagePreview.value) URL.revokeObjectURL(imagePreview.value)
+    imagePreview.value = ''
     clearData()
     clearDraft()
   })
   return {
+    imageFile,
+    imagePreview,
+    imageView,
+    selectImage,
+    viewImage,
+    imageFailed,
     threads,
     messages,
     selected,

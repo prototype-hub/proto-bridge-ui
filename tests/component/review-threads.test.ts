@@ -30,6 +30,8 @@ vi.mock('@/modules/protohub-manager-ui/api/review-thread', () => ({
     create: vi.fn(),
     messages: vi.fn(),
     reply: vi.fn(),
+    replyImage: vi.fn(),
+    image: vi.fn(),
     status: vi.fn(),
   },
   reviewThreadsApi: {
@@ -37,6 +39,8 @@ vi.mock('@/modules/protohub-manager-ui/api/review-thread', () => ({
     query: vi.fn(),
     messages: vi.fn(),
     reply: vi.fn(),
+    replyImage: vi.fn(),
+    image: vi.fn(),
     status: vi.fn(),
   },
 }))
@@ -112,9 +116,12 @@ const message = (): ReviewMessage => ({
   verificationLevel: 'email',
   visibility: 'public',
   createdAt: 1,
+  image: null,
 })
 const pager = <T>(data: T[], total = data.length) => ({ data, total, pageIndex: 0, pageSize: 20 })
 const wrappers: VueWrapper[] = []
+const OriginalURL = URL
+const file = (type = 'image/png', bytes = 'png') => new File([bytes], 'private-name.png', { type })
 function setup(
   value: ReviewThreadScope | null = publicScope(),
   active = true,
@@ -160,6 +167,14 @@ function deferred<T>() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  let sequence = 0
+  vi.stubGlobal(
+    'URL',
+    class extends OriginalURL {
+      static createObjectURL = vi.fn(() => `blob:test-${++sequence}`)
+      static revokeObjectURL = vi.fn()
+    },
+  )
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addListener: vi.fn(),
@@ -178,6 +193,10 @@ beforeEach(() => {
       .mockReset()
       .mockImplementation(async () => pager([message()]))
     vi.mocked(api.reply).mockReset().mockResolvedValue(message())
+    vi.mocked(api.replyImage).mockReset().mockResolvedValue(message())
+    vi.mocked(api.image)
+      .mockReset()
+      .mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
     vi.mocked(api.status).mockReset().mockResolvedValue(thread())
   }
   vi.mocked(publicReviewThreadsApi.create).mockReset().mockResolvedValue(thread())
@@ -656,3 +675,296 @@ it.each(['target', 'actor', 'scope', 'close'] as const)(
     if (change !== 'close') expect(state.text.value).toBe('')
   },
 )
+
+it('only selects one hinted PNG/JPEG for an existing thread and uploads nothing until a text reply is sent', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.selectImage(file())
+  expect(state.imageFile.value).toBeUndefined()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackImageThreadRequired)
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  for (const invalid of [
+    file('image/svg+xml'),
+    file('image/png', ''),
+    new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' }),
+  ]) {
+    state.selectImage(invalid)
+    expect(state.imageFile.value).toBeUndefined()
+    expect(state.notice.value).toBe(protoLocales.zh.feedbackImageInvalid)
+  }
+  const selected = file()
+  state.selectImage(selected)
+  expect(state.imageFile.value).toBe(selected)
+  expect(state.imagePreview.value).toBe('blob:test-1')
+  expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  await state.send()
+  expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackTextRequired)
+  state.text.value = 'Screenshot context'
+  await state.send()
+  expect(publicReviewThreadsApi.replyImage).toHaveBeenCalledWith(
+    expect.anything(),
+    't1',
+    expect.objectContaining({ text: 'Screenshot context' }),
+    selected,
+    'csrf',
+    expect.any(AbortSignal),
+  )
+  expect(publicReviewThreadsApi.reply).not.toHaveBeenCalled()
+  expect(state.imageFile.value).toBeUndefined()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-1')
+})
+
+it('keeps the same File and key on unknown manual retry, and changes the key for replaced bytes or text-only replies', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  state.text.value = 'Caption'
+  const original = file()
+  state.selectImage(original)
+  vi.mocked(publicReviewThreadsApi.replyImage).mockRejectedValue(new ApiError('network', 0))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[0]![2]
+  await state.load()
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[1]![2]).toEqual(first)
+  expect(vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[1]![3]).toBe(original)
+  state.selectImage(file('image/png', 'different bytes'))
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[2]![2].clientRequestId).not.toBe(
+    first.clientRequestId,
+  )
+  state.selectImage()
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]![2].clientRequestId).not.toBe(
+    first.clientRequestId,
+  )
+})
+
+it('preserves the local File through same-actor expiry/OTP handoff without upload and revokes its preview while hidden', async () => {
+  const { state, identity, open } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  const selected = file()
+  state.text.value = 'OTP caption'
+  state.selectImage(selected)
+  identity.value = { ...context(), session: null }
+  open.value = false
+  await flushPromises()
+  expect(state.imageFile.value).toBe(selected)
+  expect(state.imagePreview.value).toBe('')
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-1')
+  open.value = true
+  identity.value = { ...context(), csrfToken: 'new-csrf' }
+  await flushPromises()
+  expect(state.imageFile.value).toBe(selected)
+  expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  await state.send()
+  expect(publicReviewThreadsApi.replyImage).toHaveBeenCalledWith(
+    expect.anything(),
+    't1',
+    expect.objectContaining({ text: 'OTP caption' }),
+    selected,
+    'new-csrf',
+    expect.any(AbortSignal),
+  )
+})
+
+it.each(['scope', 'actor', 'thread'] as const)(
+  'clears File and revokes Blob previews when %s changes',
+  async (kind) => {
+    const { state, target, identity, threadId } = setup(publicScope(), true, 't1')
+    await flushPromises()
+    state.text.value = 'Private caption'
+    state.selectImage(file())
+    if (kind === 'scope') target.value = undefined
+    else if (kind === 'actor')
+      identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+    else threadId.value = 'other'
+    await flushPromises()
+    expect(state.imageFile.value).toBeUndefined()
+    expect(state.imagePreview.value).toBe('')
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-1')
+    expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  },
+)
+
+it('keeps image validation failures and 409 conflicts as explicit manual actions while retaining the draft', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const selected = file()
+  state.selectImage(selected)
+  state.text.value = 'Caption'
+  vi.mocked(publicReviewThreadsApi.replyImage).mockRejectedValueOnce(
+    new ApiError('invalid', 400, 'PROTOTYPE_HUB_REVIEW_IMAGE_INVALID'),
+  )
+  await state.send()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackImageInvalid)
+  expect(state.imageFile.value).toBe(selected)
+  vi.mocked(publicReviewThreadsApi.replyImage).mockRejectedValueOnce(new ApiError('changed', 409))
+  await state.send()
+  expect(publicReviewThreadsApi.replyImage).toHaveBeenCalledTimes(2)
+  expect(state.imageFile.value).toBe(selected)
+  expect(state.text.value).toBe('Caption')
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackConflict)
+})
+
+it('PM image replies use the same explicit visibility and query/save project intersection', async () => {
+  const { state, grants } = setup(memberScope())
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const selected = file('image/jpeg', 'jpeg')
+  state.selectImage(selected)
+  state.text.value = 'Private caption'
+  state.visibility.value = 'internal'
+  grants.value = [p.version.query]
+  await flushPromises()
+  await state.send()
+  expect(reviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  grants.value = [p.version.query, p.version.save]
+  await flushPromises()
+  await state.send()
+  expect(reviewThreadsApi.replyImage).toHaveBeenCalledWith(
+    'v1',
+    't1',
+    expect.objectContaining({ visibility: 'internal', text: 'Private caption' }),
+    selected,
+    expect.objectContaining({ silent: true }),
+  )
+})
+
+it('fetches image content only on explicit view and revokes it on replacement, hide and unmount', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const row = {
+    ...message(),
+    image: { contentType: 'image/png' as const, size: 3, width: 1, height: 1 },
+  }
+  state.messages.value = [row]
+  expect(publicReviewThreadsApi.image).not.toHaveBeenCalled()
+  await state.viewImage(row)
+  expect(publicReviewThreadsApi.image).toHaveBeenCalledWith(
+    expect.anything(),
+    't1',
+    'm1',
+    { revisionId: 'r1', pageId: 'page' },
+    'csrf',
+    expect.any(AbortSignal),
+  )
+  expect(state.imageView.value?.url).toBe('blob:test-1')
+  await state.viewImage(row)
+  expect(state.imageView.value).toBeUndefined()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-1')
+  await state.viewImage(row)
+  state.selectImage(file())
+  wrappers[0]!.unmount()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-2')
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-3')
+})
+
+it('rejects contradictory MIME/metadata and missing content without replacing the thread or showing an image', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const row = {
+    ...message(),
+    image: { contentType: 'image/png' as const, size: 3, width: 1, height: 1 },
+  }
+  state.messages.value = [row]
+  vi.mocked(publicReviewThreadsApi.image).mockResolvedValueOnce(
+    new Blob(['svg'], { type: 'image/svg+xml' }),
+  )
+  await state.viewImage(row)
+  expect(state.imageView.value?.error).toBe(protoLocales.zh.feedbackImageUnavailable)
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
+  vi.mocked(publicReviewThreadsApi.image).mockRejectedValueOnce(
+    new ApiError('missing', 404, 'PROTOTYPE_HUB_REVIEW_IMAGE_UNAVAILABLE'),
+  )
+  await state.viewImage(row)
+  expect(state.imageView.value?.error).toBe(protoLocales.zh.feedbackImageUnavailable)
+  expect(state.selected.value?.id).toBe('t1')
+})
+
+it.each(['actor', 'scope', 'close'] as const)(
+  'aborts an image read on %s and never installs late bytes',
+  async (change) => {
+    const { state, open, target, identity } = setup()
+    await flushPromises()
+    state.choose(state.threads.value[0])
+    await flushPromises()
+    const row = {
+      ...message(),
+      image: { contentType: 'image/png' as const, size: 3, width: 1, height: 1 },
+    }
+    state.messages.value = [row]
+    const pending = deferred<Blob>()
+    vi.mocked(publicReviewThreadsApi.image).mockReturnValueOnce(pending.promise)
+    const viewing = state.viewImage(row)
+    const signal = vi.mocked(publicReviewThreadsApi.image).mock.calls[0]![5]!
+    if (change === 'close') open.value = false
+    else if (change === 'scope') target.value = undefined
+    else identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+    expect(signal.aborted).toBe(true)
+    pending.resolve(new Blob(['png'], { type: 'image/png' }))
+    await viewing
+    expect(state.imageView.value).toBeUndefined()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+  },
+)
+
+it('renders labelled selection, a removable local preview and explicit saved-image viewing without exposing the filename', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const row = {
+    ...message(),
+    image: { contentType: 'image/png' as const, size: 3, width: 1, height: 1 },
+  }
+  state.messages.value = [row]
+  const wrapper = mount(ReviewThreadsDrawer, {
+    props: { open: true, page, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  const input = wrapper.get<HTMLInputElement>('#review-feedback-image')
+  expect(wrapper.get('label[for="review-feedback-image"]').text()).toBe(
+    protoLocales.zh.feedbackImageSelect,
+  )
+  expect(input.attributes('accept')).toBe('image/png,image/jpeg')
+  const selected = file()
+  Object.defineProperty(input.element, 'files', { value: [selected] })
+  await input.trigger('change')
+  expect(state.imageFile.value).toBe(selected)
+  expect(
+    wrapper.get(`img[alt="${protoLocales.zh.feedbackImageDraftAlt}"]`).attributes('src'),
+  ).toMatch(/^blob:/)
+  expect(wrapper.text()).not.toContain(selected.name)
+  expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  expect(publicReviewThreadsApi.image).not.toHaveBeenCalled()
+  const remove = wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.feedbackImageRemove)!
+  await remove.trigger('click')
+  expect(wrapper.find(`img[alt="${protoLocales.zh.feedbackImageDraftAlt}"]`).exists()).toBe(false)
+  expect(URL.revokeObjectURL).toHaveBeenCalled()
+  const view = wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.feedbackImageView)!
+  await view.trigger('click')
+  await flushPromises()
+  expect(publicReviewThreadsApi.image).toHaveBeenCalledTimes(1)
+  expect(wrapper.get(`img[alt="${protoLocales.zh.feedbackImageAlt}"]`).attributes('src')).toMatch(
+    /^blob:/,
+  )
+  await wrapper.get(`img[alt="${protoLocales.zh.feedbackImageAlt}"]`).trigger('error')
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackImageUnavailable)
+  expect(wrapper.find(`img[alt="${protoLocales.zh.feedbackImageAlt}"]`).exists()).toBe(false)
+})

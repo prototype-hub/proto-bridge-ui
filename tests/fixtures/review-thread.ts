@@ -1,4 +1,4 @@
-import { randomUUID, randomBytes } from 'node:crypto'
+import { randomUUID, randomBytes, createHash } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
 import type {
   ReviewThread,
@@ -6,6 +6,7 @@ import type {
   ReviewIdentity,
   Share,
   PrototypePage,
+  ReviewImage,
 } from '../../src/modules/protohub-manager-ui/types'
 // UI fixtures model paging, visibility and receipt-shaped retries, not SQL/authentication guarantees.
 interface StoredThread {
@@ -17,10 +18,16 @@ interface StoredThread {
 const threads = new Map<string, StoredThread>(),
   messages = new Map<string, ReviewMessage[]>()
 const receipts = new Map<string, { body: string; id: string; message: boolean }>()
+const images = new Map<string, ThreadImage>()
+export interface ThreadImage {
+  bytes: Buffer
+  info: ReviewImage
+}
 export function resetThreads() {
   threads.clear()
   messages.clear()
   receipts.clear()
+  images.clear()
 }
 type Send = (
   res: ServerResponse,
@@ -61,6 +68,7 @@ export function threadResponse(
   method: string,
   send: Send,
   guest?: { share: Share; identity: ReviewIdentity },
+  image?: ThreadImage,
 ) {
   const rid = String(input.revisionId),
     pageId = String(input.pageId),
@@ -102,13 +110,29 @@ export function threadResponse(
     send(res, result ? 200 : 400, result)
     return
   }
+  if (action === 'messages' && suffix.split('/')[4] === 'image' && method === 'POST') {
+    const message = messages
+      .get(id!)
+      ?.find((row) => row.id === query && (!guest || row.visibility === 'public'))
+    const value = message && images.get(message.id)
+    if (!value) send(res, 404, null, 'Image unavailable', 'PROTOTYPE_HUB_REVIEW_IMAGE_UNAVAILABLE')
+    else {
+      res.statusCode = 200
+      res.setHeader('Content-Type', value.info.contentType)
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.end(value.bytes)
+    }
+    return
+  }
   const requestKey = String(input.clientRequestId || ''),
     text = typeof input.text === 'string' ? input.text.trim() : ''
   if (!/^[\x21-\x7e]{1,128}$/.test(requestKey)) {
     send(res, 400, null, 'Invalid request')
     return
   }
-  const operation = suffix === '' ? 'create' : action,
+  const operation =
+      suffix === '' ? 'create' : action === 'messages-with-image' ? 'messages' : action,
     key = JSON.stringify([
       guest ? owner(guest.identity) : 'member:admin',
       guest?.share.id || versionId,
@@ -118,7 +142,8 @@ export function threadResponse(
       id || '',
       requestKey,
     ])
-  const body = JSON.stringify(input),
+  const body =
+      JSON.stringify(input) + (image ? createHash('sha256').update(image.bytes).digest('hex') : ''),
     existing = receipts.get(key)
   if (existing) {
     if (existing.body !== body) send(res, 409, null, 'Request changed', 'IDEMPOTENCY_CONFLICT')
@@ -153,7 +178,8 @@ export function threadResponse(
     !text ||
     text.length > 4000 ||
     (!guest && suffix === '') ||
-    (suffix !== '' && action !== 'messages')
+    (suffix !== '' && action !== 'messages' && action !== 'messages-with-image') ||
+    (action === 'messages-with-image' && !image)
   ) {
     send(res, 400, null, 'Invalid feedback')
     return
@@ -200,7 +226,9 @@ export function threadResponse(
     verificationLevel: guest?.identity.verificationLevel || null,
     visibility: guest ? 'public' : (input.visibility as ReviewMessage['visibility']),
     createdAt: now,
+    image: image?.info || null,
   }
+  if (image) images.set(message.id, image)
   messages.get(thread.id)!.push(message)
   if (!initial && message.visibility === 'public') {
     thread.updatedAt = now

@@ -1,6 +1,6 @@
 import { request } from '@/shared/api/client'
 import type { PageResult, RequestOptions } from '@/shared/api/types'
-import { reviewRequest, type ReviewGrant } from './review'
+import { reviewRequest, reviewImageRequest, reviewImageData, type ReviewGrant } from './review'
 import type {
   ReviewThread,
   ReviewMessage,
@@ -13,6 +13,38 @@ const base = (versionId: string) =>
   `/prototype-hub/versions/${encodeURIComponent(versionId)}/review-threads`
 const threadPath = (id: string) => `threads/${encodeURIComponent(id)}`
 export const publicReviewThreadsApi = {
+  replyImage: (
+    grant: ReviewGrant,
+    id: string,
+    data: ReviewMessageInput,
+    image: File,
+    csrf: string,
+    signal?: AbortSignal,
+  ) =>
+    reviewRequest<ReviewMessage>(
+      grant,
+      `${threadPath(id)}/messages-with-image`,
+      data,
+      csrf,
+      signal,
+      'POST',
+      image,
+    ),
+  image: (
+    grant: ReviewGrant,
+    id: string,
+    messageId: string,
+    data: ReviewThreadPage,
+    csrf: string,
+    signal?: AbortSignal,
+  ) =>
+    reviewImageRequest(
+      grant,
+      `${threadPath(id)}/messages/${encodeURIComponent(messageId)}/image`,
+      data,
+      csrf,
+      signal,
+    ),
   detail: (
     grant: ReviewGrant,
     id: string,
@@ -54,6 +86,34 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/status`, data, csrf, signal, 'PUT'),
 }
 export const reviewThreadsApi = {
+  replyImage: async (
+    versionId: string,
+    id: string,
+    data: ReviewMessageInput & { visibility: ReviewMessage['visibility'] },
+    image: File,
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.post<ReviewMessage>(
+        `${base(versionId)}/${encodeURIComponent(id)}/messages-with-image`,
+        reviewImageData(data, image),
+        options,
+      )
+    ).result,
+  image: async (
+    versionId: string,
+    id: string,
+    messageId: string,
+    data: ReviewThreadPage,
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.postStream(
+        `${base(versionId)}/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/image`,
+        data,
+        options,
+      )
+    ).blob,
   detail: async (versionId: string, id: string, data: ReviewThreadPage, options?: RequestOptions) =>
     (
       await request.post<ReviewThread>(

@@ -28,6 +28,11 @@ const canSend = computed(
     state.writable.value &&
     (!state.selectedId.value ? state.isPublic.value : !!state.selected.value),
 )
+function selectImage(event: Event) {
+  const input = event.target as HTMLInputElement
+  state.selectImage(input.files?.[0])
+  input.value = ''
+}
 </script>
 <template>
   <a-drawer
@@ -184,6 +189,42 @@ const canSend = computed(
                   ><span>{{ new Date(message.createdAt).toLocaleString() }}</span>
                 </div>
                 <p class="feedback-text">{{ message.text }}</p>
+                <template v-if="message.image">
+                  <p>{{ t('proto.feedbackImageInfo', { ...message.image }) }}</p>
+                  <a-button
+                    :loading="
+                      state.imageView.value?.messageId === message.id &&
+                      state.imageView.value.loading
+                    "
+                    :aria-expanded="
+                      state.imageView.value?.messageId === message.id && !!state.imageView.value.url
+                    "
+                    @click="state.viewImage(message)"
+                    >{{
+                      t(
+                        state.imageView.value?.messageId === message.id && state.imageView.value.url
+                          ? 'proto.feedbackImageHide'
+                          : 'proto.feedbackImageView',
+                      )
+                    }}</a-button
+                  >
+                  <template v-if="state.imageView.value?.messageId === message.id">
+                    <a-alert
+                      v-if="state.imageView.value.error"
+                      type="warning"
+                      show-icon
+                      role="status"
+                      :message="state.imageView.value.error"
+                    />
+                    <img
+                      v-if="state.imageView.value.url"
+                      class="feedback-image"
+                      :src="state.imageView.value.url"
+                      :alt="t('proto.feedbackImageAlt')"
+                      @error="state.imageFailed(message.id)"
+                    />
+                  </template>
+                </template>
               </li>
             </ol>
             <a-pagination
@@ -233,6 +274,30 @@ const canSend = computed(
           :disabled="state.busy.value || (!state.isPublic.value && !state.writable.value)"
         />
         <p>{{ t('proto.feedbackPlainText') }}</p>
+        <template v-if="state.selectedId.value">
+          <label for="review-feedback-image">{{ t('proto.feedbackImageSelect') }}</label>
+          <input
+            id="review-feedback-image"
+            class="feedback-image-input"
+            type="file"
+            accept="image/png,image/jpeg"
+            :disabled="state.busy.value || (!state.isPublic.value && !state.writable.value)"
+            @change="selectImage"
+          />
+          <p>{{ t('proto.feedbackImageHint') }}</p>
+          <template v-if="state.imageFile.value">
+            <img
+              v-if="state.imagePreview.value"
+              class="feedback-image"
+              :src="state.imagePreview.value"
+              :alt="t('proto.feedbackImageDraftAlt')"
+            />
+            <a-button :disabled="state.busy.value" @click="state.selectImage()">{{
+              t('proto.feedbackImageRemove')
+            }}</a-button>
+          </template>
+        </template>
+        <p v-else>{{ t('proto.feedbackImageThreadRequired') }}</p>
         <a-button
           type="primary"
           :loading="state.busy.value"
@@ -298,5 +363,20 @@ const canSend = computed(
 .feedback-pagination {
   display: flex;
   justify-content: flex-end;
+}
+.feedback-image-input,
+.feedback-image {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+.feedback-image-input {
+  width: 100%;
+}
+.feedback-image {
+  height: auto;
+  max-height: 60vh;
+  object-fit: contain;
+  margin-block: var(--space-2);
 }
 </style>

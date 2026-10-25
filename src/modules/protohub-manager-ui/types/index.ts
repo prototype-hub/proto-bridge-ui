@@ -361,6 +361,13 @@ export interface ReviewMessage {
   verificationLevel: ReviewVerificationLevel | null
   visibility: 'public' | 'internal'
   createdAt: number
+  image: ReviewImage | null
+}
+export interface ReviewImage {
+  contentType: 'image/png' | 'image/jpeg'
+  size: number
+  width: number
+  height: number
 }
 export interface ReviewThreadPage {
   revisionId: string

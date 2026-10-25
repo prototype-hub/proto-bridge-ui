@@ -1,4 +1,4 @@
-import { resetThreads, threadResponse } from './review-thread'
+import { resetThreads, threadResponse, type ThreadImage } from './review-thread'
 import type { PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 import { createHash, randomUUID } from 'node:crypto'
 import { resetInvitations, invitedChallenge, consumeInvitation } from './review-invitation'
@@ -60,6 +60,7 @@ export function reviewResponse(
   grant: string,
   send: Send,
   pages: PrototypePage[] = [],
+  image?: ThreadImage,
 ) {
   if (!suffix.startsWith('/review/')) return false
   if (
@@ -119,6 +120,7 @@ export function reviewResponse(
         req.method!,
         send,
         { share: record, identity: selected.identity },
+        image,
       )
     return true
   }
