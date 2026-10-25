@@ -13,6 +13,7 @@ import PrototypeListToolbar from '@/modules/protohub-manager-ui/views/project/co
 import ActionButton from '@/shared/components/ActionButton.vue'
 import RecycleView from '@/modules/protohub-manager-ui/views/recycle/index.vue'
 import ProjectsView from '@/modules/protohub-manager-ui/views/project/index.vue'
+import { useSession } from '@/app/stores/session'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
 import { ownerProjectAccess } from '../fixtures/project-access'
 
@@ -80,7 +81,7 @@ async function listPage(
     history: createMemoryHistory(),
     routes: [
       { path: '/prototype-hub', component: ProjectsView },
-      { path: '/prototype-hub/recycle-bin', component: RecycleView },
+      { path: '/prototype-hub/recycle-bin', name: 'menu:recycle', component: RecycleView },
       {
         path: '/prototype-hub/projects/:id',
         name: 'project-detail',
@@ -91,9 +92,19 @@ async function listPage(
     ],
   })
   await router.push(path)
+  const pinia = createPinia()
+  useSession(pinia).menus = [
+    {
+      id: 'recycle',
+      code: 'prototype-hub/Recycle',
+      name: '回收站',
+      url: '/prototype-hub/recycle-bin',
+      granted: true,
+    },
+  ]
   const wrapper = mount(RouterView, {
     global: {
-      plugins: [createPinia(), router, i18n],
+      plugins: [pinia, router, i18n],
       provide: { [permissionKey]: { can } },
       stubs: { ProjectDialog: true },
     },
@@ -141,7 +152,7 @@ it('reuses the framework condition row and submits a literal name only on explic
   await resetButton.trigger('click')
   expect(reset).toHaveBeenCalledOnce()
 })
-it('loads only deleted projects in the independent recycle page without creation or mode tabs', async () => {
+it('defaults the recycle page to deleted projects without creation or the old detail mode toggle', async () => {
   const { wrapper } = await listPage()
   expect(wrapper.get('h1').text()).toBe('回收站')
   expect(wrapper.text()).toContain('可恢复项目')
@@ -158,8 +169,8 @@ it('loads only deleted projects in the independent recycle page without creation
     expect.anything(),
   )
 })
-it('opens only the restored parent version recycle scope and respects the query marker on initial load', async () => {
-  const { wrapper, router, detail } = await listPage()
+it('opens only the restored parent version recycle scope in the authorized menu tab', async () => {
+  const { wrapper, router } = await listPage()
   wrapper
     .findAllComponents(ActionButton)
     .find((button) => button.props('label') === '恢复')!
@@ -170,8 +181,9 @@ it('opens only the restored parent version recycle scope and respects the query 
     .find((button) => button.text() === '查看该项目的版本回收站')!
   await link.trigger('click')
   await flushPromises()
-  expect(router.currentRoute.value.fullPath).toBe('/prototype-hub/projects/p1?recycle=versions')
-  expect(detail().trash.value).toBe(true)
+  expect(router.currentRoute.value.path).toBe('/prototype-hub/recycle-bin')
+  expect(router.currentRoute.value.query).toEqual({ tab: 'versions', projectId: 'p1' })
+  expect(wrapper.get('[role=tab][aria-selected=true]').text()).toBe('版本回收站')
   expect(request.post).toHaveBeenCalledWith(
     '/prototype-hub/versions/_deleted/_query',
     expect.anything(),

@@ -5,9 +5,11 @@ import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useResource } from '@/shared/composables/useResource'
 import { usePrototypeList } from './usePrototypeList'
 import { useTask } from '@/shared/composables/useTask'
-import { deleted, saved } from '@/shared/utils/feedback'
+import { deleted } from '@/shared/utils/feedback'
 import { ApiError } from '@/shared/api/errors'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
+import { recycleListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
+import { useSession } from '@/app/stores/session'
 import { t } from '@/shared/i18n'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
@@ -20,9 +22,10 @@ import type {
 export function useProjectDetail() {
   const route = useRoute()
   const router = useRouter()
-  const id = computed(() => String(route.params.id))
+  const id = computed(() => (typeof route.params.id === 'string' ? route.params.id : ''))
   const task = useTask()
-  const trash = ref(route.query.recycle === 'versions')
+  const legacyRecycle = computed(() => route.query.recycle === 'versions')
+  const session = useSession()
   let generation = 0
   const permissions = usePermissions()
   const uploadOpen = ref(false)
@@ -32,7 +35,7 @@ export function useProjectDetail() {
   const membersOpen = ref(false)
   const usage = useResource<VersionUsage | undefined>(
     (signal) =>
-      permissions.can(p.version.query)
+      !!id.value && !legacyRecycle.value && permissions.can(p.version.query)
         ? versionsApi.usage(id.value, { signal, silent: true })
         : Promise.resolve(undefined),
     undefined,
@@ -40,6 +43,8 @@ export function useProjectDetail() {
   const project = shallowRef<Project>()
   const list = usePrototypeList<Version>(
     async (query, options) => {
+      if (!id.value || legacyRecycle.value)
+        return { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
       try {
         const projectId = id.value
         const loaded = await projectsApi.get(projectId, options)
@@ -49,7 +54,7 @@ export function useProjectDetail() {
         if (!projectAllows(loaded, 'manageMembers')) membersOpen.value = false
         // Project administration does not imply permission to query its version contents.
         const versions = permissions.can(p.version.query)
-          ? await (trash.value ? versionsApi.deleted : versionsApi.query)(projectId, query, options)
+          ? await versionsApi.query(projectId, query, options)
           : { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
         if (versions.data.some((version) => version.projectId !== loaded.id))
           throw new Error(t('proto.projectUnavailable'))
@@ -112,16 +117,12 @@ export function useProjectDetail() {
       'noopener,noreferrer',
     )
   }
-  async function changeVersion(key: string, restoring: boolean) {
-    if (
-      !projectAllows(resource.data.value.project, 'edit') ||
-      (restoring && (!trash.value || !permissions.can(p.version.save)))
-    )
-      return
+  async function remove(key: string) {
+    if (!projectAllows(resource.data.value.project, 'edit')) return
     const submitted = generation
     await task.run(async () => {
       try {
-        await (restoring ? versionsApi.restore(key) : versionsApi.remove(key))
+        await versionsApi.remove(key)
       } catch (cause) {
         if (submitted !== generation) return
         // A concurrently deleted version must not leave its old controls available in the list.
@@ -129,45 +130,46 @@ export function useProjectDetail() {
         throw cause
       }
       if (submitted !== generation) return
-      if (restoring) saved()
-      else deleted()
+      deleted()
       await refresh()
     })
   }
-  const remove = (key: string) => changeVersion(key, false)
-  const restore = (key: string) => changeVersion(key, true)
-  watch(
-    trash,
-    () => {
-      generation++
-      task.error.value = ''
-      membersOpen.value = false
-      list.resetScope()
-      void refresh()
-    },
-    { flush: 'sync' },
-  )
   onScopeDispose(() => generation++)
   watch(
-    id,
+    () => [id.value, legacyRecycle.value],
     () => {
       generation++
       task.error.value = ''
-      trash.value = route.query.recycle === 'versions'
       shareVersion.value = undefined
       historyVersion.value = undefined
       uploadOpen.value = false
       membersOpen.value = false
       list.resetScope()
       project.value = undefined
+      if (!id.value) {
+        void refresh()
+        return
+      }
+      if (legacyRecycle.value) {
+        // Old deep links use the actual granted menu URL, and never query deleted data here.
+        const target = permissions.can(p.version.query)
+          ? recycleListLocation(router, session.menus, id.value)
+          : undefined
+        const current = generation
+        // Abort both prior resources even when this compatibility route makes no HTTP request.
+        void refresh().then(() => {
+          if (current === generation && !target)
+            resource.error.value = t('proto.recycleUnavailable')
+        })
+        if (target) void router.replace(target)
+        return
+      }
       void refresh()
     },
     { immediate: true, flush: 'sync' },
   )
   return {
     resource,
-    trash,
-    restore,
     usage,
     loadUsage,
     refresh,

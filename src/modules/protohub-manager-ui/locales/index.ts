@@ -137,7 +137,16 @@ export const protoLocales = {
     activeProjects: '项目',
     activeVersions: '版本',
     recycleBin: '回收站',
-    projectRestored: '项目已恢复，版本需在该项目的回收站中单独恢复。',
+    projectRecycleBin: '项目回收站',
+    versionRecycleBin: '版本回收站',
+    projectIdentifier: '所属项目标识',
+    versionRecycleScope:
+      '仅显示活动项目中有编辑权限的已删除版本。若项目也已删除，请先在项目回收站恢复项目。',
+    recycleProjectFilter: '仅查看项目：{id}',
+    allRecycleProjects: '查看全部授权项目',
+    recycleFilterInvalid: '项目筛选无效，请清除筛选后重试。',
+    recycleUnavailable: '回收站不可用或无访问权限，请联系管理员分配菜单和查询权限。',
+    projectRestored: '项目已恢复，其版本需在版本回收站中单独恢复。',
     openVersionRecycle: '查看该项目的版本回收站',
     listMode: '列表范围',
     restore: '恢复',
@@ -145,7 +154,7 @@ export const protoLocales = {
     recycleHint:
       '删除后保留 30 天，到期不可恢复，并自动永久清理数据和文件。恢复会核对当前权限和额度，原分享及预览授权不恢复。',
     projectRestoreConfirm:
-      '确认恢复该项目？保留原项目标识并占用一个项目名额，仅恢复项目，版本需进入项目回收站单独恢复。原分享和预览授权仍失效。',
+      '确认恢复该项目？保留原项目标识并占用一个项目名额，仅恢复项目，版本需进入版本回收站单独恢复。原分享和预览授权仍失效。',
     versionRestoreConfirm:
       '确认恢复该版本？保留原版本及修订，占用一个版本名额。原分享和预览授权仍失效，请重新授权预览或创建分享。',
 
@@ -488,8 +497,18 @@ export const protoLocales = {
     activeProjects: 'Projects',
     activeVersions: 'Versions',
     recycleBin: 'Recycle bin',
+    projectRecycleBin: 'Project recycle bin',
+    versionRecycleBin: 'Version recycle bin',
+    projectIdentifier: 'Project identifier',
+    versionRecycleScope:
+      'Only deleted versions in active projects you can edit are shown. If the project is deleted too, restore it from the project recycle bin first.',
+    recycleProjectFilter: 'Showing project: {id}',
+    allRecycleProjects: 'Show all authorized projects',
+    recycleFilterInvalid: 'The project filter is invalid. Clear the filter and retry.',
+    recycleUnavailable:
+      'The recycle bin is unavailable or access is denied. Ask an administrator to grant its menu and query permissions.',
     projectRestored:
-      'Project restored. Restore its versions separately from the project recycle bin.',
+      'Project restored. Restore its versions separately from the version recycle bin.',
     openVersionRecycle: 'Open this project’s version recycle bin',
     listMode: 'List scope',
     restore: 'Restore',
@@ -497,7 +516,7 @@ export const protoLocales = {
     recycleHint:
       'Deleted data is retained for 30 days, then becomes unrestorable and is automatically purged with its files. Restore checks current permissions and limits; old grants stay invalid.',
     projectRestoreConfirm:
-      'Restore this project with its original identity? This uses one project slot and restores only the project. Restore its versions separately from the project recycle bin. Old share and preview grants remain invalid.',
+      'Restore this project with its original identity? This uses one project slot and restores only the project. Restore its versions separately from the version recycle bin. Old share and preview grants remain invalid.',
     versionRestoreConfirm:
       'Restore this version and its revisions with their original identities? This uses one version slot. Old share and preview grants remain invalid; authorize a new preview or create a new share.',
 

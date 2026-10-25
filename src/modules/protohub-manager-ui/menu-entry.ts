@@ -3,6 +3,7 @@ import { resolveRegisteredMenuComponent } from '@/shared/router/menu-entry'
 import type { ServerMenu } from '@/shared/auth/types'
 
 export const projectComponentCode = 'prototype-hub/Project'
+export const recycleComponentCode = 'prototype-hub/Recycle'
 export const projectMenuPaths = [
   '/prototype-hub',
   '/prototype-hub/projects',

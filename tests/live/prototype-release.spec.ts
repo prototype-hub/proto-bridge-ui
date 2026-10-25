@@ -1233,15 +1233,18 @@ liveTest(
         )
         owned.versions = owned.versions.filter((entry) => entry !== id)
       }
-      await page.goto(`/prototype-hub/projects/${projectId}`)
-      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
-      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
-      await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.zh.recycleHint)
-      await expect(page.locator('.ant-alert-info')).toContainText('30 天，到期不可恢复')
+      await page.goto(`/prototype-hub/recycle-bin?tab=versions&projectId=${projectId}`)
+      await expect(page.getByRole('tab', { name: '版本回收站', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      await expect(
+        page.locator('.ant-alert-info').filter({ hasText: protoLocales.zh.recycleHint }),
+      ).toContainText('30 天，到期不可恢复')
       const row = page
         .getByRole('row')
         .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
-        .filter({ has: page.getByRole('cell', { name: '2 个修订', exact: true }) })
+        .filter({ has: page.getByRole('cell', { name: projectId, exact: true }) })
       const restoringVersion = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}/_restore`,
@@ -1315,9 +1318,12 @@ liveTest(
       ).toBe(404)
       await page.getByRole('button', { name: '查看该项目的版本回收站', exact: true }).click()
       await expect(page).toHaveURL(
-        new RegExp(`/prototype-hub/projects/${projectId}\\?recycle=versions$`),
+        new RegExp(`/prototype-hub/recycle-bin\\?tab=versions&projectId=${projectId}$`),
       )
-      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      await expect(page.getByRole('tab', { name: '版本回收站', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
       const secondRestore = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}/_restore`,

@@ -5,6 +5,7 @@ import {
   componentAliases,
   menuPathMap,
   projectComponentCode,
+  recycleComponentCode,
   resolveProjectMenuComponent,
 } from '../menu-entry'
 import { resolveMenuEntryCode } from '@/shared/router/menu-entry'
@@ -42,4 +43,35 @@ export function projectListLocation(
     )
   })
   return { path: registered?.path || '/', query: { ...query } }
+}
+
+/** Only a currently granted, registered menu can host recovery; never synthesize a bypass route. */
+export function recycleListLocation(
+  router: Pick<Router, 'getRoutes'>,
+  menus: ServerMenu[],
+  projectId?: string,
+) {
+  function menuIds(nodes: ServerMenu[], parentPath = ''): string[] {
+    return nodes.flatMap((menu) => {
+      if (menu.granted === false || menu.options?.show === false) return []
+      const path = menu.url?.startsWith('/')
+        ? menu.url
+        : `${parentPath}/${menu.url || ''}`.replace(/\/+/g, '/')
+      return [
+        ...(resolveProjectMenuComponent(menu, path)?.code === recycleComponentCode
+          ? [menu.id]
+          : []),
+        ...menuIds(menu.children || [], path),
+      ]
+    })
+  }
+  const names = new Set(menuIds(menus).map((id) => `menu:${id}`))
+  const registered = router
+    .getRoutes()
+    .find((route) => !route.aliasOf && names.has(String(route.name)))
+  if (!registered) return undefined
+  return {
+    path: registered.path,
+    query: { tab: 'versions', ...(projectId ? { projectId } : {}) },
+  }
 }

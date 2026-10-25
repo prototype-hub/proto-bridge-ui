@@ -48,3 +48,19 @@ it('keeps deleted version scope in the encoded HTTP query and encodes both resto
     '/prototype-hub/versions/v%2Fid/_restore',
   ])
 })
+
+it('omits the optional project filter entirely for global recovery through the real Axios client', async () => {
+  const adapter = vi.fn<AxiosAdapter>(async (config) => ({
+    config,
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    data: { success: true, result: { data: [], total: 0, pageIndex: 0, pageSize: 20 } },
+  }))
+  await versionsApi.deleted(undefined, { pageIndex: 0, pageSize: 20 }, { adapter, silent: true })
+  const config = adapter.mock.calls[0]![0]
+  const url = new URL(axios.getUri(config), 'http://localhost')
+  expect(url.pathname).toBe('/api/prototype-hub/versions/_deleted/_query')
+  expect(url.search).toBe('')
+  expect(JSON.parse(config.data as string)).toEqual({ pageIndex: 0, pageSize: 20 })
+})
