@@ -17,8 +17,13 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage, ReviewAnchor } from '@/modules/protohub-manager-ui/types'
+import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
+import ReviewThreadsOverviewDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsOverviewDrawer.vue'
+import {
+  useReviewThreadsOverview,
+  type ReviewOverviewScope,
+} from '@/modules/protohub-manager-ui/hooks/useReviewThreadsOverview'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 const { t } = useI18n()
@@ -30,13 +35,15 @@ const ReviewIdentityDrawer = defineAsyncComponent(
 )
 const identityOpen = ref(false),
   feedbackOpen = ref(false),
+  overviewOpen = ref(false),
+  returnToOverview = ref(false),
   returnToFeedback = ref(false),
   drawing = ref(false)
 const selectedPage = ref<ReviewPage>()
 const share = computed(() => resource.data.value.share)
 const identity = useReviewIdentity(
   share,
-  computed(() => identityOpen.value || feedbackOpen.value || drawing.value),
+  computed(() => identityOpen.value || feedbackOpen.value || overviewOpen.value || drawing.value),
   invitation.invitation,
 )
 const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
@@ -64,6 +71,34 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, identity.context, threadLocation)
+const overviewScope = computed<ReviewOverviewScope | undefined>(() =>
+  resource.data.value.context && share.value?.revisionId && share.value.revisionMode === 'fixed'
+    ? {
+        kind: 'public',
+        share: share.value,
+        revisionId: share.value.revisionId,
+        pendingInvitation: invitation.invitation.value !== undefined,
+      }
+    : undefined,
+)
+const overview = useReviewThreadsOverview(overviewScope, overviewOpen, identity.context)
+const navigationBlocked = computed(
+  () => feedback.busy.value || feedback.assignment.busy.value || drawing.value,
+)
+const navigationGuarded = computed(
+  () =>
+    !!feedback.text.value ||
+    !!feedback.imageFile.value ||
+    !!feedback.anchor.value ||
+    feedback.hasPendingRequest.value ||
+    feedback.assignment.editing.value ||
+    feedback.assignment.unknown.value,
+)
+async function viewOverview(thread: ReviewThread) {
+  if (navigationBlocked.value || !overview.readable.value || !resource.data.value.context) return
+  if (await threadLocation.view(thread, resource.data.value.context)) overviewOpen.value = false
+  else overview.error.value = t('proto.feedbackInvalidTarget')
+}
 const workspace = ref<InstanceType<typeof PrototypeWorkspace>>()
 function captureAnchor(shape: ReviewAnchor['shape']) {
   if (!feedback.isPublic.value || feedback.selectedId.value || feedback.busy.value) return
@@ -90,19 +125,21 @@ function locateAnchor(anchor: ReviewAnchor) {
 watch(feedback.anchorEpoch, () => {
   drawing.value = false
 })
-function authenticate() {
+function authenticate(fromOverview = false) {
   identityOpen.value = true
-  feedbackOpen.value = false
+  if (!fromOverview) feedbackOpen.value = false
+  returnToOverview.value = fromOverview
   returnToFeedback.value = true
   void identity.load()
 }
 function returnFeedback() {
-  feedbackOpen.value = true
+  if (!returnToOverview.value) feedbackOpen.value = true
   identityOpen.value = false
   returnToFeedback.value = false
 }
 function openIdentity() {
   returnToFeedback.value = false
+  returnToOverview.value = false
   identityOpen.value = true
 }
 
@@ -115,7 +152,7 @@ watch(
     resource.data.value.share?.reviewUnverifiedAllowed,
   ],
   () => {
-    identityOpen.value = feedbackOpen.value = drawing.value = false
+    identityOpen.value = feedbackOpen.value = overviewOpen.value = drawing.value = false
     selectedPage.value = undefined
   },
 )
@@ -169,6 +206,12 @@ watch(
             @click="feedbackOpen = true"
             >{{ t('proto.feedback') }}</a-button
           >
+          <a-button
+            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
+            :disabled="drawing"
+            @click="overviewOpen = true"
+            >{{ t('proto.feedbackOverview') }}</a-button
+          >
         </template></prototype-workspace
       >
       <main v-else-if="resource.data.value.share" class="public-shell">
@@ -205,6 +248,7 @@ watch(
     v-if="identityOpen"
     :state="identity"
     :return-to-feedback="returnToFeedback"
+    :return-to-overview="returnToOverview"
     :open="identityOpen"
     :invitation="invitation.invitation.value"
     @close="identityOpen = false"
@@ -213,14 +257,26 @@ watch(
     @abandon-invitation="invitation.abandon"
   />
   <review-threads-drawer
-    :open="feedbackOpen"
+    :open="feedbackOpen && !overviewOpen && !identityOpen"
     :page="selectedPage"
     :state="feedback"
     :identity-loading="identity.loading.value"
     @close="threadLocation.close"
-    @authenticate="authenticate"
+    @authenticate="authenticate()"
     @capture-anchor="captureAnchor"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
+    @overview="overviewOpen = true"
+  />
+  <review-threads-overview-drawer
+    :open="overviewOpen && !identityOpen"
+    :state="overview"
+    :identity-loading="identity.loading.value"
+    :blocked="navigationBlocked"
+    :guarded="navigationGuarded"
+    :current-thread-id="feedback.selectedId.value"
+    @close="overviewOpen = false"
+    @authenticate="authenticate(true)"
+    @view="viewOverview"
   />
 </template>

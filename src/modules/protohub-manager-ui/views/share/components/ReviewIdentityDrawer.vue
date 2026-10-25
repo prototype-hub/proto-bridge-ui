@@ -18,6 +18,7 @@ const props = defineProps<{
   open: boolean
   invitation?: string | null
   returnToFeedback?: boolean
+  returnToOverview?: boolean
 }>()
 const emit = defineEmits<{ close: []; invitationUsed: []; abandonInvitation: []; feedback: [] }>()
 const { t } = useI18n()
@@ -232,7 +233,7 @@ async function verify() {
         v-if="returnToFeedback"
         class="review-invitation-abandon"
         @click="emit('feedback')"
-        >{{ t('proto.feedbackReturn') }}</a-button
+        >{{ t(returnToOverview ? 'proto.overviewReturn' : 'proto.feedbackReturn') }}</a-button
       >
       <a-button @click="emit('close')">{{ t('common.close') }}</a-button>
     </section>

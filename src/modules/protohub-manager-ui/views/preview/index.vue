@@ -11,8 +11,13 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage, ReviewAnchor } from '@/modules/protohub-manager-ui/types'
+import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
+import ReviewThreadsOverviewDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsOverviewDrawer.vue'
+import {
+  useReviewThreadsOverview,
+  type ReviewOverviewScope,
+} from '@/modules/protohub-manager-ui/hooks/useReviewThreadsOverview'
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
@@ -24,6 +29,7 @@ const route = useRoute(),
   session = useSession(),
   permissions = usePermissions()
 const feedbackOpen = ref(false),
+  overviewOpen = ref(false),
   selectedPage = ref<ReviewPage>()
 const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
   data.value &&
@@ -47,6 +53,33 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, threadLocation)
+const overviewScope = computed<ReviewOverviewScope | undefined>(() =>
+  data.value?.revisionId && project.value
+    ? {
+        kind: 'member',
+        revisionId: data.value.revisionId,
+        versionId: String(route.params.versionId),
+        project: project.value,
+        actorId: session.user?.id || '',
+      }
+    : undefined,
+)
+const overview = useReviewThreadsOverview(overviewScope, overviewOpen)
+const navigationBlocked = computed(() => feedback.busy.value || feedback.assignment.busy.value)
+const navigationGuarded = computed(
+  () =>
+    !!feedback.text.value ||
+    !!feedback.imageFile.value ||
+    !!feedback.anchor.value ||
+    feedback.hasPendingRequest.value ||
+    feedback.assignment.editing.value ||
+    feedback.assignment.unknown.value,
+)
+async function viewOverview(thread: ReviewThread) {
+  if (navigationBlocked.value || !overview.readable.value || !data.value) return
+  if (await threadLocation.view(thread, data.value)) overviewOpen.value = false
+  else overview.error.value = t('proto.feedbackInvalidTarget')
+}
 const workspace = ref<InstanceType<typeof PrototypeWorkspace>>()
 function locateAnchor(anchor: ReviewAnchor) {
   if (
@@ -92,6 +125,10 @@ function locateAnchor(anchor: ReviewAnchor) {
             :disabled="!selectedPage"
             @click="feedbackOpen = true"
             >{{ t('proto.feedback') }}</a-button
+          ><a-button
+            v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
+            @click="overviewOpen = true"
+            >{{ t('proto.feedbackOverview') }}</a-button
           ></template
         >
       </prototype-workspace></load-state
@@ -99,12 +136,28 @@ function locateAnchor(anchor: ReviewAnchor) {
   </div>
   <review-threads-drawer
     :open="
-      feedbackOpen && !!data && projectAllows(project, 'edit') && permissions.can(p.version.query)
+      feedbackOpen &&
+      !overviewOpen &&
+      !!data &&
+      projectAllows(project, 'edit') &&
+      permissions.can(p.version.query)
     "
     :page="selectedPage"
     :state="feedback"
     @close="threadLocation.close"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
+    @overview="overviewOpen = true"
+  />
+  <review-threads-overview-drawer
+    :open="
+      overviewOpen && !!data && projectAllows(project, 'edit') && permissions.can(p.version.query)
+    "
+    :state="overview"
+    :blocked="navigationBlocked"
+    :guarded="navigationGuarded"
+    :current-thread-id="feedback.selectedId.value"
+    @close="overviewOpen = false"
+    @view="viewOverview"
   />
 </template>

@@ -28,6 +28,7 @@ const emit = defineEmits<{
   copyThread: [event: MouseEvent]
   captureAnchor: [shape: ReviewAnchor['shape']]
   locateAnchor: [anchor: ReviewAnchor]
+  overview: []
 }>()
 const { t } = useI18n()
 const state = props.state
@@ -60,6 +61,7 @@ function selectImage(event: Event) {
       :aria-label="t('proto.feedback')"
     >
       <a-alert type="info" show-icon :message="t('proto.feedbackPageHint')" />
+      <a-button @click="emit('overview')">{{ t('proto.feedbackOverview') }}</a-button>
       <p class="feedback-page">
         <strong>{{ page?.name }}</strong
         ><span>{{ page?.path }}</span>
