@@ -7,6 +7,7 @@ import {
   prepareFolderArchive,
   type FolderArchiveProgress,
   type FolderArchiveResult,
+  type FolderPathIssue,
 } from '@/modules/protohub-manager-ui/utils/folder-archive'
 import { t } from '@/shared/i18n'
 import { ApiError } from '@/shared/api/errors'
@@ -28,6 +29,8 @@ export function useUpload(
   const form = reactive({ versionName: '', description: '' })
   const file = ref<File>()
   const folder = ref<Omit<FolderArchiveResult, 'file'>>()
+  const folderPathIssues = ref<readonly FolderPathIssue[]>([])
+  const folderPathIssueCount = ref(0)
   const packingProgress = ref<FolderArchiveProgress>({ phase: 'reading', percent: 0 })
   const progress = ref(0)
   const outcomeUnknown = ref(false)
@@ -42,6 +45,9 @@ export function useUpload(
     controller?.abort()
     controller = undefined
     phase.value = 'idle'
+    task.error.value = ''
+    folderPathIssues.value = []
+    folderPathIssueCount.value = 0
   }
 
   const target = [
@@ -75,6 +81,8 @@ export function useUpload(
   function clearSelection() {
     file.value = undefined
     folder.value = undefined
+    folderPathIssues.value = []
+    folderPathIssueCount.value = 0
     task.error.value = ''
     outcomeUnknown.value = false
     progress.value = 0
@@ -117,9 +125,14 @@ export function useUpload(
       }
     } catch (cause) {
       if (generation !== current || disposed || abort.signal.aborted) return
-      task.error.value = t(
-        `proto.folderErrors.${cause instanceof FolderArchiveError ? cause.code : 'failed'}`,
-      )
+      if (cause instanceof FolderArchiveError && cause.issues.length) {
+        folderPathIssues.value = cause.issues
+        folderPathIssueCount.value = cause.totalIssueCount
+        task.error.value = t('proto.folderPathIssues', { count: cause.totalIssueCount })
+      } else
+        task.error.value = t(
+          `proto.folderErrors.${cause instanceof FolderArchiveError ? cause.code : 'failed'}`,
+        )
     } finally {
       if (generation === current && !disposed) {
         controller = undefined
@@ -217,6 +230,8 @@ export function useUpload(
     form,
     file,
     folder,
+    folderPathIssues,
+    folderPathIssueCount,
     phase,
     packingProgress,
     progress,

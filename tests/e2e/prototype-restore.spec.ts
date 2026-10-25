@@ -57,8 +57,12 @@ test('restores the same parent and child identities separately while old grants 
   await request.delete(`${origin}/api/prototype-hub/versions/v1`, { headers })
   await request.delete(`${origin}/api/prototype-hub/projects/p1`, { headers })
   await login(page)
-  await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+  await page
+    .getByRole('complementary', { name: '二三级菜单' })
+    .getByRole('menuitem', { name: '回收站', exact: true })
+    .click()
+  await expect(page).toHaveURL(/\/prototype-hub\/recycle-bin$/)
+  await expect(page.locator('.prototype-list-mode')).toHaveCount(0)
   const card = page.locator('.project-card').filter({ hasText: 'Contract project' })
   await expect(card.getByRole('button', { name: '详情', exact: true })).toHaveCount(0)
   await card.getByRole('button', { name: '恢复', exact: true }).click()
@@ -83,15 +87,8 @@ test('restores the same parent and child identities separately while old grants 
   expect((await request.get(`${origin}/api/prototype-hub/versions/v1`, { headers })).status()).toBe(
     404,
   )
-  await page.locator('.prototype-list-mode').getByText('项目', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: '项目', exact: true })).toBeChecked()
-  await page
-    .locator('.project-card')
-    .filter({ hasText: 'Contract project' })
-    .getByRole('button', { name: '详情', exact: true })
-    .click()
-  await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(0)
-  await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+  await page.getByRole('button', { name: '查看该项目的版本回收站', exact: true }).click()
+  await expect(page).toHaveURL(/\/prototype-hub\/projects\/p1\?recycle=versions$/)
   await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
   const row = page
     .getByRole('row')
@@ -207,8 +204,10 @@ for (const kind of ['projects', 'versions'] as const)
     if (kind === 'projects')
       await request.delete(`${origin}/api/prototype-hub/projects/p1`, { headers })
     await login(page)
-    if (kind === 'versions') await page.goto('prototype-hub/projects/p1')
-    await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+    if (kind === 'versions') {
+      await page.goto('prototype-hub/projects/p1')
+      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+    } else await page.goto('prototype-hub/recycle-bin')
     await expect(page.locator('.ant-alert-info')).toContainText(protoLocales.zh.recycleHint)
     const row =
       kind === 'projects'

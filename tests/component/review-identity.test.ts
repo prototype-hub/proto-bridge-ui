@@ -176,6 +176,28 @@ it.each([429, 503, 403])(
     if (status === 403) expect(state.context.value).toBeUndefined()
   },
 )
+it.each([
+  ['PROTOTYPE_HUB_REVIEW_ORIGIN_DENIED', 'reviewOriginDenied'],
+  ['PROTOTYPE_HUB_REVIEW_COOKIE_REQUIRED', 'reviewCookieRequired'],
+  ['PROTOTYPE_HUB_REVIEW_CSRF_INVALID', 'reviewCsrfChanged'],
+] as const)(
+  'distinguishes %s from an expired share and permits an explicit reload',
+  async (code, key) => {
+    vi.mocked(reviewApi.context).mockRejectedValueOnce(
+      new ApiError('do not expose request headers', 403, code),
+    )
+    const { state } = setup()
+    await flushPromises()
+    expect(state.error.value).toBe(protoLocales.zh[key])
+    expect(state.error.value).not.toBe(protoLocales.zh.reviewAccessChanged)
+    expect(state.context.value).toBeUndefined()
+    expect(reviewApi.context).toHaveBeenCalledOnce()
+    expect(reviewApi.challenge).not.toHaveBeenCalled()
+    await state.load()
+    expect(state.context.value?.csrfToken).toBe('csrf')
+    expect(state.error.value).toBe('')
+  },
+)
 it('expires an authenticated shell identity and stops timers after disposal', async () => {
   vi.useFakeTimers()
   vi.mocked(reviewApi.context).mockResolvedValueOnce({

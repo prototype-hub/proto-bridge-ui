@@ -30,7 +30,7 @@ function paged<T extends { id: string; createdAt: number }>(
   }
 }
 async function sort(page: Page, label: string) {
-  await page.locator('.prototype-list-toolbar .ant-select-selector').click()
+  await page.locator('.prototype-list-order .ant-select-selector').click()
   await page
     .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
     .getByText(label, { exact: true })
@@ -84,7 +84,7 @@ test('project queries page on the server, submit literal names and clamp after d
     .poll(() => queries.at(-1))
     .toMatchObject({ pageIndex: 0, sortBy: 'name', sortOrder: 'asc' })
   const count = queries.length
-  const input = page.getByRole('textbox', { name: '搜索名称', exact: true })
+  const input = page.getByRole('region', { name: '搜索名称', exact: true }).getByRole('textbox')
   await input.fill('  Project 01  ')
   expect(queries.length).toBe(count)
   await input.press('Enter')
@@ -143,7 +143,7 @@ test('version filters and size changes use paged results inside the current proj
   await expect
     .poll(() => queries.at(-1))
     .toMatchObject({ pageIndex: 0, sortBy: 'createTime', sortOrder: 'asc' })
-  const input = page.getByRole('textbox', { name: '搜索名称', exact: true })
+  const input = page.getByRole('region', { name: '搜索名称', exact: true }).getByRole('textbox')
   await input.fill('100%_\\中文')
   await input.press('Enter')
   await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(3)

@@ -59,7 +59,7 @@ async function preview(
         .getByRole('row')
         .filter({ has: page.getByRole('cell', { name: versionName, exact: true }) })
     : page
-  await scope.getByRole('button', { name: 'Preview', exact: true }).first().click()
+  await scope.getByRole('button', { name: '预览', exact: true }).first().click()
   const popup = await opened
   const frame = popup.frameLocator('.frame-stage > iframe')
   await expect(frame.getByRole('heading', { name: heading, exact: true })).toBeVisible()
@@ -473,7 +473,7 @@ liveTest(
         .waitForEvent('request', (outgoing) =>
           outgoing.url().endsWith(`/revisions/${firstRevisionId}/preview-session`),
         )
-      await old.getByRole('button', { name: 'Preview', exact: true }).click()
+      await old.getByRole('button', { name: '预览', exact: true }).click()
       const historical = await opening
       await historical.waitForURL(
         (url) =>
@@ -544,12 +544,39 @@ liveTest(
         animations: 'disabled',
         fullPage: true,
       })
+      const reportWrapper = page.locator('.revision-quality-drawer .ant-drawer-content-wrapper')
+      const desktopBounds = await reportWrapper.boundingBox()
       await page.setViewportSize({ width: 390, height: 844 })
+      const resizeStart = await reportWrapper.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return {
+          x: bounds.x,
+          width: bounds.width,
+          right: bounds.right,
+          transition: getComputedStyle(element).transition,
+        }
+      })
+      // Drawer transitions width as well as position; measure after the open drawer finishes resizing.
+      await expect
+        .poll(async () => {
+          const bounds = await reportWrapper.boundingBox()
+          return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390
+        })
+        .toBe(true)
       const button = await dialog
         .getByRole('button', { name: protoLocales.zh.qualityDownload, exact: true })
         .boundingBox()
       expect(button!.x).toBeGreaterThanOrEqual(0)
       expect(button!.x + button!.width).toBeLessThanOrEqual(390)
+      await testInfo.attach('live-quality-resize-layout', {
+        body: JSON.stringify({
+          desktopBounds,
+          resizeStart,
+          settled: await reportWrapper.boundingBox(),
+          download: button,
+        }),
+        contentType: 'application/json',
+      })
       await page.screenshot({
         path: testInfo.outputPath('live-revision-quality-mobile.png'),
         animations: 'disabled',
@@ -988,7 +1015,9 @@ liveTest(
             outgoing.postDataJSON().keyword === keyword
           )
         })
-      const projectSearch = page.getByRole('textbox', { name: '搜索名称', exact: true })
+      const projectSearch = page
+        .getByRole('region', { name: '搜索名称', exact: true })
+        .getByRole('textbox')
       await projectSearch.fill(`${name} 2`)
       const searchedProject = queryResponse('/api/prototype-hub/projects/_query', `${name} 2`)
       await projectSearch.press('Enter')
@@ -1007,7 +1036,9 @@ liveTest(
       await expect(page.locator('.project-card')).toHaveCount(5)
       await page.getByRole('link', { name: `详情：${name}`, exact: true }).click()
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
-      const versionSearch = page.getByRole('textbox', { name: '搜索名称', exact: true })
+      const versionSearch = page
+        .getByRole('region', { name: '搜索名称', exact: true })
+        .getByRole('textbox')
       await versionSearch.fill('Browser replacement')
       const searchedVersions = queryResponse(
         '/api/prototype-hub/versions/_query',
@@ -1022,7 +1053,7 @@ liveTest(
       expect(versionPage).toMatchObject({ total: 1, pageIndex: 0 })
       expect(versionPage.data.map((row) => row.id)).toEqual([versionId])
       await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(1)
-      await page.locator('.prototype-list-toolbar .ant-select-selector').click()
+      await page.locator('.prototype-list-order .ant-select-selector').click()
       const sorted = queryResponse('/api/prototype-hub/versions/_query', 'Browser replacement')
       await page
         .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
@@ -1256,9 +1287,9 @@ liveTest(
       )
       owned.projects = owned.projects.filter((id) => id !== projectId)
       expect((await request.get(freshSession.previewUrl)).status()).toBe(403)
-      await page.goto('/prototype-hub')
-      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
-      await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
+      await page.goto('/prototype-hub/recycle-bin')
+      await expect(page.getByRole('heading', { name: '回收站', exact: true })).toBeVisible()
+      await expect(page.locator('.prototype-list-mode')).toHaveCount(0)
       const card = page
         .locator('.project-card')
         .filter({ hasText: name })
@@ -1282,9 +1313,10 @@ liveTest(
           await request.get(`/api/prototype-hub/versions/${versionId}`, { headers: owned.headers })
         ).status(),
       ).toBe(404)
-      await page.goto(`/prototype-hub/projects/${projectId}`)
-      await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(0)
-      await page.locator('.prototype-list-mode').getByText('回收站', { exact: true }).click()
+      await page.getByRole('button', { name: '查看该项目的版本回收站', exact: true }).click()
+      await expect(page).toHaveURL(
+        new RegExp(`/prototype-hub/projects/${projectId}\\?recycle=versions$`),
+      )
       await expect(page.getByRole('radio', { name: '回收站', exact: true })).toBeChecked()
       const secondRestore = page.waitForResponse(
         (response) =>

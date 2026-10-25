@@ -22,7 +22,7 @@ export function useProjectDetail() {
   const router = useRouter()
   const id = computed(() => String(route.params.id))
   const task = useTask()
-  const trash = ref(false)
+  const trash = ref(route.query.recycle === 'versions')
   let generation = 0
   const permissions = usePermissions()
   const uploadOpen = ref(false)
@@ -153,7 +153,7 @@ export function useProjectDetail() {
     () => {
       generation++
       task.error.value = ''
-      trash.value = false
+      trash.value = route.query.recycle === 'versions'
       shareVersion.value = undefined
       historyVersion.value = undefined
       uploadOpen.value = false

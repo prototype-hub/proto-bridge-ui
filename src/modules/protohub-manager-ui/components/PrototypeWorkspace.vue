@@ -53,14 +53,16 @@ function select(path: string, id?: string, page?: PrototypePage) {
         <a-button :aria-label="toggleTitle" :title="toggleTitle" @click="navVisible = !navVisible"
           ><menu-fold-outlined v-if="navVisible" /><menu-unfold-outlined v-else /></a-button
         ><strong :title="context.title">{{ context.title }}</strong
-        ><span class="muted">{{ context.versionName }}</span>
+        ><span class="muted" :title="context.versionName">{{ context.versionName }}</span>
       </div>
-      <a-radio-group v-model:value="mode" button-style="solid"
-        ><a-radio-button value="preview">{{ t('proto.preview') }}</a-radio-button
-        ><a-radio-button value="inspect">{{ t('proto.inspect') }}</a-radio-button></a-radio-group
-      ><a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
-        t('proto.details')
-      }}</a-button>
+      <div class="workspace-controls">
+        <a-radio-group v-model:value="mode" button-style="solid"
+          ><a-radio-button value="preview">{{ t('proto.preview') }}</a-radio-button
+          ><a-radio-button value="inspect">{{ t('proto.inspect') }}</a-radio-button></a-radio-group
+        ><a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
+          t('proto.details')
+        }}</a-button>
+      </div>
       <div class="workspace-current" aria-live="polite">
         <span :title="selectedPage?.path || currentPage"
           >{{ t('proto.currentPage') }}: {{ selectedPage?.name || currentPage }}</span
@@ -75,7 +77,7 @@ function select(path: string, id?: string, page?: PrototypePage) {
           >{{ t('proto.copyPageLink') }}</a-button
         >
       </div>
-      <slot name="actions" />
+      <div class="workspace-actions"><slot name="actions" /></div>
     </header>
     <div
       class="workspace-body"
@@ -138,34 +140,49 @@ function select(path: string, id?: string, page?: PrototypePage) {
 <style scoped>
 .workspace {
   display: grid;
+  min-width: 0;
+  container-type: inline-size;
+  container-name: prototype-workspace;
   height: 100dvh;
   grid-template-rows: auto minmax(0, 1fr);
 }
 .workspace-header {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) auto minmax(200px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
 }
-.workspace-name {
+.workspace-name,
+.workspace-controls,
+.workspace-actions {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 .workspace-name strong {
-  max-width: 35vw;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.workspace-name > .muted {
+  flex-shrink: 1;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-name :deep(.ant-btn),
+.workspace-controls,
+.workspace-actions {
+  flex-shrink: 0;
+}
 .workspace-current {
   display: flex;
-  width: 100%;
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
@@ -182,6 +199,9 @@ function select(path: string, id?: string, page?: PrototypePage) {
 .workspace-current :deep(.ant-btn) {
   margin-inline-start: auto;
   flex: none;
+}
+.workspace-actions:empty {
+  display: none;
 }
 .workspace-body {
   display: grid;
@@ -225,12 +245,51 @@ function select(path: string, id?: string, page?: PrototypePage) {
   left: 50%;
   z-index: var(--layer-overlay);
 }
-@media (width <= 760px) {
+@container prototype-workspace (max-width: 1000px) {
   .workspace-header {
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
   }
-  .workspace-name strong {
-    max-width: 40vw;
+  .workspace-current {
+    grid-row: 2;
+  }
+  .workspace-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .workspace-name > .muted {
+    flex-shrink: 1;
+    max-width: 24vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+@container prototype-workspace (max-width: 760px) {
+  .workspace-header {
+    padding: var(--space-2);
+  }
+  .workspace-name {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .workspace-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .workspace-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .workspace-current {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .workspace-current .current-path {
+    display: none;
+  }
+  .workspace-current > span:first-child {
+    flex: 1 1 0;
   }
   .frame-stage {
     padding: var(--space-1);

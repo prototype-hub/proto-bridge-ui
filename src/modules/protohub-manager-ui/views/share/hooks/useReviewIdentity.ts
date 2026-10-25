@@ -52,6 +52,10 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     if (cause instanceof ApiError) {
       if (cause.status === 429) return t('proto.reviewRateLimited')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_CODE_INVALID') return t('proto.reviewCodeInvalid')
+      if (cause.code === 'PROTOTYPE_HUB_REVIEW_ORIGIN_DENIED') return t('proto.reviewOriginDenied')
+      if (cause.code === 'PROTOTYPE_HUB_REVIEW_COOKIE_REQUIRED')
+        return t('proto.reviewCookieRequired')
+      if (cause.code === 'PROTOTYPE_HUB_REVIEW_CSRF_INVALID') return t('proto.reviewCsrfChanged')
       if (cause.status === 403 || cause.status === 404) return t('proto.reviewAccessChanged')
       if (cause.status === 503) return t('proto.reviewMailUnavailable')
     }

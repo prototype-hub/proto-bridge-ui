@@ -27,7 +27,12 @@ for (const [file, component] of Object.entries(pages)) {
   const directory = match[1]!
   const code = `prototype-hub/${directory[0]!.toUpperCase()}${directory.slice(1)}`
   componentMap[code] = component
-  const paths = directory === 'project' ? projectMenuPaths : [`/prototype-hub/${directory}`]
+  const paths =
+    directory === 'project'
+      ? projectMenuPaths
+      : directory === 'recycle'
+        ? ['/prototype-hub/recycle-bin']
+        : [`/prototype-hub/${directory}`]
   for (const path of paths) menuPathMap[path] = { component, code }
 }
 for (const [alias, canonical] of Object.entries(componentAliases)) {

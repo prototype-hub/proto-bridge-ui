@@ -14,9 +14,33 @@ export type FolderArchiveErrorCode =
   | 'unsupported'
   | 'failed'
 
+export type FolderPathIssueReason =
+  | 'missingRelativePath'
+  | 'invalidCharacters'
+  | 'invalidUnicode'
+  | 'pathTooLong'
+  | 'absolutePath'
+  | 'emptySegment'
+  | 'traversal'
+  | 'hiddenEntry'
+  | 'nameMismatch'
+  | 'mixedRoots'
+  | 'duplicate'
+  | 'fileDirectoryConflict'
+
+export interface FolderPathIssue {
+  path: string
+  reason: FolderPathIssueReason
+  conflictingPath?: string
+}
+
 /** Structured failures let the caller translate messages without exposing worker internals. */
 export class FolderArchiveError extends Error {
-  constructor(public readonly code: FolderArchiveErrorCode) {
+  constructor(
+    public readonly code: FolderArchiveErrorCode,
+    public readonly issues: readonly FolderPathIssue[] = [],
+    public readonly totalIssueCount = issues.length,
+  ) {
     super(code)
     this.name = 'FolderArchiveError'
   }
@@ -51,6 +75,27 @@ function isEntryCandidate(path: string): boolean {
   return parts.length <= 6 && /\.html?$/i.test(path) && !/(?:resources|data|plugins)\//i.test(path)
 }
 
+/** The selected root is stripped, so only inner names must follow the extractor's hidden-file rule. */
+function pathIssue(file: File, encoder: TextEncoder): FolderPathIssueReason | undefined {
+  const relative = file.webkitRelativePath
+  if (!relative || !relative.includes('/')) return 'missingRelativePath'
+  if (relative.startsWith('/') || /^[a-z]:[\\/]/i.test(relative)) return 'absolutePath'
+  if (
+    /[\\:]/.test(relative) ||
+    [...relative].some(
+      (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+    )
+  )
+    return 'invalidCharacters'
+  if (hasUnpairedSurrogate(relative)) return 'invalidUnicode'
+  if (encoder.encode(relative).length > 4096) return 'pathTooLong'
+  const parts = relative.split('/')
+  if (parts.some((part) => !part)) return 'emptySegment'
+  if (parts.some((part) => part === '.' || part === '..')) return 'traversal'
+  if (parts.slice(1).some((part) => part.startsWith('.'))) return 'hiddenEntry'
+  if (parts.at(-1) !== file.name) return 'nameMismatch'
+}
+
 /**
  * Validate all selected files before reading bytes. Strip exactly the selected outer directory,
  * never skip hidden/invalid files: a partial export could upload successfully with missing resources.
@@ -61,49 +106,67 @@ export function buildFolderManifest(files: readonly File[]): FolderManifest {
   if (files.every((file) => !file.webkitRelativePath)) throw new FolderArchiveError('unsupported')
 
   const entries: FolderManifestEntry[] = []
-  const paths = new Set<string>()
-  const directories = new Set<string>()
+  const paths = new Map<string, string>()
+  const directories = new Map<string, string>()
+  const issues: FolderPathIssue[] = []
+  let totalIssueCount = 0
+  // Keep the complete count without flooding the dialog with a large invalid export.
+  const addIssue = (issue: FolderPathIssue) => {
+    totalIssueCount++
+    if (issues.length < 20) issues.push(issue)
+  }
   const encoder = new TextEncoder()
   let rootName: string | undefined
   let totalBytes = 0
+  let tooLarge = false
   let hasEntry = false
   for (const file of files) {
     const relative = file.webkitRelativePath
-    if (
-      !relative ||
-      /[\\:]/.test(relative) ||
-      [...relative].some(
-        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
-      ) ||
-      hasUnpairedSurrogate(relative) ||
-      encoder.encode(relative).length > 4096
-    )
-      throw new FolderArchiveError('invalidPath')
+    const reason = pathIssue(file, encoder)
+    if (reason) {
+      addIssue({ path: relative || file.name, reason })
+      continue
+    }
     const parts = relative.split('/')
-    if (
-      parts.length < 2 ||
-      parts.some((part) => !part || part.startsWith('.')) ||
-      parts[parts.length - 1] !== file.name
-    )
-      throw new FolderArchiveError('invalidPath')
     rootName ??= parts[0]
-    if (parts[0] !== rootName) throw new FolderArchiveError('invalidPath')
+    if (parts[0] !== rootName) {
+      addIssue({ path: relative, reason: 'mixedRoots' })
+      continue
+    }
 
     const path = parts.slice(1).join('/')
-    if (paths.has(path) || directories.has(path)) throw new FolderArchiveError('invalidPath')
-    for (let index = 1; index < parts.length - 1; index++) {
-      const parent = parts.slice(1, index + 1).join('/')
-      if (paths.has(parent)) throw new FolderArchiveError('invalidPath')
-      directories.add(parent)
+    const conflictingPath = paths.get(path) ?? directories.get(path)
+    if (conflictingPath !== undefined) {
+      addIssue({
+        path: relative,
+        reason: paths.has(path) ? 'duplicate' : 'fileDirectoryConflict',
+        conflictingPath,
+      })
+      continue
     }
-    paths.add(path)
+    const parents = parts.slice(1, -1).map((_, index) => parts.slice(1, index + 2).join('/'))
+    const parentFile = parents.find((parent) => paths.has(parent))
+    if (parentFile !== undefined) {
+      addIssue({
+        path: relative,
+        reason: 'fileDirectoryConflict',
+        conflictingPath: paths.get(parentFile),
+      })
+      continue
+    }
+    parents.forEach((parent) => {
+      if (!directories.has(parent)) directories.set(parent, relative)
+    })
+    paths.set(path, relative)
     if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > FOLDER_LIMITS.maxFileBytes)
-      throw new FolderArchiveError('tooLarge')
+      tooLarge = true
     totalBytes += file.size
-    if (totalBytes > FOLDER_LIMITS.maxTotalBytes) throw new FolderArchiveError('tooLarge')
+    if (totalBytes > FOLDER_LIMITS.maxTotalBytes) tooLarge = true
     hasEntry ||= isEntryCandidate(path)
     entries.push({ path, file })
   }
+  if (totalIssueCount) throw new FolderArchiveError('invalidPath', issues, totalIssueCount)
+  if (tooLarge) throw new FolderArchiveError('tooLarge')
   if (!hasEntry) throw new FolderArchiveError('noHtml')
   // Use code-unit order, not the user's locale or directory enumeration order, for stable ZIP bytes.
   entries.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))

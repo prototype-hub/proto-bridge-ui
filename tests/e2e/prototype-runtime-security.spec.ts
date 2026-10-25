@@ -70,7 +70,7 @@ test('prototype and nested pages execute scripts without access to platform stor
     'referrerpolicy',
     'no-referrer',
   )
-  await page.getByText('Inspect', { exact: true }).click()
+  await page.getByText('检查', { exact: true }).click()
   await frame.getByRole('button', { name: 'Inspect main', exact: true }).click()
   await expect(page.getByText('BUTTON#main-target', { exact: true })).toBeVisible()
   await nested.getByRole('button', { name: 'Inspect nested', exact: true }).click()
@@ -81,7 +81,7 @@ test('an unrelated opaque iframe cannot forge inspector results or clear a selec
   page,
 }) => {
   await page.goto('share/open')
-  await page.getByText('Inspect', { exact: true }).click()
+  await page.getByText('检查', { exact: true }).click()
   await page
     .frameLocator('.frame-stage > iframe')
     .getByRole('button', { name: 'Inspect main', exact: true })

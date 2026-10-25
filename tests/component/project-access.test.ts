@@ -273,7 +273,7 @@ it('shows viewer preview while hiding upload, replacement, deletion, shares and 
       : original(path, ...args),
   )
   const { wrapper } = await detailPage(() => true, true)
-  expect(wrapper.find('button[aria-label="Preview"]').exists()).toBe(true)
+  expect(wrapper.find('button[aria-label="预览"]').exists()).toBe(true)
   for (const label of ['上传新修订', '删除', '分享管理'])
     expect(wrapper.find(`button[aria-label="${label}"]`).exists()).toBe(false)
   expect(wrapper.text()).not.toContain('上传版本')
@@ -642,7 +642,7 @@ it('keeps legacy versions visible but disables content actions until administrat
   )
   const { wrapper } = await detailPage(() => true, true)
   expect(wrapper.text()).toContain(protoLocales.zh.revisionMigrationRequired)
-  for (const label of ['Preview', '上传新修订', '分享管理', '历史修订'])
+  for (const label of ['预览', '上传新修订', '分享管理', '历史修订'])
     expect(wrapper.get(`button[aria-label="${label}"]`).attributes('disabled')).toBeDefined()
   const { state } = await previewPage()
   expect(state.data.value).toBeUndefined()

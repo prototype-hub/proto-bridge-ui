@@ -3,7 +3,11 @@ import type { FolderArchiveProgress } from '../workers/folder-archive-pack'
 import type { FolderWorkerResponse } from '../workers/folder-archive.worker'
 
 export { FOLDER_LIMITS, FolderArchiveError } from './folder-manifest'
-export type { FolderArchiveErrorCode } from './folder-manifest'
+export type {
+  FolderArchiveErrorCode,
+  FolderPathIssue,
+  FolderPathIssueReason,
+} from './folder-manifest'
 export type { FolderArchiveProgress } from '../workers/folder-archive-pack'
 
 export interface FolderArchiveResult {
