@@ -8,6 +8,9 @@ import type {
   ReviewMessageInput,
   ReviewStatusInput,
   ReviewThreadPage,
+  ReviewAssignment,
+  ReviewAssignee,
+  ReviewAssignmentInput,
 } from '../types'
 const base = (versionId: string) =>
   `/prototype-hub/versions/${encodeURIComponent(versionId)}/review-threads`
@@ -86,6 +89,45 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/status`, data, csrf, signal, 'PUT'),
 }
 export const reviewThreadsApi = {
+  assignment: async (
+    versionId: string,
+    id: string,
+    data: ReviewThreadPage,
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.post<ReviewAssignment>(
+        `${base(versionId)}/${encodeURIComponent(id)}/assignment/_detail`,
+        data,
+        options,
+      )
+    ).result,
+  assignees: async (
+    versionId: string,
+    id: string,
+    data: ReviewThreadPage & { pageIndex: number; pageSize: number; keyword?: string },
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.post<PageResult<ReviewAssignee>>(
+        `${base(versionId)}/${encodeURIComponent(id)}/assignment/_candidates`,
+        data,
+        options,
+      )
+    ).result,
+  assign: async (
+    versionId: string,
+    id: string,
+    data: ReviewAssignmentInput,
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.put<ReviewAssignment>(
+        `${base(versionId)}/${encodeURIComponent(id)}/assignment`,
+        data,
+        options,
+      )
+    ).result,
   replyImage: async (
     versionId: string,
     id: string,

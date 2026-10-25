@@ -1,5 +1,25 @@
 export const protoLocales = {
   zh: {
+    assignment: '反馈负责人',
+    assignmentEmpty: '未分派负责人',
+    assignmentFormerUnavailable: '原负责人当前不可用',
+    assignmentRefresh: '刷新负责人',
+    assignmentEdit: '设置负责人',
+    assignmentClear: '清除负责人',
+    assignmentSearch: '按姓名搜索负责人',
+    assignmentSearchAction: '搜索候选负责人',
+    assignmentCandidate: '候选负责人',
+    assignmentSelect: '请选择当前项目负责人',
+    assignmentSave: '确认分派',
+    assignmentRetry: '重试原分派操作',
+    assignmentDiscard: '放弃重试并刷新',
+    assignmentUnavailable: '无法读取或操作负责人，请刷新核对当前权限和线程。',
+    assignmentInvalid: '分派未完成，请重新搜索并选择当前有效的项目负责人。',
+    assignmentKeywordInvalid: '负责人搜索词不能超过 100 字。',
+    assignmentConflict:
+      '负责人已变化，已刷新分派信息。回复草稿仍保留，请核对后再操作，不会自动重试。',
+    assignmentUnknown:
+      '分派结果尚未确认。请手动重试原操作，或放弃重试并刷新后再修改选择；不会自动提交。',
     feedback: '页面反馈',
     feedbackAllow: '允许所选页面文本反馈（默认关闭）',
     feedbackPolicyHint:
@@ -443,6 +463,28 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    assignment: 'Feedback assignee',
+    assignmentEmpty: 'No assignee',
+    assignmentFormerUnavailable: 'Former assignee is currently unavailable',
+    assignmentRefresh: 'Refresh assignee',
+    assignmentEdit: 'Set assignee',
+    assignmentClear: 'Clear assignee',
+    assignmentSearch: 'Search assignees by name',
+    assignmentSearchAction: 'Search assignee candidates',
+    assignmentCandidate: 'Assignee candidate',
+    assignmentSelect: 'Select an eligible project member',
+    assignmentSave: 'Confirm assignment',
+    assignmentRetry: 'Retry the original assignment',
+    assignmentDiscard: 'Abandon retry and refresh',
+    assignmentUnavailable:
+      'The assignee is unavailable. Refresh to check your current access and thread.',
+    assignmentInvalid:
+      'Assignment was not completed. Search again and select a currently eligible project member.',
+    assignmentKeywordInvalid: 'The assignee search term must not exceed 100 characters.',
+    assignmentConflict:
+      'The assignee changed and was refreshed. Your reply draft is preserved. Check before acting again; nothing is retried automatically.',
+    assignmentUnknown:
+      'The assignment result is unknown. Retry the original operation manually, or abandon the retry and refresh before changing the selection. Nothing is submitted automatically.',
     feedback: 'Page feedback',
     feedbackAllow: 'Allow selected-page text feedback (off by default)',
     feedbackPolicyHint:

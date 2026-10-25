@@ -224,7 +224,7 @@
 
 ## 固定页面文字反馈
 
-反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前支持纯文本线程、对客回复、内部备注、open/resolved状态及已有线程回复中的单张手动图片；不含几何圈选、初始投稿图片、通用附件、指派、编辑删除或业务邮件。
+反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前支持纯文本线程、对客回复、内部备注、open/resolved状态、成员专用线程负责人及已有线程回复中的单张手动图片；不含几何圈选、初始投稿图片、通用附件、全局分派队列、编辑删除或业务邮件。
 
 公开接口全部位于 `/prototype-hub/public/shares/{token}/review`，提交 `{revisionId,accessKey,pageId}`，沿用同源Cookie、受信Origin、`X-Review-CSRF`、no-store；新接口包含明确的PUT方法，不能把身份Cookie扩至runtime：
 
@@ -266,6 +266,24 @@ Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorComp
 身份与反馈抽屉共用一个身份hook，切换时先打开目标再关闭来源。草稿仅在当前外壳内存：同目标关闭重开、OTP返回或会话过期保留文字；会话过期提供显式复制与重新验证，验证成功不会自动投稿。分享/修订/页面/线程或实际身份变化、分享证明/页面失效会清理错误范围草稿；缺失/过期会话与范围失效分开处理。取消请求与代次检查阻止切换后的旧结果覆盖新目标。409刷新当前状态并保留同目标未发送文字，由用户重新确认；凭据、草稿、姓名、线程数据不进入iframe、workspace runtime、postMessage或持久存储，页面选择事件仅含修订及页面身份和名称/路径。
 
 错误码 `PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED` 为403，`PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED` 为403且允许明确重新验证；缺失或越权线程统一404 / `PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE`，无效页面为404 / `PROTOTYPE_HUB_REVIEW_PAGE_INVALID`，陈旧状态版本为409 / `PROTOTYPE_HUB_REVIEW_THREAD_CONFLICT`。访客新写入独立限频为项目300次/小时、每保障等级/guestId 60次/小时；幂等重放不重复占次数。基础只在同一事务保存领域事件，事件30天后有界清理，不派发业务消息，不显示已发送邮件或通知。
+
+### 成员线程负责人
+
+仅成员预览的已有选定线程展示负责人，公开分享不调用分派接口。base为 `/prototype-hub/versions/{versionId}/review-threads/{threadId}`，每次带 `{revisionId,pageId}`；详情与候选要求版本query，修改要求版本save，均同时检查当前项目edit或既有有效管理员例外。
+
+| 请求                           | 额外字段                                       | 结果                      |
+| ------------------------------ | ---------------------------------------------- | ------------------------- |
+| `POST /assignment/_detail`     | 无                                             | Assignment                |
+| `POST /assignment/_candidates` | `{pageIndex:0,pageSize:20,keyword?}`           | `{userId,name}`服务端分页 |
+| `PUT /assignment`              | `{assigneeId,expectedVersion,clientRequestId}` | Assignment；null清除      |
+
+Assignment为 `{threadId,assignmentVersion,updatedAt,assignee:null|{userId,name,available}}`，初始版本0、更新时间null；name为最多128字符的姓名快照。available只表示目标账号当前启用且仍是本项目owner/editor，不授予访问权限。停用或撤员显示不可用，不自动转交；同一账号重新合格可再次可用。账号删除同步清除分派，重建同ID不恢复。
+
+编辑时才明确加载候选，按name、userId升序，使用真实total；pageIndex为0–10000、pageSize为1–50，默认0/20，keyword最多100字符且仅按姓名字面包含搜索。候选只含当前启用owner/editor，去重后不含viewer、无项目绑定的管理员或其他平台账号，也不返回username、邮箱。没有全局账号搜索或逐线程列表补查。
+
+expectedVersion使用独立assignmentVersion，不能用线程状态configVersion；assigneeId只接受非空白字符串或null。当前授权先于回执重放，同键相同范围/目标/expectedVersion返回当前Assignment，不重写旧目标或重复事件；旧目标不可用也不能阻止合法旧键重放。同键不同语义409。新操作先校验版本及非空目标当前资格，仍选原目标也不能绕过停用或撤员；同版本同合格目标不递增，清除未分派目标也不改变版本。实际设置/清除才更新独立版本与时间，公开Thread形状、updatedAt、状态configVersion及消息计数/排序不变。
+
+分派独立维护忙碌、错误、取消与请求代次，关闭、更换actor/范围/线程或卸载后不显示迟到结果。409只刷新分派并保留回复文字、File、状态意图、选择及回复请求键；未知结果保留原分派请求键/原payload供明确重试，改选目标才形成新意图。失败不自动提交消息或状态。使用转义姓名、zh/en、窄屏及键盘可操作控件；分派数据不进入公开分享、iframe、postMessage、URL或持久存储，不新增授权、主副负责人、自动转交或通知。
 
 ### 私有回复图片
 

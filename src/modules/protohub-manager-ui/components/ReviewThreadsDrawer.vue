@@ -9,6 +9,8 @@ import {
   Pagination as APagination,
   RadioGroup as ARadioGroup,
   RadioButton as ARadioButton,
+  Input as AInput,
+  Select as ASelect,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import LoadState from '@/shared/components/LoadState.vue'
@@ -23,6 +25,10 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; authenticate: []; copyThread: [event: MouseEvent] }>()
 const { t } = useI18n()
 const state = props.state
+const assignment = state.assignment
+const assigneeOptions = computed(() =>
+  assignment.candidates.value.map((row) => ({ value: row.userId, label: row.name })),
+)
 const canSend = computed(
   () =>
     state.writable.value &&
@@ -148,6 +154,127 @@ function selectImage(event: Event) {
           >
           <template v-if="state.selected.value">
             <h3>{{ state.selected.value.summary }}</h3>
+            <section
+              v-if="!state.isPublic.value"
+              class="stack feedback-assignment"
+              :aria-label="t('proto.assignment')"
+            >
+              <h4>{{ t('proto.assignment') }}</h4>
+              <load-state
+                :loading="assignment.loading.value"
+                :error="assignment.error.value"
+                @retry="assignment.load"
+              >
+                <template v-if="assignment.data.value">
+                  <p v-if="!assignment.data.value.assignee">{{ t('proto.assignmentEmpty') }}</p>
+                  <p v-else>
+                    {{ assignment.data.value.assignee.name
+                    }}<a-tag v-if="!assignment.data.value.assignee.available" color="orange">{{
+                      t('proto.assignmentFormerUnavailable')
+                    }}</a-tag>
+                  </p>
+                  <div class="feedback-status-actions">
+                    <a-button :disabled="assignment.busy.value" @click="assignment.load">{{
+                      t('proto.assignmentRefresh')
+                    }}</a-button>
+                    <a-button
+                      v-if="assignment.canEdit.value && !assignment.unknown.value"
+                      :disabled="assignment.busy.value"
+                      @click="assignment.edit"
+                      >{{ t('proto.assignmentEdit') }}</a-button
+                    >
+                    <a-button
+                      v-if="
+                        assignment.canEdit.value &&
+                        assignment.data.value.assignee &&
+                        !assignment.unknown.value
+                      "
+                      :disabled="assignment.busy.value"
+                      @click="assignment.save(true)"
+                      >{{ t('proto.assignmentClear') }}</a-button
+                    >
+                  </div>
+                </template>
+              </load-state>
+              <a-alert
+                v-if="assignment.notice.value"
+                role="status"
+                show-icon
+                type="warning"
+                :message="assignment.notice.value"
+              />
+              <div
+                v-if="assignment.unknown.value && assignment.canEdit.value"
+                class="feedback-status-actions"
+              >
+                <a-button :loading="assignment.busy.value" @click="assignment.retry">{{
+                  t('proto.assignmentRetry')
+                }}</a-button>
+                <a-button :disabled="assignment.busy.value" @click="assignment.discard">{{
+                  t('proto.assignmentDiscard')
+                }}</a-button>
+              </div>
+              <div
+                v-if="
+                  assignment.editing.value && assignment.canEdit.value && !assignment.unknown.value
+                "
+                class="stack"
+              >
+                <label for="review-assignee-keyword">{{ t('proto.assignmentSearch') }}</label>
+                <a-input
+                  id="review-assignee-keyword"
+                  v-model:value="assignment.keyword.value"
+                  :maxlength="100"
+                  :disabled="assignment.busy.value"
+                  @press-enter="assignment.search()"
+                />
+                <a-button
+                  :loading="assignment.searching.value"
+                  :disabled="assignment.busy.value"
+                  @click="assignment.search()"
+                  >{{ t('proto.assignmentSearchAction') }}</a-button
+                >
+                <a-alert
+                  v-if="assignment.searchError.value"
+                  type="warning"
+                  show-icon
+                  :message="assignment.searchError.value"
+                />
+                <label for="review-assignee">{{ t('proto.assignmentCandidate') }}</label>
+                <a-select
+                  id="review-assignee"
+                  v-model:value="assignment.selection.value"
+                  class="assignment-picker"
+                  :options="assigneeOptions"
+                  :loading="assignment.searching.value"
+                  :disabled="assignment.busy.value || assignment.searching.value"
+                  :placeholder="t('proto.assignmentSelect')"
+                />
+                <a-pagination
+                  v-if="assignment.total.value > 0 || assignment.pageIndex.value > 0"
+                  class="feedback-pagination"
+                  :current="assignment.pageIndex.value + 1"
+                  :total="assignment.total.value"
+                  :page-size="20"
+                  :show-size-changer="false"
+                  :disabled="assignment.busy.value || assignment.searching.value"
+                  simple
+                  @change="assignment.search"
+                />
+                <div class="feedback-status-actions">
+                  <a-button
+                    type="primary"
+                    :loading="assignment.busy.value"
+                    :disabled="!assignment.selection.value || assignment.searching.value"
+                    @click="assignment.save()"
+                    >{{ t('proto.assignmentSave') }}</a-button
+                  >
+                  <a-button :disabled="assignment.busy.value" @click="assignment.cancel">{{
+                    t('common.cancel')
+                  }}</a-button>
+                </div>
+              </div>
+            </section>
             <div class="feedback-status-actions">
               <a-button
                 :disabled="state.loading.value || state.busy.value"
@@ -363,6 +490,11 @@ function selectImage(event: Event) {
 .feedback-pagination {
   display: flex;
   justify-content: flex-end;
+}
+.feedback-assignment,
+.feedback-assignment > .stack {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 .feedback-image-input,
 .feedback-image {
