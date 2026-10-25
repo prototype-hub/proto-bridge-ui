@@ -24,6 +24,7 @@ import {
   StopOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
+  MailOutlined,
 } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useShares } from '@/modules/protohub-manager-ui/views/project/hooks/useShares'
@@ -39,7 +40,9 @@ import { usePermissions } from '@/shared/auth/provider'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 const ShareEditDialog = defineAsyncComponent(() => import('./ShareEditDialog.vue'))
 const ReviewPolicyDialog = defineAsyncComponent(() => import('./ReviewPolicyDialog.vue'))
+const ReviewInvitationsDialog = defineAsyncComponent(() => import('./ReviewInvitationsDialog.vue'))
 const reviewTarget = shallowRef<Share>()
+const invitationTarget = shallowRef<Share>()
 const props = defineProps({
   version: { type: Object as PropType<Version>, default: undefined },
   project: { type: Object as PropType<Project>, default: undefined },
@@ -71,7 +74,7 @@ const columns = computed<TableColumnsType<Share>>(() => [
   { title: t('proto.password'), dataIndex: 'passwordRequired', width: 90 },
   { title: t('proto.shareTime'), dataIndex: 'createdAt', width: 140 },
   { title: t('proto.expiryTime'), dataIndex: 'expiresAt', width: 140 },
-  { title: t('common.actions'), key: 'actions', width: 280 },
+  { title: t('common.actions'), key: 'actions', width: 320 },
 ])
 const {
   task,
@@ -103,8 +106,13 @@ watch(
   ],
   () => {
     reviewTarget.value = undefined
+    invitationTarget.value = undefined
   },
 )
+watch(resource.data, (rows) => {
+  if (invitationTarget.value)
+    invitationTarget.value = rows.find((row) => row.id === invitationTarget.value?.id)
+})
 function reviewSaved() {
   reviewTarget.value = undefined
   void resource.load()
@@ -205,6 +213,14 @@ const submitCreate = () => {
             }}</span
             ><a-space v-else-if="column.key === 'actions'" :size="4" :wrap="false">
               <action-button
+                v-if="permissions.can(p.share.query)"
+                :label="t('proto.reviewInvitations')"
+                :icon="MailOutlined"
+                :permission="p.share.query"
+                :disabled="task.busy.value"
+                @action="invitationTarget = record"
+              />
+              <action-button
                 v-if="!record.revoked"
                 :label="t('proto.reviewSettings')"
                 :icon="SafetyCertificateOutlined"
@@ -297,6 +313,14 @@ const submitCreate = () => {
     :share="reviewTarget"
     @close="reviewTarget = undefined"
     @saved="reviewSaved"
+  />
+  <review-invitations-dialog
+    v-if="
+      invitationTarget && permissions.can(p.share.query) && projectAllows(project, 'manageShares')
+    "
+    :share="invitationTarget"
+    :project="project"
+    @close="invitationTarget = undefined"
   />
 </template>
 <style scoped>

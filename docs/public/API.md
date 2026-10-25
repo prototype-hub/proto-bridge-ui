@@ -198,17 +198,17 @@
 
 分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,allowUnverified,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,allowUnverified?,expectedVersion}`。旧分享的两个许可默认关闭，旧客户端省略allowUnverified或传null时保留其已有值；普通分享创建/编辑不会自行开启。保存使用刚读取的版本，409后刷新并要求手动重新确认；策略更新轮换原分享凭据，刷新分享列表。只有身份总开关与allowUnverified均开启才提供低保障入口。
 
-分享密码授权后的响应提供 `reviewEnabled/reviewAvailable/reviewUnverifiedAllowed`；最后一项仅在当前授权、身份总开关和低保障许可均有效时为true，context也返回allowUnverified。可信外壳保留邮箱OTP，并只在管理员允许时提供“未验证”方式：姓名必填、公司可选、不收集邮箱、不发送邮件。界面始终区分“邮箱已验证”和“未验证”；姓名/公司均为自述，邮箱持有权也不代表实名或企业认证。没有邮件服务或发码失败时仅提示原因，不自动选择或提交低保障方式。当前不创建平台用户，不提供邀请、人工身份关联、批注或业务提醒。
+分享密码授权后的响应提供 `reviewEnabled/reviewAvailable/reviewUnverifiedAllowed`；最后一项仅在当前授权、身份总开关和低保障许可均有效时为true，context也返回allowUnverified。可信外壳保留邮箱OTP，并只在管理员允许时提供“未验证”方式：姓名必填、公司可选、不收集邮箱、不发送邮件。界面始终区分“邮箱已验证”和“未验证”；姓名/公司均为自述，邮箱持有权也不代表实名或企业认证。没有邮件服务或发码失败时仅提示原因，不自动选择或提交低保障方式。固定分享可手动复制定向邀请，仍须指定邮箱重新OTP；当前不创建平台用户，不提供人工身份关联、批注或业务提醒。
 
 以下均为 `POST /prototype-hub/public/shares/{token}/review/{action}`，请求体必须携带本次分享的 `{revisionId,accessKey}`，不放在查询字符串；固定与跟随分享都以本次明确修订为范围，不隐式切换最新内容。
 
-| action       | 额外输入                       | 响应                                                                   |
-| ------------ | ------------------------------ | ---------------------------------------------------------------------- |
-| `context`    | 无                             | `{revisionId,enabled,allowUnverified,mailAvailable,csrfToken,session}` |
-| `challenges` | `{email,displayName,company?}` | `{challengeId,expiresAt,resendAfter}`                                  |
-| `verify`     | `{challengeId,code}`           | 同context，成功后轮换Cookie/CSRF                                       |
-| `unverified` | `{displayName,company?}`       | 同context；须显式获准，返回未验证身份                                  |
-| `logout`     | 无                             | `{loggedOut:true}`，随后重新获取匿名context                            |
+| action       | 额外输入                                        | 响应                                                                   |
+| ------------ | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `context`    | 无                                              | `{revisionId,enabled,allowUnverified,mailAvailable,csrfToken,session}` |
+| `challenges` | `{email,displayName,company?,invitationToken?}` | `{challengeId,expiresAt,resendAfter}`                                  |
+| `verify`     | `{challengeId,code}`                            | 同context，成功后轮换Cookie/CSRF                                       |
+| `unverified` | `{displayName,company?}`                        | 同context；须显式获准，返回未验证身份                                  |
+| `logout`     | 无                                              | `{loggedOut:true}`，随后重新获取匿名context                            |
 
 `session`只含 `{guestId,displayName,company,maskedEmail,verificationLevel,expiresAt}`；verificationLevel仅为email或unverified，低保障maskedEmail为null，邮箱身份只显示脱敏值。前端沿用trim整理姓名和公司；姓名须非空且最多100字符，公司可选且最多200字符。服务端独立校验收到的原始字段，拒绝Unicode控制字符后才strip，不依赖客户端校验。身份和CSRF只留在可信外壳内存，不传到原型iframe、postMessage、资源URL或全局store/localStorage。
 
@@ -221,6 +221,26 @@
 未验证身份从首次签发起固定8小时；同一有效会话再次提交保留原ID、资料与到期时间，不改名或续期。当前已有有效邮箱身份时申请低保障身份返回409 / `PROTOTYPE_HUB_REVIEW_IDENTITY_EXISTS`，须先显式退出。未验证会话退出、丢失、到期或被撤销后，不能通过姓名、公司、邮箱或OTP找回，也不自动合并进后来验证的邮箱身份。分享配置换代后，重新取得当前分享证明再明确申请可获得另一随机身份，无须依赖清除旧Cookie；旧ID和期限不会恢复，未知会话等级仍拒绝。界面明确提示无自助/人工关联入口，需联系管理员线下处理；新申请是另一个身份。
 
 未验证新建采用独立的项目60次/小时、当前Cookie5次/小时及60秒冷却窗口，有效会话复用不计新建。此限制不识别人或设备；清除Cookie不能绕过项目总量上限。邮箱OTP额度与低保障创建额度分开，状态切换不退还。关闭抽屉清空页面内身份，重开仍从服务器校验Cookie和分享范围；分享变更、停用、撤销、过期或软删均不能靠旧身份绕过。
+
+## 固定分享邀请
+
+邀请是指定邮箱对当前固定分享的身份确认，不把分享改成“仅受邀者访问”，也不替代分享密码。普通邮箱/已获准的未验证入口保持原权限；邀请模式不自动发送邀请邮件或提供免OTP登录。
+
+管理接口基于 `/prototype-hub/shares/{shareId}/review-invitations`，查询要求分享query，创建/撤销要求save，并且始终要求当前项目manageShares能力：
+
+| 请求                         | 输入/结果                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| `POST` 基础路径              | `{email,expectedShareVersion}` → `{invitation,invitationToken}`，原始凭据仅创建时返回 |
+| `POST /_query`               | `{pageIndex:0,pageSize:20}` → 标准服务端分页                                          |
+| `PUT /{invitationId}/revoke` | `{expectedVersion}` → 当前邀请记录                                                    |
+
+邀请记录为 `{id,maskedEmail,status,configVersion,createdAt,expiresAt,consumedAt}`；状态 `pending/consumed/revoked/expired/invalidated`，不返回完整邮箱或持久凭据。分页0–10000、每页1–100，创建时间降序、ID升序，越界返回真实total与空data。仅活动、身份已开启且有有效固定修订的fixed分享可创建，latest提示先改固定修订。24小时有效期被分享到期时间截断；创建独立限频为项目60次/小时、收件邮箱5次/小时及60秒冷却，不占用OTP额度。
+
+创建使用最新分享configVersion作为expectedShareVersion；撤销使用邀请自己的configVersion。409后刷新并手动重新确认，不自动重试创建或撤销。相同版本已撤销记录可原样返回，已消费/到期/失效不可变更。撤销只阻止待用邀请，不撤销已签发身份；后者需访问者管理停用。分享配置换代、停用/撤销/到期、关闭身份、资源回收，或邮箱访客停用再恢复，均不能复活旧邀请。
+
+创建响应中的原始凭据仅保留在当前弹窗内存，使用现有同源分享URL生成 `#reviewInvitation=TOKEN`，用户明确点击后才复制；关闭或更换分享即清空，不可从列表重新获取。公开外壳在工作区构建或导航前捕获并清除片段，保留应用base路径；邀请只在当前同一分享内存中有效，不进入query、全局store、localStorage/sessionStorage、日志、iframe URL/props或postMessage。普通“复制当前页面链接”仍不复制邀请片段。
+
+邀请模式要求访客自己输入指定收件邮箱，不调用公开邀请详情。即使已有邮箱或未验证身份，也须提示明确退出，再获取新的OTP；同页退出保留待用邀请，不自动接受邀请。该模式隐藏未验证捷径；只有用户明确放弃邀请才回到独立普通身份流程，错误片段或失败请求不能自动回退。发码携带可选invitationToken；verify保持原challengeId/code协议，由服务端读取绑定关系，成功后清空原始邀请凭据。invitationToken非null时必须为43位URL安全字符，格式非法返回400；格式合法但未知、失效或收件人/范围不匹配统一返回403 / `PROTOTYPE_HUB_REVIEW_INVITATION_INVALID`，不给出完整邮箱；SMTP失败仍不可跳过验证。
 
 ## 项目访问者管理
 

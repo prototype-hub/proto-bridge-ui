@@ -10,7 +10,11 @@ import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
 
 /** Keep visitor identity in the trusted shell; never copy its cookie or CSRF into the workspace. */
-export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref<boolean>) {
+export function useReviewIdentity(
+  share: Ref<PublicShare | undefined>,
+  open: Ref<boolean>,
+  invitation: Ref<string | null | undefined> = ref(),
+) {
   const context = shallowRef<ReviewContext>()
   const challenge = shallowRef<ReviewChallenge>()
   const form = reactive({ email: '', displayName: '', company: '', code: '' })
@@ -34,6 +38,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
       !!context.value?.mailAvailable &&
       !context.value.session &&
       mode.value === 'email' &&
+      invitation.value !== null &&
       !busy.value &&
       !loading.value &&
       now.value >= (challenge.value?.resendAfter || 0),
@@ -41,6 +46,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
   const canVerify = computed(
     () =>
       mode.value === 'email' &&
+      invitation.value !== null &&
       !!challenge.value &&
       now.value < challenge.value.expiresAt &&
       !busy.value &&
@@ -49,6 +55,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
   const canCreateUnverified = computed(
     () =>
       mode.value === 'unverified' &&
+      invitation.value === undefined &&
       context.value?.allowUnverified === true &&
       !context.value.session &&
       !busy.value &&
@@ -68,6 +75,8 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
   function message(cause: unknown) {
     if (cause instanceof ApiError) {
       if (cause.status === 429) return t('proto.reviewRateLimited')
+      if (cause.code === 'PROTOTYPE_HUB_REVIEW_INVITATION_INVALID')
+        return t('proto.reviewInvitationInvalid')
       if (cause.status === 409) return t('proto.reviewIdentityConflict')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_CODE_INVALID') return t('proto.reviewCodeInvalid')
       if (cause.code === 'PROTOTYPE_HUB_REVIEW_ORIGIN_DENIED') return t('proto.reviewOriginDenied')
@@ -107,7 +116,11 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
       await action(selected, request.signal)
     } catch (cause) {
       if (epoch !== generation || request.signal.aborted) return
-      if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) {
+      if (
+        cause instanceof ApiError &&
+        cause.code !== 'PROTOTYPE_HUB_REVIEW_INVITATION_INVALID' &&
+        (cause.status === 403 || cause.status === 404)
+      ) {
         context.value = challenge.value = undefined
       }
       error.value = message(cause)
@@ -128,6 +141,7 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
       email: form.email.trim(),
       displayName: form.displayName.trim(),
       company: form.company.trim() || undefined,
+      ...(typeof invitation.value === 'string' ? { invitationToken: invitation.value } : {}),
     }
     if (
       !profile.email ||
@@ -149,29 +163,33 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     })
   }
   async function verify() {
-    if (!canVerify.value || !challenge.value || !context.value) return
+    if (!canVerify.value || !challenge.value || !context.value) return false
     if (!/^[0-9]{6}$/.test(form.code)) {
       error.value = t('proto.reviewCodeRequired')
-      return
+      return false
     }
     const id = challenge.value.challengeId,
       code = form.code,
       csrf = context.value.csrfToken
+    let usedInvitation = false
     await run(async (selected, signal) => {
       const result = await reviewApi.verify(selected, id, code, csrf, signal)
       if (signal.aborted) return
       if (result.session?.verificationLevel !== 'email')
         throw new ApiError(t('proto.reviewCodeInvalid'))
       accept(result, selected)
+      usedInvitation = typeof invitation.value === 'string'
       challenge.value = undefined
       Object.assign(form, { email: '', displayName: '', company: '', code: '' })
     })
+    return usedInvitation
   }
   function chooseMode(value: ReviewVerificationLevel) {
     if (
       busy.value ||
       loading.value ||
       context.value?.session ||
+      (value === 'unverified' && invitation.value !== undefined) ||
       (value === 'unverified' && context.value?.allowUnverified !== true)
     )
       return
@@ -220,8 +238,28 @@ export function useReviewIdentity(share: Ref<PublicShare | undefined>, open: Ref
     })
   }
   watch(
+    invitation,
+    () => {
+      generation++
+      controller?.abort()
+      loading.value = busy.value = false
+      challenge.value = undefined
+      mode.value = 'email'
+      error.value = ''
+      Object.assign(form, { email: '', displayName: '', company: '', code: '' })
+      if (!context.value && grant.value) void load()
+    },
+    { flush: 'sync' },
+  )
+  watch(
     () => [form.email, form.displayName, form.company],
     () => {
+      // A changed recipient/profile cannot install a challenge or identity from the old form.
+      if (busy.value && !context.value?.session) {
+        generation++
+        controller?.abort()
+        busy.value = false
+      }
       challenge.value = undefined
       form.code = ''
     },

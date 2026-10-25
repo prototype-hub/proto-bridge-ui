@@ -14,11 +14,18 @@ import LoadState from '@/shared/components/LoadState.vue'
 import { useReviewIdentity } from '../hooks/useReviewIdentity'
 import type { PublicShare } from '@/modules/protohub-manager-ui/types'
 
-const props = defineProps<{ share?: PublicShare; open: boolean }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ share?: PublicShare; open: boolean; invitation?: string | null }>()
+const emit = defineEmits<{ close: []; invitationUsed: []; abandonInvitation: [] }>()
 const { t } = useI18n()
-const state = useReviewIdentity(toRef(props, 'share'), toRef(props, 'open'))
+const state = useReviewIdentity(
+  toRef(props, 'share'),
+  toRef(props, 'open'),
+  toRef(props, 'invitation'),
+)
 const session = computed(() => state.context.value?.session)
+async function verify() {
+  if (await state.verify()) emit('invitationUsed')
+}
 </script>
 <template>
   <a-drawer
@@ -34,6 +41,27 @@ const session = computed(() => state.context.value?.session)
       :aria-label="t('proto.reviewIdentity')"
     >
       <p>{{ t('proto.reviewIdentityHint') }}</p>
+      <template v-if="invitation !== undefined">
+        <a-alert
+          :type="invitation === null ? 'error' : 'info'"
+          show-icon
+          :message="
+            t(
+              invitation === null
+                ? 'proto.reviewInvitationInvalid'
+                : session
+                  ? 'proto.reviewInvitationLogoutFirst'
+                  : 'proto.reviewInvitationRecipientHint',
+            )
+          "
+        />
+        <a-button
+          class="review-invitation-abandon"
+          :disabled="state.busy.value || state.loading.value"
+          @click="emit('abandonInvitation')"
+          >{{ t('proto.reviewInvitationAbandon') }}</a-button
+        >
+      </template>
       <a-alert v-if="state.error.value" type="error" show-icon :message="state.error.value" />
       <a-alert
         v-if="state.expired.value"
@@ -68,7 +96,7 @@ const session = computed(() => state.context.value?.session)
         </template>
         <template v-else-if="state.context.value">
           <div
-            v-if="state.context.value.allowUnverified === true"
+            v-if="invitation === undefined && state.context.value.allowUnverified === true"
             class="review-identity-modes"
             role="group"
             :aria-label="t('proto.reviewIdentityMethod')"
@@ -178,7 +206,7 @@ const session = computed(() => state.context.value?.session)
                   autocomplete="one-time-code"
                   :maxlength="6"
                   :disabled="state.busy.value"
-                  @press-enter.prevent="state.verify"
+                  @press-enter.prevent="verify"
                 />
               </a-form-item>
               <a-alert
@@ -190,7 +218,7 @@ const session = computed(() => state.context.value?.session)
                 type="primary"
                 :loading="state.busy.value"
                 :disabled="!state.canVerify.value"
-                @click="state.verify"
+                @click="verify"
                 >{{ t('proto.reviewVerify') }}</a-button
               >
             </template>
@@ -215,9 +243,11 @@ const session = computed(() => state.context.value?.session)
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.review-invitation-abandon,
 .review-identity-modes :deep(.ant-btn) {
   max-width: 100%;
   height: auto;
+  min-height: 32px;
   white-space: normal;
 }
 </style>

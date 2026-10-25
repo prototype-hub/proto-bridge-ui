@@ -278,6 +278,20 @@ export interface ReviewChallenge {
   expiresAt: number
   resendAfter: number
 }
+export type ReviewInvitationStatus = 'pending' | 'consumed' | 'revoked' | 'expired' | 'invalidated'
+export interface ReviewInvitation {
+  id: string
+  maskedEmail: string
+  status: ReviewInvitationStatus
+  configVersion: number
+  createdAt: number
+  expiresAt: number
+  consumedAt: number | null
+}
+export interface CreatedReviewInvitation {
+  invitation: ReviewInvitation
+  invitationToken: string
+}
 export interface InspectAsset {
   type: 'image' | 'svg'
   url?: string

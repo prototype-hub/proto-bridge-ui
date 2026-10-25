@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { resetInvitations, invitedChallenge, consumeInvitation } from './review-invitation'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ReviewIdentity, Share } from '../../src/modules/protohub-manager-ui/types'
 
@@ -6,10 +7,14 @@ import type { ReviewIdentity, Share } from '../../src/modules/protohub-manager-u
 const enabled = new Set<string>()
 const unverifiedAllowed = new Set<string>()
 const sessions = new Map<string, { scope: string; identity?: ReviewIdentity }>()
-const challenges = new Map<string, { cookie: string; scope: string; identity: ReviewIdentity }>()
+const challenges = new Map<
+  string,
+  { cookie: string; scope: string; identity: ReviewIdentity; invitationId?: string; email: string }
+>()
 export const reviewEnabled = (id: string) => enabled.has(id)
 export const reviewUnverifiedAllowed = (id: string) => unverifiedAllowed.has(id)
 export function resetReview() {
+  resetInvitations()
   enabled.clear()
   unverifiedAllowed.clear()
   sessions.clear()
@@ -125,6 +130,26 @@ export function reviewResponse(
     }
   } else if (action === 'challenges') {
     const email = String(data.email).trim().toLowerCase()
+    if (
+      data.invitationToken !== undefined &&
+      (typeof data.invitationToken !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(data.invitationToken))
+    ) {
+      send(res, 400, null, 'Invalid invitation token')
+      return true
+    }
+    if (data.invitationToken !== undefined && selected.identity) {
+      send(res, 409, null, 'Sign out the existing identity first')
+      return true
+    }
+    const invitationId =
+      data.invitationToken === undefined
+        ? undefined
+        : invitedChallenge(data.invitationToken, record, email, rid)
+    if (data.invitationToken !== undefined && !invitationId) {
+      send(res, 403, null, 'Invitation unavailable', 'PROTOTYPE_HUB_REVIEW_INVITATION_INVALID')
+      return true
+    }
     const challengeId = randomUUID()
     const identity: ReviewIdentity = {
       guestId: createHash('sha256').update(`${record.projectId}:${email}`).digest('hex'),
@@ -134,7 +159,7 @@ export function reviewResponse(
       verificationLevel: 'email',
       expiresAt: Date.now() + 8 * 3600000,
     }
-    challenges.set(challengeId, { cookie, scope, identity })
+    challenges.set(challengeId, { cookie, scope, identity, invitationId, email })
     send(res, 200, { challengeId, expiresAt: Date.now() + 300000, resendAfter: Date.now() + 60000 })
   } else if (action === 'verify') {
     const challenge = challenges.get(String(data.challengeId))
@@ -145,6 +170,11 @@ export function reviewResponse(
       data.code !== '123456'
     )
       send(res, 400, null, 'Invalid code', 'PROTOTYPE_HUB_REVIEW_CODE_INVALID')
+    else if (
+      challenge.invitationId &&
+      !consumeInvitation(challenge.invitationId, record, challenge.email, rid)
+    )
+      send(res, 403, null, 'Invitation unavailable', 'PROTOTYPE_HUB_REVIEW_INVITATION_INVALID')
     else {
       challenges.delete(String(data.challengeId))
       selected.identity = challenge.identity
