@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
-import { threadResponse } from './review-thread'
+import { threadResponse, type ThreadImage } from './review-thread'
 import { invitationManagement } from './review-invitation'
 import {
   reviewEnabled,
@@ -484,10 +484,56 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   const bytes = Buffer.concat(chunks)
   const raw = bytes.toString()
   let input: unknown
+  let reviewImage: ThreadImage | undefined
   try {
     input = JSON.parse(raw)
   } catch {
     input = raw
+  }
+  if (path.endsWith('/messages-with-image')) {
+    try {
+      const form = await new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'Content-Type': req.headers['content-type'] || '' },
+        body: new Uint8Array(bytes),
+      }).formData()
+      const request = form.get('request'),
+        file = form.get('image')
+      if (
+        [...form.keys()].length !== 2 ||
+        !(request instanceof Blob) ||
+        request.type !== 'application/json' ||
+        !(file instanceof Blob)
+      )
+        throw new Error('parts')
+      input = JSON.parse(await request.text())
+      const data = Buffer.from(await file.arrayBuffer())
+      if (data.length > 5 * 1024 * 1024) {
+        send(res, 400, null, 'Image too large', 'PROTOTYPE_HUB_REVIEW_IMAGE_TOO_LARGE')
+        return true
+      }
+      // Browser fixtures model the PNG wire path; full decoding/storage is tested by the backend.
+      if (data.length < 24 || data.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
+        throw new Error('image')
+      const width = data.readUInt32BE(16),
+        height = data.readUInt32BE(20)
+      if (!width || !height || width > 16384 || height > 16384 || width * height > 16000000)
+        throw new Error('image')
+      reviewImage = {
+        bytes: data,
+        info: { contentType: 'image/png', size: data.length, width, height },
+      }
+    } catch (cause) {
+      const parts = cause instanceof Error && cause.message === 'parts'
+      send(
+        res,
+        400,
+        null,
+        'Invalid image',
+        parts ? 'PROTOTYPE_HUB_REVIEW_IMAGE_PARTS_INVALID' : 'PROTOTYPE_HUB_REVIEW_IMAGE_INVALID',
+      )
+      return true
+    }
   }
   const data = object(input)
   if (comparisonControl) {
@@ -627,7 +673,20 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         : record.revisionId || shareRevisions.get(record.token) || ''
     const grant = `access-${record.configVersion}-${rid}`
     const grantBase = `/api/prototype-hub/public/shares/${record.token}/${grant}/revisions/${rid}`
-    if (reviewResponse(req, res, record, data, suffix, rid, grant, send, revisionPages(rid)))
+    if (
+      reviewResponse(
+        req,
+        res,
+        record,
+        data,
+        suffix,
+        rid,
+        grant,
+        send,
+        revisionPages(rid),
+        reviewImage,
+      )
+    )
       return true
     const access =
       !record.passwordRequired ||
@@ -1102,6 +1161,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         path.split('/review-threads')[1] || '',
         method,
         send,
+        undefined,
+        reviewImage,
       )
   } else if (/^\/prototype-hub\/shares\/[^/]+\/review-invitations(?:\/.*)?$/.test(path)) {
     const value = shares.find((item) => item.id === decodeURIComponent(path.split('/')[3]!))

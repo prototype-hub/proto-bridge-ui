@@ -224,7 +224,7 @@
 
 ## 固定页面文字反馈
 
-反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前仅有纯文本线程、对客回复、内部备注和open/resolved状态，不含几何圈选、附件、指派、编辑删除或业务邮件。
+反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前支持纯文本线程、对客回复、内部备注、open/resolved状态及已有线程回复中的单张手动图片；不含几何圈选、初始投稿图片、通用附件、指派、编辑删除或业务邮件。
 
 公开接口全部位于 `/prototype-hub/public/shares/{token}/review`，提交 `{revisionId,accessKey,pageId}`，沿用同源Cookie、受信Origin、`X-Review-CSRF`、no-store；新接口包含明确的PUT方法，不能把身份Cookie扩至runtime：
 
@@ -266,6 +266,18 @@ Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorComp
 身份与反馈抽屉共用一个身份hook，切换时先打开目标再关闭来源。草稿仅在当前外壳内存：同目标关闭重开、OTP返回或会话过期保留文字；会话过期提供显式复制与重新验证，验证成功不会自动投稿。分享/修订/页面/线程或实际身份变化、分享证明/页面失效会清理错误范围草稿；缺失/过期会话与范围失效分开处理。取消请求与代次检查阻止切换后的旧结果覆盖新目标。409刷新当前状态并保留同目标未发送文字，由用户重新确认；凭据、草稿、姓名、线程数据不进入iframe、workspace runtime、postMessage或持久存储，页面选择事件仅含修订及页面身份和名称/路径。
 
 错误码 `PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED` 为403，`PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED` 为403且允许明确重新验证；缺失或越权线程统一404 / `PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE`，无效页面为404 / `PROTOTYPE_HUB_REVIEW_PAGE_INVALID`，陈旧状态版本为409 / `PROTOTYPE_HUB_REVIEW_THREAD_CONFLICT`。访客新写入独立限频为项目300次/小时、每保障等级/guestId 60次/小时；幂等重放不重复占次数。基础只在同一事务保存领域事件，事件30天后有界清理，不派发业务消息，不显示已发送邮件或通知。
+
+### 私有回复图片
+
+已有线程在原公开/成员review-threads base下使用 `POST /{threadId}/messages-with-image`，multipart只含application/json的request（该端原回复字段）与唯一image文件part。正文仍必填，普通文字JSON接口不变，尚无线程时不能上传图片。仅允许实际PNG/JPEG，最多5 MiB，宽高各1–16384且像素总数不超过16000000；前端类型/大小提示不替代服务端内容校验。原文件名不显示、持久化或用作路径，multipart发送固定文件名，FormData边界由浏览器生成，不手写Content-Type覆盖boundary。
+
+Message新增 `image:null|{contentType,size,width,height}`，size为字节、宽高为像素；旧消息为null。图片继承所在消息的public/internal可见性，响应不提供路径、URL、hash或新凭据。查看须用户明确触发 `POST /{threadId}/messages/{messageId}/image`，JSON为该端原页面请求，公开端仍有accessKey、当前Cookie、受信Origin和X-Review-CSRF，不发送平台token。接口返回原始PNG/JPEG字节并带nosniff、private/no-store和固定安全inline文件名；缺失或失效不回退其他图片。
+
+可信外壳校验响应MIME/字节长度和消息元数据后创建Blob object URL，不直接将鉴权API作为img src，不向原型iframe、postMessage、URL、本地存储或遥测传File、图片字节、Blob URL或凭据。替换、关闭查看、范围/actor/thread/message切换或卸载时撤销object URL并取消请求；迟到响应不能覆盖新目标。拒绝或缺失时隐藏旧图并显示不可用状态，已合法下载的图片不可能由服务端召回。
+
+同目标身份验证往返保留本地文字与File且不自动上传；范围、授权或作者变化依现有草稿规则清空。未知响应保留File和原clientRequestId供明确重试，同键同文字/可见性/真实图bytes返回原消息；修改内容生成新意图，文字与图片互换不能复用旧键。不得为了LAN HTTP要求crypto.subtle。支持zh/en及窄屏手动选择、移除、发送和查看；不提供初始线程附图、几何、自动截图、单图编辑删除或业务通知。
+
+图片错误为400 / `PROTOTYPE_HUB_REVIEW_IMAGE_INVALID`（实际格式、解码或维度）、400 / `PROTOTYPE_HUB_REVIEW_IMAGE_TOO_LARGE`（服务端原图字节预算）、400 / `PROTOTYPE_HUB_REVIEW_IMAGE_PARTS_INVALID`（part、JSON、请求校验或multipart解析预算）、404 / `PROTOTYPE_HUB_REVIEW_IMAGE_UNAVAILABLE`（无图、缺文件或完整性失败）。解析期超限也可能先返回PARTS_INVALID，不能依赖唯一超限码。原Origin、CSRF、会话、权限与409幂等错误保持；不能因错误自动换键或重发图片。
 
 ## 固定分享邀请
 
