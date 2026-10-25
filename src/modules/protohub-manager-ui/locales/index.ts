@@ -1,5 +1,34 @@
 export const protoLocales = {
   zh: {
+    feedback: '页面反馈',
+    feedbackAllow: '允许所选页面文本反馈（默认关闭）',
+    feedbackPolicyHint:
+      '仅固定修订支持页面反馈；访问者需先建立有效身份。关闭身份验证时也会关闭反馈。',
+    feedbackPageHint: '反馈针对壳层当前所选页面，不跟踪原型内部或嵌套框架中的跳转。',
+    feedbackAuthenticate:
+      '请先验证访问者身份。当前页面的草稿已保留，请按需复制；验证返回后需自行提交。',
+    feedbackDisabled: '此分享未启用页面反馈。',
+    feedbackUnavailable: '无法读取或操作页面反馈，请刷新核对访问权限及当前页面。',
+    feedbackTextRequired: '请输入 1–4000 字的纯文本内容，不能只输入空白。',
+    feedbackConflict: '反馈状态已变化，已刷新当前记录。草稿仍保留，请核对后再操作，不会自动重试。',
+    feedbackResultUnknown:
+      '提交结果尚未确认。请先刷新核对；相同内容的手动重试会沿用原请求标识，不会自动提交。',
+    feedbackThreadMissing: '当前反馈不在此页列表中。草稿已保留，请复制或重新选择反馈后操作。',
+    feedbackReturn: '返回页面反馈（保留草稿）',
+    feedbackCopyDraft: '复制当前草稿',
+    feedbackState: '反馈状态',
+    feedbackOpen: '待处理',
+    feedbackResolved: '已解决',
+    feedbackNew: '新建反馈',
+    feedbackReply: '回复内容',
+    feedbackResolve: '标记为已解决',
+    feedbackReopen: '重新打开',
+    feedbackVisibility: '回复可见范围',
+    feedbackPublic: '公开回复（该反馈的访问者可见）',
+    feedbackInternal: '内部备注（仅项目成员可见）',
+    feedbackInternalHint: '此备注仅供获授权项目成员查看，访问者不会看到内容或记录信息。',
+    feedbackPlainText: '仅支持纯文本，最多 4000 字；不解析 HTML 或 Markdown。',
+    feedbackSubmit: '提交反馈',
     reviewInvitations: '邮箱邀请',
     reviewInvitationManagementHint:
       '为指定邮箱创建一次性邀请，最长 24 小时且不超过分享有效期。不会自动发送邀请邮件，请手动复制链接交给收件人；收件人仍需正常访问分享并获取新的邮箱验证码。',
@@ -399,6 +428,41 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    feedback: 'Page feedback',
+    feedbackAllow: 'Allow selected-page text feedback (off by default)',
+    feedbackPolicyHint:
+      'Page feedback requires a fixed revision and a valid visitor identity. Disabling identity verification also disables feedback.',
+    feedbackPageHint:
+      'Feedback targets the page selected in this shell. It does not follow navigation inside the prototype or nested frames.',
+    feedbackAuthenticate:
+      'Verify your visitor identity first. This page draft is kept and can be copied. Submit it explicitly after returning from verification.',
+    feedbackDisabled: 'Page feedback is not enabled for this share.',
+    feedbackUnavailable:
+      'Page feedback is unavailable. Refresh to check access and the selected page.',
+    feedbackTextRequired: 'Enter 1–4000 characters of plain text, not only whitespace.',
+    feedbackConflict:
+      'The feedback state changed and was refreshed. Your draft is kept. Check the latest record before acting again; nothing is retried automatically.',
+    feedbackResultUnknown:
+      'The submission result is unknown. Refresh to check first. A manual retry with the same content reuses its original request key; nothing is submitted automatically.',
+    feedbackThreadMissing:
+      'This feedback is not on the current list page. Your draft is kept. Copy it or select the feedback again before proceeding.',
+    feedbackReturn: 'Return to page feedback (keep draft)',
+    feedbackCopyDraft: 'Copy current draft',
+    feedbackState: 'Feedback state',
+    feedbackOpen: 'Open',
+    feedbackResolved: 'Resolved',
+    feedbackNew: 'New feedback',
+    feedbackReply: 'Reply text',
+    feedbackResolve: 'Mark resolved',
+    feedbackReopen: 'Reopen',
+    feedbackVisibility: 'Reply visibility',
+    feedbackPublic: 'Public reply (visible to this feedback’s visitor)',
+    feedbackInternal: 'Internal note (project members only)',
+    feedbackInternalHint:
+      'Only authorized project members can read this note. Visitors receive neither its content nor record information.',
+    feedbackPlainText:
+      'Plain text only, up to 4000 characters. HTML and Markdown are not interpreted.',
+    feedbackSubmit: 'Submit feedback',
     reviewInvitations: 'Email invitations',
     reviewInvitationManagementHint:
       'Create a single-use invitation for a specific mailbox. It lasts up to 24 hours and never beyond the share expiry. No invitation email is sent automatically. Copy the link manually; the recipient still needs normal share access and a fresh email verification code.',

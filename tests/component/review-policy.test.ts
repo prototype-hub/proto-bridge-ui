@@ -78,6 +78,7 @@ it('saves the fetched policy CAS version, not a stale share list version', async
     true,
     9,
     false,
+    false,
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
   expect(wrapper.emitted('saved')).toEqual([
@@ -126,7 +127,14 @@ it('requires an explicit unverified opt-in and sends false again when it is turn
   await unverified.trigger('click')
   wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
   await flushPromises()
-  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith('s1', true, 9, true, expect.anything())
+  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith(
+    's1',
+    true,
+    9,
+    true,
+    false,
+    expect.anything(),
+  )
   await unverified.trigger('click')
   wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
   await flushPromises()
@@ -135,7 +143,40 @@ it('requires an explicit unverified opt-in and sends false again when it is turn
     true,
     10,
     false,
+    false,
     expect.anything(),
   )
   expect(wrapper.text()).toContain(protoLocales.zh.reviewUnverifiedHint)
+})
+
+it('defaults old feedback policy to false, saves explicit opt-in and clears it when identity is disabled', async () => {
+  const wrapper = setup()
+  await flushPromises()
+  const main = wrapper.get(`[role=switch][aria-label="${protoLocales.zh.reviewEnable}"]`)
+  const feedback = wrapper.get(`[role=switch][aria-label="${protoLocales.zh.feedbackAllow}"]`)
+  expect(feedback.attributes('aria-checked')).toBe('false')
+  expect(feedback.attributes('disabled')).toBeDefined()
+  await main.trigger('click')
+  await feedback.trigger('click')
+  wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
+  await flushPromises()
+  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith(
+    's1',
+    true,
+    9,
+    false,
+    true,
+    expect.anything(),
+  )
+  await main.trigger('click')
+  wrapper.findComponent({ name: 'FormModal' }).vm.$emit('submit')
+  await flushPromises()
+  expect(sharesApi.setReviewPolicy).toHaveBeenLastCalledWith(
+    's1',
+    false,
+    10,
+    false,
+    false,
+    expect.anything(),
+  )
 })

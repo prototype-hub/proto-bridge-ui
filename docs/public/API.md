@@ -196,19 +196,19 @@
 
 ## 分享的邮箱访问者身份
 
-分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,allowUnverified,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,allowUnverified?,expectedVersion}`。旧分享的两个许可默认关闭，旧客户端省略allowUnverified或传null时保留其已有值；普通分享创建/编辑不会自行开启。保存使用刚读取的版本，409后刷新并要求手动重新确认；策略更新轮换原分享凭据，刷新分享列表。只有身份总开关与allowUnverified均开启才提供低保障入口。
+分享管理行提供“访问者身份设置”，需要分享保存权限与当前项目的分享管理能力。`GET /prototype-hub/shares/{id}/review` 返回 `{enabled,allowUnverified,allowComment,mailAvailable,configVersion}`；`PUT` 同一路径提交 `{enabled,allowUnverified?,allowComment?,expectedVersion}`。历史身份与许可均默认关闭，旧客户端省略许可或传null时保留存储值；普通分享创建/编辑不会自行开启。反馈仅在身份开启且fixed分享有有效修订时可用；enabled=false同时显式allowComment=true返回400，新界面关闭身份时同时提交allowComment=false。旧客户端保留的存储标志在身份关闭时仍返回有效false。保存使用刚读取的版本，409后刷新并要求手动重新确认；策略更新轮换原分享凭据，刷新分享列表，重新开启不恢复旧会话。只有身份总开关与allowUnverified均开启才提供低保障入口。
 
-分享密码授权后的响应提供 `reviewEnabled/reviewAvailable/reviewUnverifiedAllowed`；最后一项仅在当前授权、身份总开关和低保障许可均有效时为true，context也返回allowUnverified。可信外壳保留邮箱OTP，并只在管理员允许时提供“未验证”方式：姓名必填、公司可选、不收集邮箱、不发送邮件。界面始终区分“邮箱已验证”和“未验证”；姓名/公司均为自述，邮箱持有权也不代表实名或企业认证。没有邮件服务或发码失败时仅提示原因，不自动选择或提交低保障方式。固定分享可手动复制定向邀请，仍须指定邮箱重新OTP；当前不创建平台用户，不提供人工身份关联、批注或业务提醒。
+分享密码授权后的响应提供 `reviewEnabled/reviewAvailable/reviewUnverifiedAllowed`；最后一项仅在当前授权、身份总开关和低保障许可均有效时为true，context还返回allowUnverified与allowComment的有效值。可信外壳保留邮箱OTP，并只在管理员允许时提供“未验证”方式：姓名必填、公司可选、不收集邮箱、不发送邮件。界面始终区分“邮箱已验证”和“未验证”；姓名/公司均为自述，邮箱持有权也不代表实名或企业认证。没有邮件服务或发码失败时仅提示原因，不自动选择或提交低保障方式。固定分享可手动复制定向邀请，仍须指定邮箱重新OTP；启用页面反馈后支持文字线程与网页回复，不创建平台用户，不提供人工身份关联或业务提醒。
 
 以下均为 `POST /prototype-hub/public/shares/{token}/review/{action}`，请求体必须携带本次分享的 `{revisionId,accessKey}`，不放在查询字符串；固定与跟随分享都以本次明确修订为范围，不隐式切换最新内容。
 
-| action       | 额外输入                                        | 响应                                                                   |
-| ------------ | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `context`    | 无                                              | `{revisionId,enabled,allowUnverified,mailAvailable,csrfToken,session}` |
-| `challenges` | `{email,displayName,company?,invitationToken?}` | `{challengeId,expiresAt,resendAfter}`                                  |
-| `verify`     | `{challengeId,code}`                            | 同context，成功后轮换Cookie/CSRF                                       |
-| `unverified` | `{displayName,company?}`                        | 同context；须显式获准，返回未验证身份                                  |
-| `logout`     | 无                                              | `{loggedOut:true}`，随后重新获取匿名context                            |
+| action       | 额外输入                                        | 响应                                                                                |
+| ------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `context`    | 无                                              | `{revisionId,enabled,allowUnverified,allowComment,mailAvailable,csrfToken,session}` |
+| `challenges` | `{email,displayName,company?,invitationToken?}` | `{challengeId,expiresAt,resendAfter}`                                               |
+| `verify`     | `{challengeId,code}`                            | 同context，成功后轮换Cookie/CSRF                                                    |
+| `unverified` | `{displayName,company?}`                        | 同context；须显式获准，返回未验证身份                                               |
+| `logout`     | 无                                              | `{loggedOut:true}`，随后重新获取匿名context                                         |
 
 `session`只含 `{guestId,displayName,company,maskedEmail,verificationLevel,expiresAt}`；verificationLevel仅为email或unverified，低保障maskedEmail为null，邮箱身份只显示脱敏值。前端沿用trim整理姓名和公司；姓名须非空且最多100字符，公司可选且最多200字符。服务端独立校验收到的原始字段，拒绝Unicode控制字符后才strip，不依赖客户端校验。身份和CSRF只留在可信外壳内存，不传到原型iframe、postMessage、资源URL或全局store/localStorage。
 
@@ -220,7 +220,42 @@
 
 未验证身份从首次签发起固定8小时；同一有效会话再次提交保留原ID、资料与到期时间，不改名或续期。当前已有有效邮箱身份时申请低保障身份返回409 / `PROTOTYPE_HUB_REVIEW_IDENTITY_EXISTS`，须先显式退出。未验证会话退出、丢失、到期或被撤销后，不能通过姓名、公司、邮箱或OTP找回，也不自动合并进后来验证的邮箱身份。分享配置换代后，重新取得当前分享证明再明确申请可获得另一随机身份，无须依赖清除旧Cookie；旧ID和期限不会恢复，未知会话等级仍拒绝。界面明确提示无自助/人工关联入口，需联系管理员线下处理；新申请是另一个身份。
 
-未验证新建采用独立的项目60次/小时、当前Cookie5次/小时及60秒冷却窗口，有效会话复用不计新建。此限制不识别人或设备；清除Cookie不能绕过项目总量上限。邮箱OTP额度与低保障创建额度分开，状态切换不退还。关闭抽屉清空页面内身份，重开仍从服务器校验Cookie和分享范围；分享变更、停用、撤销、过期或软删均不能靠旧身份绕过。
+未验证新建采用独立的项目60次/小时、当前Cookie5次/小时及60秒冷却窗口，有效会话复用不计新建。此限制不识别人或设备；清除Cookie不能绕过项目总量上限。邮箱OTP额度与低保障创建额度分开，状态切换不退还。身份状态由分享外壳统一持有，身份或反馈抽屉打开时共用；两个抽屉均关闭后清空身份上下文，重开仍从服务器校验Cookie和分享范围。分享变更、停用、撤销、过期或软删均不能靠旧身份绕过。
+
+## 固定页面文字反馈
+
+反馈入口复用公开分享与成员预览工具栏，不增加全局菜单。目标是外壳当前选中的固定revisionId与唯一manifest pageId，界面明确提示不跟随iframe内部导航；legacy、重复或无效页面标识没有反馈入口。服务端校验清单成员并返回pageName/pagePath，前端不提供作者身份或可信页面路径。当前仅有纯文本线程、对客回复、内部备注和open/resolved状态，不含几何圈选、附件、指派、编辑删除或业务邮件。
+
+公开接口全部位于 `/prototype-hub/public/shares/{token}/review`，提交 `{revisionId,accessKey,pageId}`，沿用同源Cookie、受信Origin、`X-Review-CSRF`、no-store；新接口包含明确的PUT方法，不能把身份Cookie扩至runtime：
+
+| 请求                                       | 额外字段                                         | 结果                  |
+| ------------------------------------------ | ------------------------------------------------ | --------------------- |
+| `POST /threads/_query`                     | `{pageIndex,pageSize,state?}`                    | 本人线程分页          |
+| `POST /threads`                            | `{text,clientRequestId}`                         | Thread                |
+| `POST /threads/{threadId}/messages/_query` | `{pageIndex,pageSize}`                           | 仅公开消息分页        |
+| `POST /threads/{threadId}/messages`        | `{text,clientRequestId}`                         | 当前访客的公开Message |
+| `PUT /threads/{threadId}/status`           | `{state:'open',expectedVersion,clientRequestId}` | 重开后的Thread        |
+
+本人线程范围匹配同一项目、版本、分享、修订、页面及身份保障等级/guestId。另一分享不继承旧线程，已验证邮箱重新OTP仍须相同分享当前授权；未验证会话到期、丢失或退出后不能按姓名或邮箱恢复历史。公开列表不按客户端过滤内部数据，不展示其他访客或内部备注的内容、数量、时间或版本变化。
+
+成员从预览进入反馈，查询要求版本query与项目edit，写入要求版本save与项目edit；仅有项目read不能查看全部客户反馈或内部备注。管理接口基于 `/prototype-hub/versions/{versionId}/review-threads`，所有请求提交 `{revisionId,pageId}`：
+
+| 请求                               | 额外字段                      | 结果                                         |
+| ---------------------------------- | ----------------------------- | -------------------------------------------- | ------- |
+| `POST /_query`                     | `{pageIndex,pageSize,state?}` | Thread分页                                   |
+| `POST /{threadId}/messages/_query` | `{pageIndex,pageSize}`        | 全部公开/内部Message分页                     |
+| `POST /{threadId}/messages`        | `{text,visibility:'public'    | 'internal',clientRequestId}`                 | Message |
+| `PUT /{threadId}/status`           | `{state:'open'                | 'resolved',expectedVersion,clientRequestId}` | Thread  |
+
+PM不能创建客户顶层线程。对客回复与内部备注使用明确不同的选择项和标识；内部备注永不进入公开列表。分享或访客停用后，当前有权PM仍可处理归档，项目/版本/修订不可用时拒绝。访客公开回复自动重开resolved，PM公开回复保持状态；访客只能明确重开，只有PM可解决。状态转换才增加configVersion，同版本同状态请求不重复转换；内部备注不改变公开updatedAt、状态、版本或排序。
+
+Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorCompany,verificationLevel,state,configVersion,createdAt,updatedAt}`；summary是首次公开文本前200个Java字符，首位作者资料/等级固定为投稿快照。Message为 `{id,threadId,text,authorType,authorName,authorCompany,verificationLevel,visibility,createdAt}`；作者种类为guest/member，成员等级为null。两者均不含原始作者ID、完整邮箱或凭据，不增加messageCount。纯文本使用转义插值显示，不解释HTML或Markdown。
+
+所有分页使用服务端total，页号0–10000、每页1–100，右侧显示分页器；线程按公开updatedAt降序、ID升序，消息按createdAt升序、ID升序。text经strip后1–4000个Java字符，Unicode纯空白无效；state/visibility仅接受精确字符串。每次写入的clientRequestId为1–128个可打印ASCII非空白字符，界面使用crypto.randomUUID并只存当前外壳内存。相同语义重试复用原键，不确定结果不自动重发；修改文本、可见性、expectedVersion或目标后创建新意图。同键不同内容返回409，不生成重复消息或事件；重放仍先重新授权，再返回原资源当前结果。
+
+身份与反馈抽屉共用一个身份hook，切换时先打开目标再关闭来源。草稿仅在当前外壳内存：同目标关闭重开、OTP返回或会话过期保留文字；会话过期提供显式复制与重新验证，验证成功不会自动投稿。分享/修订/页面/线程或实际身份变化、分享证明/页面失效会清理错误范围草稿；缺失/过期会话与范围失效分开处理。取消请求与代次检查阻止切换后的旧结果覆盖新目标。409刷新当前状态并保留同目标未发送文字，由用户重新确认；凭据、草稿、姓名、线程数据不进入iframe、workspace runtime、postMessage或持久存储，页面选择事件仅含修订及页面身份和名称/路径。
+
+错误码 `PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED` 为403，`PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED` 为403且允许明确重新验证；缺失或越权线程统一404 / `PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE`，无效页面为404 / `PROTOTYPE_HUB_REVIEW_PAGE_INVALID`，陈旧状态版本为409 / `PROTOTYPE_HUB_REVIEW_THREAD_CONFLICT`。访客新写入独立限频为项目300次/小时、每保障等级/guestId 60次/小时；幂等重放不重复占次数。基础只在同一事务保存领域事件，事件30天后有界清理，不派发业务消息，不显示已发送邮件或通知。
 
 ## 固定分享邀请
 

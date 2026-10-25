@@ -241,3 +241,18 @@ it('preserves the exact selected tree label when several legacy aliases share a 
   expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('Legacy B')
   expect(wrapper.get('iframe').attributes('src')).toMatch(/index.html$/)
 })
+
+it('emits only stable shell page metadata and clears the feedback target for invalid/legacy pages', async () => {
+  const { wrapper, router } = await setup('/preview/p1/v1?revisionId=r1&pageId=detail', true)
+  const workspace = wrapper.findComponent(PrototypeWorkspace)
+  expect(workspace.emitted('pageChange')?.at(-1)).toEqual([
+    { revisionId: 'r1', pageId: 'detail', name: 'Details', path: 'nested/details.html' },
+  ])
+  expect(JSON.stringify(workspace.emitted('pageChange'))).not.toContain('private-runtime-grant')
+  await wrapper.findAll('.workspace-nav .tree-page')[3].trigger('click')
+  await flushPromises()
+  expect(workspace.emitted('pageChange')?.at(-1)).toEqual([undefined])
+  await router.push({ query: { revisionId: 'r1', pageId: 'missing' } })
+  await flushPromises()
+  expect(workspace.emitted('pageChange')?.at(-1)).toEqual([undefined])
+})

@@ -60,6 +60,7 @@ test('share managers explicitly enable identity using current policy version and
     enabled: true,
     expectedVersion: 1,
     allowUnverified: false,
+    allowComment: false,
   })
   expect((await response.json()).result).toMatchObject({ enabled: true, configVersion: 2 })
   await expect(dialog).toBeHidden()

@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { runtimeHtml } from './runtime'
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
+import { threadResponse } from './review-thread'
 import { invitationManagement } from './review-invitation'
 import {
   reviewEnabled,
@@ -626,7 +627,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         : record.revisionId || shareRevisions.get(record.token) || ''
     const grant = `access-${record.configVersion}-${rid}`
     const grantBase = `/api/prototype-hub/public/shares/${record.token}/${grant}/revisions/${rid}`
-    if (reviewResponse(req, res, record, data, suffix, rid, grant, send)) return true
+    if (reviewResponse(req, res, record, data, suffix, rid, grant, send, revisionPages(rid)))
+      return true
     const access =
       !record.passwordRequired ||
       (suffix === '/verify' && data.password === passwords.get(record.token))
@@ -1086,6 +1088,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       send(res, 200, value)
     }
+  } else if (/^\/prototype-hub\/versions\/[^/]+\/review-threads(?:\/.*)?$/.test(path)) {
+    const versionId = decodeURIComponent(path.split('/')[3]!),
+      revision = revisions.get(String(data.revisionId))
+    if (!activeVersion(versionId) || revision?.versionId !== versionId)
+      send(res, 404, null, 'Feedback unavailable')
+    else
+      threadResponse(
+        res,
+        versionId,
+        revisionPages(revision.id),
+        data,
+        path.split('/review-threads')[1] || '',
+        method,
+        send,
+      )
   } else if (/^\/prototype-hub\/shares\/[^/]+\/review-invitations(?:\/.*)?$/.test(path)) {
     const value = shares.find((item) => item.id === decodeURIComponent(path.split('/')[3]!))
     if (!value) send(res, 404, null, 'Share unavailable')

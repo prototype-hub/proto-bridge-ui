@@ -238,6 +238,7 @@ export interface PublicShare {
   previewUrl?: string
 }
 export interface ReviewPolicy {
+  allowComment?: boolean
   enabled: boolean
   mailAvailable: boolean
   configVersion: number
@@ -266,6 +267,7 @@ export interface ReviewGuest {
   modifyTime: number
 }
 export interface ReviewContext {
+  allowComment?: boolean
   revisionId: string
   enabled: boolean
   mailAvailable: boolean
@@ -324,4 +326,57 @@ export interface WorkspaceContext {
 export interface UploadContext {
   projectId: string
   version?: Version
+}
+
+/** Validated shell selection; no runtime/session credentials belong to this event. */
+export interface ReviewPage {
+  revisionId: string
+  pageId: string
+  name: string
+  path: string
+}
+export type ReviewThreadState = 'open' | 'resolved'
+export interface ReviewThread {
+  id: string
+  revisionId: string
+  pageId: string
+  pageName: string
+  pagePath: string
+  summary: string
+  authorName: string
+  authorCompany: string | null
+  verificationLevel: ReviewVerificationLevel
+  state: ReviewThreadState
+  configVersion: number
+  createdAt: number
+  updatedAt: number
+}
+export interface ReviewMessage {
+  id: string
+  threadId: string
+  text: string
+  authorType: 'guest' | 'member'
+  authorName: string | null
+  authorCompany: string | null
+  verificationLevel: ReviewVerificationLevel | null
+  visibility: 'public' | 'internal'
+  createdAt: number
+}
+export interface ReviewThreadPage {
+  revisionId: string
+  pageId: string
+}
+export interface ReviewThreadQuery extends ReviewThreadPage {
+  pageIndex: number
+  pageSize: number
+  state?: ReviewThreadState
+}
+export interface ReviewMessageInput extends ReviewThreadPage {
+  text: string
+  clientRequestId: string
+}
+export interface ReviewStatusInput extends ReviewThreadPage {
+  state: ReviewThreadState
+  expectedVersion: number
+  clientRequestId: string
 }

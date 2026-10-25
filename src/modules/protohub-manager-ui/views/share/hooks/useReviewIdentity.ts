@@ -311,3 +311,5 @@ export function useReviewIdentity(
     logout,
   }
 }
+
+export type ReviewIdentityController = ReturnType<typeof useReviewIdentity>

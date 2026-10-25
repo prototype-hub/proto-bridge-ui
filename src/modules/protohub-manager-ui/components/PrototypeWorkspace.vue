@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRef, type PropType } from 'vue'
+import { toRef, watch, type PropType } from 'vue'
 import {
   Button as AButton,
   RadioGroup as ARadioGroup,
@@ -11,7 +11,7 @@ import {
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/modules/protohub-manager-ui/hooks/useWorkspace'
-import type { WorkspaceContext, PrototypePage, WorkspacePane } from '../types'
+import type { WorkspaceContext, PrototypePage, WorkspacePane, ReviewPage } from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
 const props = defineProps({
@@ -19,6 +19,7 @@ const props = defineProps({
   pane: { type: String as PropType<WorkspacePane>, default: undefined },
   compact: { type: Boolean, default: false },
 })
+const emit = defineEmits<{ pageChange: [page: ReviewPage | undefined] }>()
 const { t } = useI18n()
 const {
   mode,
@@ -41,6 +42,25 @@ const {
   loaded,
   failed,
 } = useWorkspace(toRef(props, 'context'), props.pane, props.compact)
+// Emit only validated manifest identity; the opaque iframe cannot define a discussion target.
+watch(
+  [() => props.context.revisionId, pageId, selectedPage],
+  () => {
+    const page = selectedPage.value
+    emit(
+      'pageChange',
+      props.context.revisionId && pageId.value && page?.path
+        ? {
+            revisionId: props.context.revisionId,
+            pageId: pageId.value,
+            name: page.name,
+            path: page.path,
+          }
+        : undefined,
+    )
+  },
+  { immediate: true },
+)
 function select(path: string, id?: string, page?: PrototypePage) {
   selectPage(path, id, page)
   if (isNarrow.value) navVisible.value = false

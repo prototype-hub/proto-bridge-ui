@@ -19,6 +19,7 @@ const { t } = useI18n()
 const policy = shallowRef<ReviewPolicy>()
 const enabled = ref(false),
   allowUnverified = ref(false),
+  allowComment = ref(false),
   loading = ref(false),
   busy = ref(false),
   error = ref('')
@@ -41,6 +42,7 @@ async function load() {
     policy.value = result
     enabled.value = result.enabled
     allowUnverified.value = result.allowUnverified === true
+    allowComment.value = result.allowComment === true
   } catch {
     if (epoch === generation) error.value = t('proto.reviewPolicyUnavailable')
   } finally {
@@ -59,6 +61,7 @@ async function save() {
       enabled.value,
       policy.value.configVersion,
       allowUnverified.value,
+      enabled.value && allowComment.value,
       { signal: controller?.signal, silent: true },
     )
     if (epoch !== generation) return
@@ -92,7 +95,7 @@ onScopeDispose(() => {
   <form-modal
     :open="true"
     :title="t('proto.reviewSettings')"
-    :model="{ enabled, allowUnverified }"
+    :model="{ enabled, allowUnverified, allowComment }"
     :busy="busy || loading"
     :error="error"
     width="min(520px, calc(100vw - 32px))"
@@ -122,6 +125,14 @@ onScopeDispose(() => {
         />
       </a-form-item>
       <a-alert type="warning" show-icon :message="t('proto.reviewUnverifiedHint')" />
+      <a-form-item name="allowComment" :label="t('proto.feedbackAllow')">
+        <a-switch
+          v-model:checked="allowComment"
+          :aria-label="t('proto.feedbackAllow')"
+          :disabled="busy || !policy || !enabled || share.revisionMode !== 'fixed'"
+        />
+      </a-form-item>
+      <a-alert type="info" show-icon :message="t('proto.feedbackPolicyHint')" />
     </load-state>
     <a-button v-if="!loading && !policy" @click="load">{{ t('common.retry') }}</a-button>
   </form-modal>

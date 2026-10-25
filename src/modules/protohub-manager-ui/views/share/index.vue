@@ -8,9 +8,16 @@ import {
   Alert as AAlert,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { ref, watch, defineAsyncComponent } from 'vue'
+import { computed, ref, watch, defineAsyncComponent } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
+import { useReviewIdentity } from './hooks/useReviewIdentity'
+import {
+  useReviewThreads,
+  type ReviewThreadScope,
+} from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
+import type { ReviewPage } from '@/modules/protohub-manager-ui/types'
+import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 const { t } = useI18n()
@@ -20,7 +27,46 @@ const { resource, task, password, verify } = usePublicShare()
 const ReviewIdentityDrawer = defineAsyncComponent(
   () => import('./components/ReviewIdentityDrawer.vue'),
 )
-const identityOpen = ref(false)
+const identityOpen = ref(false),
+  feedbackOpen = ref(false),
+  returnToFeedback = ref(false)
+const selectedPage = ref<ReviewPage>()
+const share = computed(() => resource.data.value.share)
+const identity = useReviewIdentity(
+  share,
+  computed(() => identityOpen.value || feedbackOpen.value),
+  invitation.invitation,
+)
+const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
+  share.value &&
+  selectedPage.value &&
+  selectedPage.value.revisionId === share.value.revisionId &&
+  share.value.revisionMode === 'fixed'
+    ? {
+        kind: 'public',
+        share: share.value,
+        page: selectedPage.value,
+        pendingInvitation: invitation.invitation.value !== undefined,
+      }
+    : undefined,
+)
+const feedback = useReviewThreads(feedbackScope, feedbackOpen, identity.context)
+function authenticate() {
+  identityOpen.value = true
+  feedbackOpen.value = false
+  returnToFeedback.value = true
+  void identity.load()
+}
+function returnFeedback() {
+  feedbackOpen.value = true
+  identityOpen.value = false
+  returnToFeedback.value = false
+}
+function openIdentity() {
+  returnToFeedback.value = false
+  identityOpen.value = true
+}
+
 watch(
   () => [
     resource.data.value.share?.token,
@@ -30,7 +76,8 @@ watch(
     resource.data.value.share?.reviewUnverifiedAllowed,
   ],
   () => {
-    identityOpen.value = false
+    identityOpen.value = feedbackOpen.value = false
+    selectedPage.value = undefined
   },
 )
 </script>
@@ -43,6 +90,7 @@ watch(
       ><prototype-workspace
         v-if="invitation.ready.value && resource.data.value.context"
         :context="resource.data.value.context"
+        @page-change="selectedPage = $event"
         ><template #actions>
           <a-button
             v-if="resource.data.value.share?.reviewEnabled"
@@ -52,7 +100,7 @@ watch(
                 ? t('proto.reviewIdentity')
                 : t('proto.reviewMailUnavailable')
             "
-            @click="identityOpen = true"
+            @click="openIdentity"
             >{{
               t(
                 invitation.invitation.value !== undefined
@@ -60,6 +108,12 @@ watch(
                   : 'proto.reviewIdentity',
               )
             }}</a-button
+          >
+          <a-button
+            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
+            :disabled="!selectedPage"
+            @click="feedbackOpen = true"
+            >{{ t('proto.feedback') }}</a-button
           >
         </template></prototype-workspace
       >
@@ -95,11 +149,21 @@ watch(
   </div>
   <review-identity-drawer
     v-if="identityOpen"
-    :share="resource.data.value.share"
+    :state="identity"
+    :return-to-feedback="returnToFeedback"
     :open="identityOpen"
     :invitation="invitation.invitation.value"
     @close="identityOpen = false"
+    @feedback="returnFeedback"
     @invitation-used="invitation.abandon"
     @abandon-invitation="invitation.abandon"
+  />
+  <review-threads-drawer
+    :open="feedbackOpen"
+    :page="selectedPage"
+    :state="feedback"
+    :identity-loading="identity.loading.value"
+    @close="feedbackOpen = false"
+    @authenticate="authenticate"
   />
 </template>
