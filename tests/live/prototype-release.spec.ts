@@ -10,6 +10,12 @@ import type {
   PrototypePage,
   RevisionComparison,
   RevisionQuality,
+  ReviewPolicy,
+  CreatedReviewInvitation,
+  ReviewContext,
+  ReviewInvitation,
+  ReviewThread,
+  ReviewMessage,
 } from '../../src/modules/protohub-manager-ui/types'
 
 interface Resource {
@@ -140,6 +146,7 @@ const liveTest = test.extend<{ owned: OwnedResources }>({
 liveTest(
   'production UI uses the real backend for login, members, nested preview, replacement and capacity',
   async ({ page, request, owned }, testInfo) => {
+    const startedAt = Date.now()
     const environment = liveEnvironment()
     const name = `Live verification ${randomUUID()}`
     let projectId = ''
@@ -817,32 +824,152 @@ liveTest(
     })
 
     await test.step('verify a local SMTP visitor identity in the trusted public shell and sign out', async () => {
+      // This fixture is created on the restored JAR; pre-backup persistence is verified by the runtime tool.
       const mail = `review-${randomUUID()}@example.invalid`
       const password = `Review-${randomUUID()}`
       const created = await result<Share>(
         await request.post(`/api/prototype-hub/versions/${versionId}/shares`, {
           headers: owned.headers,
-          data: { password },
+          data: { password, revisionMode: 'fixed', description: 'Live invitation review' },
         }),
       )
       owned.shares.push(created.id)
       const publicPage = await page.context().newPage()
+      const memberPage = await page.context().newPage()
+      let phase = 'policy'
+      let verificationFailure: Error | undefined
+      let cleanupFailed = false
+      const observePhase = (next: string) => {
+        phase = next
+        // Only fixed stage names and elapsed time may enter the sensitive live report.
+        console.info(`[live-review] phase=${phase}; testElapsedMs=${Date.now() - startedAt}`)
+      }
       try {
+        observePhase('policy')
+        expect(created.revisionMode).toBe('fixed')
+        expect(created.revisionId === secondRevisionId).toBe(true)
         const policy = await result<{ configVersion: number }>(
           await request.get(`/api/prototype-hub/shares/${created.id}/review`, {
             headers: owned.headers,
           }),
         )
-        const updated = await result<{ enabled: boolean; mailAvailable: boolean }>(
+        const updated = await result<ReviewPolicy>(
           await request.put(`/api/prototype-hub/shares/${created.id}/review`, {
             headers: owned.headers,
-            data: { enabled: true, expectedVersion: policy.configVersion },
+            data: {
+              enabled: true,
+              allowComment: true,
+              allowUnverified: true,
+              expectedVersion: policy.configVersion,
+            },
           }),
         )
-        expect(updated).toMatchObject({ enabled: true, mailAvailable: true })
-        await publicPage.goto(`/share/${encodeURIComponent(created.token)}`)
+        expect(updated).toMatchObject({
+          enabled: true,
+          mailAvailable: true,
+          allowComment: true,
+          allowUnverified: true,
+        })
+        const pages = await result<PrototypePage[]>(
+          await request.get(
+            `/api/prototype-hub/versions/${versionId}/revisions/${secondRevisionId}/pages`,
+            { headers: owned.headers },
+          ),
+        )
+        const flatten = (items: PrototypePage[]): PrototypePage[] =>
+          items.flatMap((item) => [item, ...flatten(item.children || [])])
+        const target = flatten(pages).find(
+          (item) => item.folder !== true && item.path && item.pageId,
+        )
+        expect(!!target?.pageId).toBe(true)
+
+        observePhase('invitation management')
+        await page.getByRole('button', { name: '分享管理', exact: true }).click()
+        const shares = page.getByRole('dialog', { name: '分享管理', exact: true })
+        const row = shares
+          .locator('tbody tr.ant-table-row')
+          .filter({ hasText: 'Live invitation review' })
+        await row
+          .getByRole('button', { name: protoLocales.zh.reviewInvitations, exact: true })
+          .click()
+        const invitations = page.getByRole('dialog', {
+          name: protoLocales.zh.reviewInvitations,
+          exact: true,
+        })
+        await expect(invitations).toBeVisible()
+        await invitations
+          .getByLabel(protoLocales.zh.reviewInvitationRecipient, { exact: true })
+          .fill(mail)
+        const creatingInvitation = page.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname ===
+              `/api/prototype-hub/shares/${created.id}/review-invitations`,
+        )
+        await invitations
+          .getByRole('button', { name: protoLocales.zh.reviewInvitationCreate, exact: true })
+          .click()
+        const invitation = await result<CreatedReviewInvitation>(await creatingInvitation)
+        const link = await invitations
+          .getByLabel(protoLocales.zh.reviewInvitationLink, { exact: true })
+          .inputValue()
+        const invitationUrl = new URL(link)
+        expect(invitationUrl.origin === new URL(page.url()).origin).toBe(true)
+        expect(invitationUrl.pathname === `/share/${encodeURIComponent(created.token)}`).toBe(true)
+        expect(invitationUrl.hash === `#reviewInvitation=${invitation.invitationToken}`).toBe(true)
+        expect(/^[A-Za-z0-9_-]{43}$/.test(invitation.invitationToken)).toBe(true)
+        await invitations.getByRole('button', { name: '关闭', exact: true }).click()
+        await expect(invitations).toBeHidden()
+        await shares.getByRole('button', { name: 'Close', exact: true }).click()
+        await expect(shares).toBeHidden()
+
+        observePhase('invited share authorization')
+        let sends = 0,
+          threadWrites = 0,
+          observedRuntime = 0,
+          observedPublic = 0,
+          leakedRuntimeCredential = false,
+          leakedPublicCredential = false,
+          leakedInvitationUrl = false
+        const runtimeCookieNames = new Set<string>()
+        const headerObservations: Promise<boolean>[] = []
+        publicPage.on('request', (outgoing) => {
+          if (outgoing.url().endsWith('/review/challenges')) sends++
+          if (outgoing.method() === 'POST' && outgoing.url().endsWith('/review/threads'))
+            threadWrites++
+          leakedInvitationUrl ||= outgoing.url().includes(invitation.invitationToken)
+          if (!outgoing.url().includes('/runtime/') && !outgoing.url().includes('/public/shares/'))
+            return
+          // headers() omits Cookie/security headers; inspect the actual request and await every result.
+          headerObservations.push(
+            outgoing.allHeaders().then(
+              (headers) => {
+                if (outgoing.url().includes('/runtime/')) {
+                  observedRuntime++
+                  leakedRuntimeCredential ||=
+                    !!headers['x-review-csrf'] || !!headers['x-access-token']
+                  for (const cookie of (headers.cookie || '').split(';')) {
+                    const name = cookie.split('=')[0]?.trim()
+                    if (name) runtimeCookieNames.add(name)
+                  }
+                }
+                if (outgoing.url().includes('/public/shares/')) {
+                  observedPublic++
+                  leakedPublicCredential ||= !!headers['x-access-token']
+                }
+                return true
+              },
+              () => false,
+            ),
+          )
+        })
+        await publicPage.goto(link)
+        await expect.poll(() => new URL(publicPage.url()).hash === '').toBe(true)
         await expect(
-          publicPage.getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true }),
+          publicPage.getByRole('button', {
+            name: protoLocales.zh.reviewInvitationUse,
+            exact: true,
+          }),
         ).toHaveCount(0)
         await publicPage.getByLabel('分享密码', { exact: true }).fill(password)
         await publicPage.getByRole('button', { name: '打开原型', exact: true }).click()
@@ -850,24 +977,52 @@ liveTest(
           'sandbox',
           'allow-scripts allow-forms',
         )
-        let sends = 0
-        publicPage.on('request', (outgoing) => {
-          if (outgoing.url().endsWith('/review/challenges')) sends++
-        })
         await publicPage
+          .locator('.workspace-nav .tree-page')
+          .getByText(target!.name, { exact: true })
+          .click()
+        await expect
+          .poll(() => new URL(publicPage.url()).searchParams.get('pageId') === target!.pageId)
+          .toBe(true)
+        await publicPage
+          .getByRole('button', { name: protoLocales.zh.feedback, exact: true })
+          .click()
+        const feedback = publicPage.getByRole('dialog', {
+          name: protoLocales.zh.feedback,
+          exact: true,
+        })
+        const question = 'Live restore fixture question <b>plain text</b>'
+        await feedback.locator('textarea#review-feedback-text').fill(question)
+        await feedback
           .getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true })
           .click()
         const drawer = publicPage.getByRole('dialog', {
           name: protoLocales.zh.reviewIdentity,
           exact: true,
         })
+        await expect(
+          drawer.getByText(protoLocales.zh.reviewInvitationRecipientHint, { exact: true }),
+        ).toBeVisible()
+        await expect(
+          drawer.getByRole('button', { name: protoLocales.zh.reviewUseUnverified, exact: true }),
+        ).toHaveCount(0)
+
+        observePhase('fresh invited mailbox OTP')
         await drawer.getByLabel(protoLocales.zh.reviewEmail, { exact: true }).fill(mail)
         await drawer
           .getByLabel(protoLocales.zh.reviewName, { exact: true })
           .fill('Local SMTP visitor')
+        const challenging = publicPage.waitForResponse((response) =>
+          response.url().endsWith('/review/challenges'),
+        )
         await drawer
           .getByRole('button', { name: protoLocales.zh.reviewSendCode, exact: true })
           .click()
+        const challenge = await challenging
+        expect(challenge.ok()).toBe(true)
+        expect(
+          challenge.request().postDataJSON().invitationToken === invitation.invitationToken,
+        ).toBe(true)
         await expect(
           drawer.getByText(protoLocales.zh.reviewCodeSent, { exact: true }),
         ).toBeVisible()
@@ -889,8 +1044,10 @@ liveTest(
           .getByRole('button', { name: protoLocales.zh.reviewVerify, exact: true })
           .click()
         const verified = await verifying
+        const identity = await result<ReviewContext>(verified)
         expect(verified.request().headers()['x-access-token']).toBeUndefined()
-        expect(verified.request().headers()['x-review-csrf']).toBeTruthy()
+        expect(!!verified.request().headers()['x-review-csrf']).toBe(true)
+        expect(identity.session?.verificationLevel).toBe('email')
         await expect(
           drawer.getByText(protoLocales.zh.reviewEmailVerified, { exact: true }),
         ).toBeVisible()
@@ -903,7 +1060,167 @@ liveTest(
         expect(reviewCookie?.httpOnly).toBe(true)
         expect(reviewCookie?.sameSite).toBe('Strict')
         expect(sends).toBe(1)
-        await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+        const consumed = await result<{ data: ReviewInvitation[] }>(
+          await request.post(`/api/prototype-hub/shares/${created.id}/review-invitations/_query`, {
+            headers: owned.headers,
+            data: { pageIndex: 0, pageSize: 20 },
+          }),
+        )
+        expect(consumed.data.find((item) => item.id === invitation.invitation.id)?.status).toBe(
+          'consumed',
+        )
+
+        observePhase('visitor draft and explicit submission')
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.feedbackReturn, exact: true })
+          .click()
+        await expect
+          .poll(
+            async () =>
+              (await feedback.locator('textarea#review-feedback-text').inputValue()) === question,
+          )
+          .toBe(true)
+        expect(threadWrites).toBe(0)
+        const creatingThread = publicPage.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' && response.url().endsWith('/review/threads'),
+        )
+        await feedback
+          .getByRole('button', { name: protoLocales.zh.feedbackSubmit, exact: true })
+          .click()
+        const thread = await result<ReviewThread>(await creatingThread)
+        expect(
+          thread.revisionId === secondRevisionId &&
+            thread.pageId === target!.pageId &&
+            thread.verificationLevel === 'email',
+        ).toBe(true)
+        await expect(feedback.locator('.feedback-text')).toHaveCount(1)
+        await expect
+          .poll(async () => (await feedback.locator('.feedback-text').textContent()) === question)
+          .toBe(true)
+        await expect(feedback.locator('.feedback-text b')).toHaveCount(0)
+        expect(threadWrites).toBe(1)
+
+        observePhase('member internal note and public isolation')
+        const query = {
+          revisionId: secondRevisionId,
+          pageId: target!.pageId,
+          pageIndex: 0,
+          pageSize: 20,
+        }
+        await memberPage.goto(
+          `/preview/${projectId}/${versionId}?${new URLSearchParams({ revisionId: secondRevisionId, pageId: target!.pageId! })}`,
+        )
+        await memberPage
+          .getByRole('button', { name: protoLocales.zh.feedback, exact: true })
+          .click()
+        const memberFeedback = memberPage.getByRole('dialog', {
+          name: protoLocales.zh.feedback,
+          exact: true,
+        })
+        await memberFeedback.locator('.feedback-thread').click()
+        await memberFeedback
+          .locator('.ant-radio-button-wrapper')
+          .filter({ hasText: protoLocales.zh.feedbackInternal })
+          .click()
+        await expect(
+          memberFeedback.getByRole('radio', {
+            name: protoLocales.zh.feedbackInternal,
+            exact: true,
+          }),
+        ).toBeChecked()
+        await memberFeedback
+          .locator('textarea#review-feedback-text')
+          .fill('Live restore fixture internal note')
+        await memberFeedback
+          .getByRole('button', { name: protoLocales.zh.feedbackSubmit, exact: true })
+          .click()
+        await expect(memberFeedback.locator('.feedback-internal')).toHaveCount(1)
+        const internal = await result<{ data: ReviewThread[] }>(
+          await request.post(`/api/prototype-hub/versions/${versionId}/review-threads/_query`, {
+            headers: owned.headers,
+            data: query,
+          }),
+        )
+        expect(
+          internal.data[0]?.updatedAt === thread.updatedAt &&
+            internal.data[0]?.configVersion === thread.configVersion,
+        ).toBe(true)
+        const publicMessages = publicPage.waitForResponse((response) =>
+          response.url().endsWith(`/threads/${thread.id}/messages/_query`),
+        )
+        await feedback.getByRole('button', { name: '刷新', exact: true }).click()
+        const publicOnly = await result<{ total: number; data: ReviewMessage[] }>(
+          await publicMessages,
+        )
+        expect(publicOnly.total).toBe(1)
+        expect(!JSON.stringify(publicOnly).includes('Live restore fixture internal note')).toBe(
+          true,
+        )
+        expect(
+          publicOnly.data.every(
+            (item) =>
+              item.visibility === 'public' && item.text !== 'Live restore fixture internal note',
+          ),
+        ).toBe(true)
+        await expect(feedback.locator('.feedback-internal')).toHaveCount(0)
+        await expect(feedback.locator('.feedback-text')).toHaveCount(1)
+
+        observePhase('member public reply and resolve')
+        await memberFeedback
+          .locator('.ant-radio-button-wrapper')
+          .filter({ hasText: protoLocales.zh.feedbackPublic })
+          .click()
+        await memberFeedback
+          .locator('textarea#review-feedback-text')
+          .fill('Live restore fixture public reply')
+        await memberFeedback
+          .getByRole('button', { name: protoLocales.zh.feedbackSubmit, exact: true })
+          .click()
+        await expect(memberFeedback.locator('.feedback-text')).toHaveCount(3)
+        await memberFeedback
+          .getByRole('button', { name: protoLocales.zh.feedbackResolve, exact: true })
+          .click()
+        await expect(
+          memberFeedback.getByRole('button', { name: protoLocales.zh.feedbackReopen, exact: true }),
+        ).toBeVisible()
+        const publicReload = publicPage.waitForResponse((response) =>
+          response.url().endsWith(`/threads/${thread.id}/messages/_query`),
+        )
+        await feedback.getByRole('button', { name: '刷新', exact: true }).click()
+        const visible = await result<{ total: number; data: ReviewMessage[] }>(await publicReload)
+        expect(visible.total).toBe(2)
+        expect(!JSON.stringify(visible).includes('Live restore fixture internal note')).toBe(true)
+        expect(visible.data.every((item) => item.visibility === 'public')).toBe(true)
+        expect(visible.data.some((item) => item.text === 'Live restore fixture public reply')).toBe(
+          true,
+        )
+        await expect(feedback.locator('.feedback-text')).toHaveCount(2)
+        await expect(
+          feedback.getByRole('button', { name: protoLocales.zh.feedbackResolve, exact: true }),
+        ).toHaveCount(0)
+
+        observePhase('visitor reopen and reply')
+        const reopening = publicPage.waitForResponse(
+          (response) =>
+            response.request().method() === 'PUT' &&
+            response.url().endsWith(`/threads/${thread.id}/status`),
+        )
+        await feedback
+          .getByRole('button', { name: protoLocales.zh.feedbackReopen, exact: true })
+          .click()
+        expect((await result<ReviewThread>(await reopening)).state).toBe('open')
+        await feedback
+          .locator('textarea#review-feedback-text')
+          .fill('Live restore fixture visitor reply')
+        await feedback
+          .getByRole('button', { name: protoLocales.zh.feedbackSubmit, exact: true })
+          .click()
+        await expect(feedback.locator('.feedback-text')).toHaveCount(3)
+        expect(sends).toBe(1)
+        await feedback.getByRole('button', { name: '关闭', exact: true }).click()
+
+        observePhase('identity recovery and signout')
         await publicPage
           .getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true })
           .click()
@@ -914,14 +1231,77 @@ liveTest(
           .getByRole('button', { name: protoLocales.zh.reviewLogout, exact: true })
           .click()
         await expect(drawer.getByLabel(protoLocales.zh.reviewEmail, { exact: true })).toBeVisible()
+
+        observePhase('explicit unverified identity isolation')
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.reviewUseUnverified, exact: true })
+          .click()
+        await drawer
+          .getByLabel(protoLocales.zh.reviewName, { exact: true })
+          .fill('Local unverified visitor')
+        const creatingUnverified = publicPage.waitForResponse((response) =>
+          response.url().endsWith('/review/unverified'),
+        )
+        await drawer
+          .getByRole('button', { name: protoLocales.zh.reviewCreateUnverified, exact: true })
+          .click()
+        const lowIdentity = await result<ReviewContext>(await creatingUnverified)
+        expect(lowIdentity.session?.verificationLevel).toBe('unverified')
+        expect(
+          lowIdentity.session?.maskedEmail === null &&
+            lowIdentity.session.guestId !== identity.session?.guestId,
+        ).toBe(true)
+        await expect(
+          drawer.getByText(protoLocales.zh.reviewUnverified, { exact: true }),
+        ).toBeVisible()
+        await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+        const queryingUnverified = publicPage.waitForResponse((response) =>
+          response.url().endsWith('/review/threads/_query'),
+        )
+        await publicPage
+          .getByRole('button', { name: protoLocales.zh.feedback, exact: true })
+          .click()
+        const ownThreads = await result<{ total: number; data: ReviewThread[] }>(
+          await queryingUnverified,
+        )
+        expect(ownThreads.total).toBe(0)
+        expect(ownThreads.data).toHaveLength(0)
+        await expect(
+          feedback.getByRole('button', { name: protoLocales.zh.feedbackSubmit, exact: true }),
+        ).toBeEnabled()
+        await expect(feedback.locator('.feedback-thread')).toHaveCount(0)
+        expect(sends).toBe(1)
+        observePhase('actual transport headers')
+        expect((await Promise.all(headerObservations)).every(Boolean)).toBe(true)
+        expect(observedRuntime).toBeGreaterThan(0)
+        expect(observedPublic).toBeGreaterThan(0)
+        expect(leakedRuntimeCredential).toBe(false)
+        expect(leakedPublicCredential).toBe(false)
+        expect(!reviewCookie || !runtimeCookieNames.has(reviewCookie.name)).toBe(true)
+        expect(leakedInvitationUrl).toBe(false)
+      } catch {
+        console.error(`[live-review] failed phase=${phase}`)
+        // Playwright's goto/fill errors can include private fragments, mailbox codes or body text.
+        verificationFailure = new Error(`Live review verification failed during ${phase}`)
       } finally {
-        await publicPage.close()
-        const removed = await request.delete(`/api/prototype-hub/shares/${created.id}`, {
-          headers: owned.headers,
-        })
-        expect(removed.ok()).toBe(true)
-        owned.shares = owned.shares.filter((id) => id !== created.id)
+        const cleanup = await Promise.allSettled([
+          memberPage.close(),
+          publicPage.close(),
+          request
+            .delete(`/api/prototype-hub/shares/${created.id}`, { headers: owned.headers })
+            .then((removed) => {
+              expect(removed.ok()).toBe(true)
+              owned.shares = owned.shares.filter((id) => id !== created.id)
+            }),
+        ])
+        cleanupFailed = cleanup.some((item) => item.status === 'rejected')
+        if (cleanupFailed) {
+          // Preserve the primary phase failure when timeout has already closed the context.
+          console.error('[live-review] cleanup failed')
+        }
       }
+      if (verificationFailure) throw verificationFailure
+      if (cleanupFailed) throw new Error('Live review cleanup failed')
     })
 
     await test.step('enforce version capacity while existing previews remain usable', async () => {
@@ -1242,9 +1622,10 @@ liveTest(
         page.locator('.ant-alert-info').filter({ hasText: protoLocales.zh.recycleHint }),
       ).toContainText('30 天，到期不可恢复')
       const row = page
-        .getByRole('row')
+        .locator(`tr[data-row-key="${versionId}"]`)
         .filter({ has: page.getByRole('cell', { name: 'Browser replacement', exact: true }) })
         .filter({ has: page.getByRole('cell', { name: projectId, exact: true }) })
+      await expect(row).toHaveCount(1)
       const restoringVersion = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === `/api/prototype-hub/versions/${versionId}/_restore`,
