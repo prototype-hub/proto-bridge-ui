@@ -45,7 +45,7 @@ export function useReviewThreads(
     if (busy.value || selectedId.value || !isPublic.value) return
     if (value && !isReviewAnchor(value)) return
     anchor.value = value ? { ...value } : undefined
-    pending = undefined
+    pending.value = undefined
     anchorEpoch.value++
   }
   const imageFile = shallowRef<File>(),
@@ -69,7 +69,12 @@ export function useReviewThreads(
     lastScope = '',
     lastActor = '',
     lastTarget: string | null | undefined
-  let pending: { semantic: string; clientRequestId: string; expectedVersion?: number } | undefined
+  const pending = shallowRef<{
+    semantic: string
+    clientRequestId: string
+    expectedVersion?: number
+  }>()
+  const hasPendingRequest = computed(() => !!pending.value)
   const selected = computed(() => detail.value)
   const targeted = computed(() => location?.threadId.value !== undefined)
   const isPublic = computed(() => scope.value?.kind === 'public')
@@ -248,7 +253,7 @@ export function useReviewThreads(
     anchorEpoch.value++
     text.value = ''
     visibility.value = 'public'
-    pending = undefined
+    pending.value = undefined
     imageFile.value = undefined
   }
   function clearData() {
@@ -454,13 +459,13 @@ export function useReviewThreads(
       ...(file ? [imageSequence] : []),
       ...(!thread && !state && anchor.value ? [anchor.value] : []),
     ])
-    if (pending?.semantic !== semantic)
-      pending = {
+    if (pending.value?.semantic !== semantic)
+      pending.value = {
         semantic,
         clientRequestId: secureId(),
         ...(state ? { expectedVersion: thread!.configVersion } : {}),
       }
-    const receipt = pending,
+    const receipt = pending.value,
       epoch = generation,
       request = new AbortController()
     controller?.abort()
@@ -554,7 +559,7 @@ export function useReviewThreads(
           )
       }
       if (epoch !== generation || request.signal.aborted) return
-      pending = undefined
+      pending.value = undefined
       if (!state) clearDraft()
       filter.value = ''
       messagesPageIndex.value = 0
@@ -562,7 +567,7 @@ export function useReviewThreads(
     } catch (cause) {
       if (epoch !== generation || request.signal.aborted) return
       if (cause instanceof ApiError && cause.status === 409) {
-        pending = undefined
+        pending.value = undefined
         await load()
         if (generation === epoch + 1) notice.value = t('proto.feedbackConflict')
       } else if (cause instanceof ApiError && [403, 404, 429].includes(cause.status)) failed(cause)
@@ -664,6 +669,7 @@ export function useReviewThreads(
     messagesTotal,
     loading,
     busy,
+    hasPendingRequest,
     error,
     notice,
     isPublic,

@@ -31,6 +31,29 @@ const blobText = (value: Blob) =>
     reader.onerror = () => reject(reader.error)
     reader.readAsText(value)
   })
+it('uses independent revision-only overview requests with public CSRF or member auth, never page fields', async () => {
+  const input = { revisionId: 'r1', pageIndex: 2, pageSize: 20, state: 'open' as const }
+  const signal = new AbortController().signal
+  await publicReviewThreadsApi.overview(grant, input, 'csrf', signal)
+  const [url, options] = vi.mocked(fetch).mock.calls[0]!
+  expect(url).toBe('/api/prototype-hub/public/shares/share%2Fid/review/threads/_overview')
+  expect(options).toMatchObject({
+    method: 'POST',
+    credentials: 'same-origin',
+    redirect: 'error',
+    cache: 'no-store',
+  })
+  expect(options!.headers).toMatchObject({ 'X-Review-CSRF': 'csrf' })
+  expect(options!.headers).not.toHaveProperty('X-Access-Token')
+  expect(JSON.parse(String(options!.body))).toEqual({ ...input, accessKey: 'access' })
+  expect(JSON.parse(String(options!.body))).not.toHaveProperty('pageId')
+  await reviewThreadsApi.overview('version/id', input, { signal, silent: true })
+  expect(request.post).toHaveBeenCalledWith(
+    '/prototype-hub/versions/version%2Fid/review-threads/_overview',
+    input,
+    { signal, silent: true },
+  )
+})
 it('keeps assignment detail, paged candidates and CAS clear on member-only encoded scope', async () => {
   const options = { signal: new AbortController().signal, silent: true }
   const target = { revisionId: 'r1', pageId: 'page' }

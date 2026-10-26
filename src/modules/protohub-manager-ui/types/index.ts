@@ -392,6 +392,13 @@ export interface ReviewThreadQuery extends ReviewThreadPage {
   pageSize: number
   state?: ReviewThreadState
 }
+/** Revision overview deliberately has no page grant or page-specific write fields. */
+export interface ReviewThreadOverviewQuery {
+  revisionId: string
+  pageIndex: number
+  pageSize: number
+  state?: ReviewThreadState
+}
 export interface ReviewMessageInput extends ReviewThreadPage {
   text: string
   clientRequestId: string

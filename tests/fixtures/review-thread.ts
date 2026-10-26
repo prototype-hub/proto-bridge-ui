@@ -78,16 +78,21 @@ export function threadResponse(
   const rid = String(input.revisionId),
     pageId = String(input.pageId),
     matches = flat(pages).filter((page) => page.pageId === pageId && page.path && !page.folder)
-  if (matches.length !== 1) {
+  const overview = suffix === '/_overview' && method === 'POST'
+  if (!overview && matches.length !== 1) {
     send(res, 404, null, 'Feedback unavailable', 'PROTOTYPE_HUB_REVIEW_PAGE_INVALID')
     return
   }
   const allowed = (row: StoredThread) =>
     row.versionId === versionId &&
     row.thread.revisionId === rid &&
-    row.thread.pageId === pageId &&
+    (overview || row.thread.pageId === pageId) &&
     (!guest || (row.shareId === guest.share.id && row.owner === owner(guest.identity)))
-  if (suffix === '/_query' && method === 'POST') {
+  if ((suffix === '/_query' || overview) && method === 'POST') {
+    if (input.state !== undefined && !['open', 'resolved'].includes(String(input.state))) {
+      send(res, 400, null, 'Invalid state')
+      return
+    }
     const rows = [...threads.values()]
       .filter(allowed)
       .map((value) => value.thread)

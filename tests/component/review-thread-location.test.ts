@@ -74,7 +74,7 @@ async function setup(path: string, base = '/tools/', ready = true) {
   const wrapper = mount(RouterView, { global: { plugins: [router] } })
   wrappers.push(wrapper)
   await flushPromises()
-  return { workspace, location, router, open, available }
+  return { workspace, location, router, open, available, data }
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -153,6 +153,90 @@ it.each([
     expect(router.currentRoute.value.fullPath).toBe(`/share/open?${query}`)
   },
 )
+
+it('views a manifest-backed overview target across pages with only three IDs and restores Back/Forward', async () => {
+  const { location, router, workspace, data, open } = await setup(
+    `/share/open?revisionId=r1&pageId=home&threadId=${id}`,
+  )
+  expect(await location.view({ ...thread('detail'), id: 'b'.repeat(43) }, data.value)).toBe(true)
+  await flushPromises()
+  expect(router.currentRoute.value.query).toEqual({
+    revisionId: 'r1',
+    pageId: 'detail',
+    threadId: 'b'.repeat(43),
+  })
+  expect(workspace.pageId.value).toBe('detail')
+  expect(open.value).toBe(true)
+  router.back()
+  await flushPromises()
+  expect(workspace.pageId.value).toBe('home')
+  expect(location.threadId.value).toBe(id)
+  router.forward()
+  await flushPromises()
+  expect(location.threadId.value).toBe('b'.repeat(43))
+})
+
+it.each([
+  'invalid-id',
+  'foreign-revision',
+  'missing-page',
+  'duplicate-page',
+  'folder',
+  'unsafe-path',
+  'no-access',
+] as const)('rejects an overview %s target without touching the current route', async (kind) => {
+  const { location, router, data, available } = await setup(
+    `/share/open?revisionId=r1&pageId=home&threadId=${id}`,
+  )
+  const target = thread('detail')
+  if (kind === 'invalid-id') target.id = 'not-a-real-id'
+  if (kind === 'foreign-revision') target.revisionId = 'foreign'
+  if (kind === 'missing-page') target.pageId = 'missing'
+  if (kind === 'duplicate-page') data.value.pages.push({ ...data.value.pages[1]! })
+  if (kind === 'folder') data.value.pages[1]!.folder = true
+  if (kind === 'unsafe-path') data.value.pages[1]!.path = '../escape.html'
+  if (kind === 'no-access') available.value = false
+  const before = router.currentRoute.value.fullPath
+  expect(await location.view(target, data.value)).toBe(false)
+  expect(router.currentRoute.value.fullPath).toBe(before)
+})
+
+it('returns to the same overview target without pushing navigation or disturbing a draft owner', async () => {
+  const { location, router, data, open } = await setup(
+    `/share/open?revisionId=r1&pageId=home&threadId=${id}`,
+  )
+  open.value = false
+  const push = vi.spyOn(router, 'push')
+  expect(await location.view(thread(), data.value)).toBe(true)
+  expect(push).not.toHaveBeenCalled()
+  expect(open.value).toBe(true)
+})
+
+it('does not reopen a cancelled overview navigation or one completed after access is lost', async () => {
+  const { location, router, data, open, available } = await setup(
+    `/share/open?revisionId=r1&pageId=home&threadId=${id}`,
+  )
+  open.value = false
+  const before = router.currentRoute.value.fullPath
+  const removeGuard = router.beforeEach(() => false)
+  expect(await location.view(thread('detail'), data.value)).toBe(false)
+  expect(router.currentRoute.value.fullPath).toBe(before)
+  expect(open.value).toBe(false)
+  removeGuard()
+  let finish!: () => void
+  router.beforeEach(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const navigation = location.view(thread('detail'), data.value)
+  await flushPromises()
+  available.value = false
+  finish()
+  expect(await navigation).toBe(false)
+  expect(open.value).toBe(false)
+})
 
 it.each([
   ['/preview/p1/v1', '/tools/'],

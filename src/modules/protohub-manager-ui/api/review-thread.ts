@@ -5,6 +5,7 @@ import type {
   ReviewThread,
   ReviewMessage,
   ReviewThreadQuery,
+  ReviewThreadOverviewQuery,
   ReviewMessageInput,
   ReviewCreateInput,
   ReviewStatusInput,
@@ -17,6 +18,12 @@ const base = (versionId: string) =>
   `/prototype-hub/versions/${encodeURIComponent(versionId)}/review-threads`
 const threadPath = (id: string) => `threads/${encodeURIComponent(id)}`
 export const publicReviewThreadsApi = {
+  overview: (
+    grant: ReviewGrant,
+    data: ReviewThreadOverviewQuery,
+    csrf: string,
+    signal?: AbortSignal,
+  ) => reviewRequest<PageResult<ReviewThread>>(grant, 'threads/_overview', data, csrf, signal),
   createImage: (
     grant: ReviewGrant,
     data: ReviewCreateInput,
@@ -97,6 +104,9 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/status`, data, csrf, signal, 'PUT'),
 }
 export const reviewThreadsApi = {
+  overview: async (versionId: string, data: ReviewThreadOverviewQuery, options?: RequestOptions) =>
+    (await request.post<PageResult<ReviewThread>>(`${base(versionId)}/_overview`, data, options))
+      .result,
   assignment: async (
     versionId: string,
     id: string,

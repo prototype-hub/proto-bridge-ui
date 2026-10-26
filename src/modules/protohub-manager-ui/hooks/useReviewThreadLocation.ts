@@ -1,7 +1,7 @@
 import { computed, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ReviewPage, ReviewThread } from '../types'
-import { reviewThreadTarget } from '../utils/preview-location'
+import type { ReviewPage, ReviewThread, WorkspaceContext } from '../types'
+import { reviewThreadTarget, resolvePreviewPage } from '../utils/preview-location'
 import { copyText } from '@/shared/utils/feedback'
 
 /** Shareable identity stays in the shell route; grants and invitation intent stay in memory. */
@@ -60,6 +60,36 @@ export function useReviewThreadLocation(
       void router.replace({ path: route.path, query: next, hash: route.hash })
     }
   }
+  /** Overview rows only locate an existing shell page; the scoped detail API still grants access. */
+  async function view(thread: ReviewThread, context: WorkspaceContext) {
+    const path = route.path
+    const next = reviewThreadTarget({
+      revisionId: thread.revisionId,
+      pageId: thread.pageId,
+      threadId: thread.id,
+    })
+    if (!available.value || !next || next.revisionId !== context.revisionId) return false
+    const resolved = resolvePreviewPage(context.pages, context.runtimeBaseUrl, next.pageId)
+    if (resolved.invalid || !resolved.page) return false
+    if (
+      route.query.revisionId !== next.revisionId ||
+      route.query.pageId !== next.pageId ||
+      route.query.threadId !== next.threadId
+    )
+      if (await router.push({ path, query: { ...next }, hash: '' })) return false
+    // A cancelled or superseded navigation must not reopen feedback in another shell or revision.
+    if (
+      !available.value ||
+      route.path !== path ||
+      page.value?.revisionId !== next.revisionId ||
+      route.query.revisionId !== next.revisionId ||
+      route.query.pageId !== next.pageId ||
+      route.query.threadId !== next.threadId
+    )
+      return false
+    open.value = true
+    return true
+  }
   function copy(thread: ReviewThread | undefined, event?: MouseEvent) {
     if (
       !thread ||
@@ -74,5 +104,5 @@ export function useReviewThreadLocation(
       event?.currentTarget instanceof HTMLElement ? event.currentTarget : undefined,
     )
   }
-  return { threadId, invalid, unavailable, select, close, copy }
+  return { threadId, invalid, unavailable, select, close, copy, view }
 }
