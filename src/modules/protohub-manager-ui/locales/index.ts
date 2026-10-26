@@ -21,6 +21,13 @@ export const protoLocales = {
     assignmentUnknown:
       '分派结果尚未确认。请手动重试原操作，或放弃重试并刷新后再修改选择；不会自动提交。',
     feedback: '页面反馈',
+    feedbackPageList: '本页反馈列表',
+    feedbackBackToList: '返回本页反馈列表',
+    feedbackContinue: '继续当前反馈（保留草稿）',
+    feedbackDetail: '反馈详情',
+    feedbackConversation: '沟通记录',
+    feedbackLeaveTitle: '放弃当前草稿并切换反馈？',
+    feedbackLeaveConfirm: '放弃并切换',
     feedbackOverview: '全部页面反馈',
     overviewVisitorHint: '查看当前固定修订下、此分享中您本人的反馈。点击“查看”返回原页面继续处理。',
     overviewMemberHint:
@@ -516,6 +523,13 @@ export const protoLocales = {
     assignmentUnknown:
       'The assignment result is unknown. Retry the original operation manually, or abandon the retry and refresh before changing the selection. Nothing is submitted automatically.',
     feedback: 'Page feedback',
+    feedbackPageList: 'Feedback on this page',
+    feedbackBackToList: 'Back to page feedback list',
+    feedbackContinue: 'Continue current feedback (keep draft)',
+    feedbackDetail: 'Feedback details',
+    feedbackConversation: 'Conversation',
+    feedbackLeaveTitle: 'Discard the current draft and switch feedback?',
+    feedbackLeaveConfirm: 'Discard and switch',
     feedbackOverview: 'All-page feedback',
     overviewVisitorHint:
       'Your feedback for this share and fixed revision. Choose View feedback to continue on its original page.',

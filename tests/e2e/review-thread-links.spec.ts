@@ -193,6 +193,9 @@ test('PM locates a thread outside page one and the active status filter, copies 
   await page.goto(link('preview/p1/v1', target))
   const feedback = drawer(page)
   await expect(feedback.getByRole('heading', { name: target.summary, exact: true })).toBeVisible()
+  await feedback
+    .getByRole('button', { name: protoLocales.zh.feedbackBackToList, exact: true })
+    .click()
   await expect(feedback.locator('.feedback-thread')).toHaveCount(20)
   await expect(feedback.getByRole('button', { name: target.summary, exact: true })).toHaveCount(0)
   await feedback
@@ -200,6 +203,9 @@ test('PM locates a thread outside page one and the active status filter, copies 
     .filter({ hasText: protoLocales.zh.feedbackResolved })
     .click()
   await expect(feedback.locator('.feedback-thread')).toHaveCount(0)
+  await feedback
+    .getByRole('button', { name: protoLocales.zh.feedbackContinue, exact: true })
+    .click()
   await expect(feedback.getByRole('heading', { name: target.summary, exact: true })).toBeVisible()
   const copy = feedback.getByRole('button', { name: protoLocales.zh.feedbackCopyLink, exact: true })
   await copy.click()
@@ -216,6 +222,9 @@ test('PM locates a thread outside page one and the active status filter, copies 
     fullPage: true,
     animations: 'disabled',
   })
+  await feedback
+    .getByRole('button', { name: protoLocales.zh.feedbackBackToList, exact: true })
+    .click()
   await feedback
     .locator('.ant-radio-button-wrapper')
     .filter({ hasText: protoLocales.zh.feedbackOpen })

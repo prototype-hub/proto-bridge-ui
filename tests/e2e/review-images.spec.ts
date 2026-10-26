@@ -209,6 +209,9 @@ test('member internal image metadata and content are absent from the visitor res
   const queried = page.waitForResponse((response) =>
     response.url().endsWith(`/threads/${internal.threadId}/messages/_query`),
   )
+  await drawer
+    .getByRole('button', { name: protoLocales.zh.feedbackBackToList, exact: true })
+    .click()
   await drawer.getByRole('button', { name: 'Image question', exact: true }).click()
   const response = await queried,
     body = await response.json()
