@@ -33,8 +33,10 @@ export function licenseRecords(root, supplementsDir = join(scriptRoot, '..', 'th
         text: readFileSync(join(dir, entry.name), 'utf8'),
         source: `installed package/${entry.name}`,
       }))
+    // Attribution notices accompany a license grant; they cannot replace one.
+    const licenses = files.filter((file) => /^(?:licen[cs]e|copying)(?:[.\-_]|$)/i.test(file.name))
     let reviewRequired = false
-    if (!files.length) {
+    if (!licenses.length) {
       const supplement = supplements.find(
         (item) => item.package === name && item.license === license,
       )
@@ -45,10 +47,12 @@ export function licenseRecords(root, supplementsDir = join(scriptRoot, '..', 'th
       const text = readFileSync(join(supplementsDir, supplement.file), 'utf8')
       if (hash(text) !== supplement.sha256)
         throw new Error(`License supplement hash mismatch: ${name}`)
-      files.push({ name: supplement.file, text, source: supplement.source })
+      const file = { name: supplement.file, text, source: supplement.source }
+      files.push(file)
+      licenses.push(file)
       reviewRequired = supplement.reviewRequired === true
     }
-    if (files.some((file) => file.text.trim().length < 100))
+    if (licenses.some((file) => file.text.trim().length < 100))
       throw new Error(`Incomplete license text: ${name}`)
     return {
       name: pkg.name,

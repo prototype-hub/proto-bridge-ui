@@ -34,6 +34,8 @@ pnpm licenses:release
 
 构建生成 `dist/THIRD_PARTY_NOTICES.txt` 完整许可文本及 `dist/third-party-manifest.json`，Docker 复制 dist 时一并提供。该清单覆盖运行依赖解析闭包，可能大于实际浏览器 bundle；缺少必要许可文本应使构建失败，不用 SPDX 标签替代全文和版权声明。
 
+工具分别检查许可证全文和附属声明：依赖须提供 `LICENSE`、`LICENCE`、`COPYING` 等主许可证文件，或匹配精确版本、许可声明及 SHA256 的已核查补充文本；仅有 `NOTICE` 或第三方声明文件不能替代许可证全文。附属声明按原文一并保留，简短版权声明不受主许可证文本的完整性长度检查影响。材料收集通过不等于权属或发行合规已获批准，待审补充仍由严格许可门禁阻断。
+
 `agent-base@6.0.2` 与 `https-proxy-agent@5.0.1` 将完整 MIT 文本放在 README 的 License 段，已按 npm `gitHead` 对应的官方提交核对原文，并在 `third-party/supplements.json` 记录精确版本、来源和 SHA256；新增版本缺少许可文本仍会失败，不自动套用旧版本例外。
 
 `dom-scroll-into-view@2.0.1` 的上游包和对应源码树只声明 MIT、未提供独立 LICENSE 或作者版权原文；生成清单保留 `declaration-only` 待审标签，`pnpm licenses:release` 会因此失败。开发构建可以生成带此标签的审查产物，但不能据此批准二进制发行。维护者应取得可核验的上游声明，或完成有依据的依赖替换后再解除门禁；不得臆造版权人。公开项目源码的审查与包含第三方代码的构建产物分发分别确认，项目的 Apache-2.0 不覆盖该缺口。
