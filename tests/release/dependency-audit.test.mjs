@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { auditDependencies } from '../../tools/audit-dependencies.mjs'
+import { auditDependencies, runCommand } from '../../tools/audit-dependencies.mjs'
 
 const clean = { info: 0, low: 0, moderate: 0, high: 0, critical: 0 }
 function response(vulnerabilities = clean) {
@@ -156,6 +156,75 @@ test('a missing pnpm tool revokes the old generation and leaves no successful ev
       /identify the pnpm/,
     )
     assert.equal(existsSync(current), false)
+  }))
+
+test('a timeout rejects valid output even when the real child handles SIGTERM and exits successfully', async () => {
+  const result = await runCommand(
+    process.execPath,
+    [
+      '-e',
+      `process.on('SIGTERM', () => { console.log(${JSON.stringify(response().stdout)}); process.exit(0) }); setInterval(() => {}, 1000)`,
+    ],
+    { timeout: 500 },
+  )
+  assert.equal(result.status, 0)
+  assert.equal(result.signal, null)
+  assert.deepEqual(JSON.parse(result.stdout), JSON.parse(response().stdout))
+  assert.match(result.error?.message || '', /timed out/)
+})
+
+test('a timeout escalates to SIGKILL and waits for the real child to close', async () => {
+  const result = await runCommand(
+    process.execPath,
+    [
+      '-e',
+      "process.on('SIGTERM', () => {}); console.log(process.pid); setInterval(() => {}, 1000)",
+    ],
+    { timeout: 500 },
+  )
+  assert.equal(result.status, null)
+  assert.equal(result.signal, 'SIGKILL')
+  assert.match(result.error?.message || '', /timed out/)
+  assert.throws(() => process.kill(Number(result.stdout.trim()), 0), /ESRCH/)
+})
+
+test('accepts a real child result completed before its deadline', async () => {
+  const result = await runCommand(process.execPath, ['-e', "console.log('9.0.6')"], {
+    timeout: 2_000,
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.signal, null)
+  assert.equal(result.error, undefined)
+  assert.equal(result.stdout.trim(), '9.0.6')
+})
+
+test('a timeout revokes the old receipt instead of publishing the successful-looking child report', () =>
+  fixture(async ({ root, cache, current, cli }) => {
+    await auditDependencies({ root, run: cli })
+    let timedOut
+    await assert.rejects(
+      () =>
+        auditDependencies({
+          root,
+          run: async (command, args, options) => {
+            if (!args.includes('--prod')) return cli(command, args, options)
+            timedOut = await runCommand(
+              process.execPath,
+              [
+                '-e',
+                `process.on('SIGTERM', () => { console.log(${JSON.stringify(response().stdout)}); process.exit(0) }); setInterval(() => {}, 1000)`,
+              ],
+              { ...options, timeout: 500 },
+            )
+            return timedOut
+          },
+        }),
+      /production:.*did not complete/,
+    )
+    assert.equal(timedOut.status, 0)
+    assert.match(timedOut.error?.message || '', /timed out/)
+    assert.equal(existsSync(current), false)
+    assert.equal(existsSync(join(cache, '.running')), false)
   }))
 
 test('refuses a redirected cache and does not delete files at a symlink target', () =>

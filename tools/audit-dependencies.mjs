@@ -30,7 +30,10 @@ export function runCommand(command, args, options) {
       child.kill('SIGTERM')
       escalation ??= setTimeout(() => child.kill('SIGKILL'), 2_000)
     }
-    const deadline = setTimeout(stop, options.timeout)
+    const deadline = setTimeout(() => {
+      error ??= new Error('Audit command timed out')
+      stop()
+    }, options.timeout)
     options.signal?.addEventListener('abort', stop, { once: true })
     const maxBuffer = options.maxBuffer || 1024 * 1024
     child.stdout.setEncoding('utf8')
