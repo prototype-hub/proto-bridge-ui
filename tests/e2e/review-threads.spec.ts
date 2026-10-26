@@ -112,6 +112,9 @@ test('OTP round-trip preserves a selected-page draft without automatic submissio
   await expect(drawer.locator('.feedback-text b')).toHaveCount(0)
   await drawer.getByRole('button', { name: '关闭', exact: true }).click()
   await feedback(page)
+  await drawer
+    .getByRole('button', { name: protoLocales.zh.feedbackBackToList, exact: true })
+    .click()
   await expect(drawer.locator('.feedback-thread')).toHaveText(thread.summary)
   for (const item of sent.filter((item) => item.url.includes('/review/')))
     expect(item.headers['x-access-token']).toBeUndefined()
@@ -179,6 +182,9 @@ test('PM explicitly writes private notes and public replies, while the visitor r
   ).toBeVisible()
   await page.goto('share/open')
   drawer = await feedback(page)
+  await drawer
+    .getByRole('button', { name: protoLocales.zh.feedbackBackToList, exact: true })
+    .click()
   await drawer.getByRole('button', { name: 'Customer question', exact: true }).click()
   await expect(drawer.locator('.feedback-text')).toHaveText([
     'Customer question',

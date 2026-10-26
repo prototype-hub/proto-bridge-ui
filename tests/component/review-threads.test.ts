@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ref, shallowRef } from 'vue'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import {
   useReviewThreads,
   type ReviewThreadScope,
@@ -449,7 +449,13 @@ it('renders plain text safely, shows internal labels only in PM data, and expose
   expect(wrapper.find('script').exists()).toBe(false)
   expect(wrapper.text()).toContain('<script>alert(1)</script>')
   expect(wrapper.text()).toContain(protoLocales.zh.feedbackInternal)
-  expect(wrapper.findAll('.feedback-pagination')).toHaveLength(2)
+  expect(wrapper.findAll('.feedback-pagination')).toHaveLength(1)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.feedbackBackToList)!
+    .trigger('click')
+  expect(wrapper.findAll('.feedback-pagination')).toHaveLength(1)
+  expect(wrapper.find('.feedback-threads').exists()).toBe(true)
 })
 
 it('sends bounded independent thread/message page indices and status filters to the server', async () => {
@@ -518,6 +524,293 @@ it('explains a disabled policy without sending the visitor into an unnecessary i
   expect(
     wrapper.findAll('button').some((button) => button.text() === protoLocales.zh.reviewIdentity),
   ).toBe(false)
+})
+
+function feedbackDrawer(state: ReturnType<typeof useReviewThreads>, realDrawer = false) {
+  const wrapper = mount(ReviewThreadsDrawer, {
+    attachTo: document.body,
+    props: { open: true, page, state },
+    global: {
+      plugins: [i18n],
+      stubs: {
+        ...(realDrawer
+          ? {}
+          : { ADrawer: { name: 'FeedbackDrawerStub', template: '<div><slot /></div>' } }),
+        AModal: {
+          props: ['open'],
+          template: '<div v-if="open" role="alertdialog"><slot /></div>',
+        },
+      },
+    },
+  })
+  wrappers.push(wrapper)
+  return wrapper
+}
+function feedbackButton(wrapper: VueWrapper, label: string) {
+  const button = wrapper
+    .findAll('button')
+    .find((item) => item.text().replace(/\s/g, '') === label.replace(/\s/g, ''))
+  expect(button, `Missing feedback action: ${label}`).toBeDefined()
+  return button!
+}
+
+it('keeps a route-bound reply draft and File until switching feedback is explicitly confirmed', async () => {
+  const second = { ...thread(), id: 't2', summary: 'Second feedback' }
+  vi.mocked(publicReviewThreadsApi.query).mockResolvedValue(pager([thread(), second]))
+  vi.mocked(publicReviewThreadsApi.detail).mockImplementation(async (_grant, id) =>
+    id === second.id ? second : thread(),
+  )
+  vi.mocked(publicReviewThreadsApi.messages).mockImplementation(async (_grant, id) =>
+    pager([{ ...message(), threadId: id }]),
+  )
+  const { state, threadId } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Do not lose this draft'
+  const image = file()
+  state.selectImage(image)
+  const wrapper = feedbackDrawer(state)
+  await flushPromises()
+  expect(wrapper.find('.feedback-threads').exists()).toBe(false)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  expect(wrapper.get('.feedback-task-heading').element).toBe(document.activeElement)
+  expect(state.text.value).toBe('Do not lose this draft')
+  await feedbackButton(wrapper, second.summary).trigger('click')
+  await flushPromises()
+  expect(state.text.value).toBe('Do not lose this draft')
+  expect(state.imageFile.value).toBe(image)
+  expect(threadId.value).toBe('t1')
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true)
+  await feedbackButton(wrapper, '取消').trigger('click')
+  expect(threadId.value).toBe('t1')
+  expect(state.imageFile.value).toBe(image)
+  await feedbackButton(wrapper, second.summary).trigger('click')
+  await feedbackButton(wrapper, protoLocales.zh.feedbackLeaveConfirm).trigger('click')
+  await flushPromises()
+  expect(threadId.value).toBe('t2')
+  expect(state.selected.value?.id).toBe('t2')
+  expect(state.text.value).toBe('')
+  expect(state.imageFile.value).toBeUndefined()
+})
+
+it('returns visually, keeps an unknown reply key and File, and resumes the same task without confirmation', async () => {
+  const { state, threadId } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Unknown reply'
+  const image = file()
+  state.selectImage(image)
+  vi.mocked(publicReviewThreadsApi.replyImage).mockRejectedValueOnce(new ApiError('network', 0))
+  await state.send()
+  const original = vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[0]!
+  const wrapper = feedbackDrawer(state)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  await feedbackButton(wrapper, protoLocales.zh.feedbackNew).trigger('click')
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true)
+  await feedbackButton(wrapper, '取消').trigger('click')
+  await feedbackButton(wrapper, thread().summary).trigger('click')
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false)
+  expect(state.text.value).toBe('Unknown reply')
+  expect(state.imageFile.value).toBe(image)
+  expect(threadId.value).toBe('t1')
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.replyImage).mock.calls[1]!.slice(0, 4)).toEqual(
+    original.slice(0, 4),
+  )
+})
+
+it('preserves a new-thread anchor across list return and cancellation before choosing an existing thread', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.selectAnchor(anchorDraft)
+  state.text.value = 'New draft with a position'
+  const wrapper = feedbackDrawer(state)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  await feedbackButton(wrapper, thread().summary).trigger('click')
+  await feedbackButton(wrapper, '取消').trigger('click')
+  await feedbackButton(wrapper, protoLocales.zh.feedbackContinue).trigger('click')
+  expect(state.anchor.value).toEqual(anchorDraft)
+  expect(state.text.value).toBe('New draft with a position')
+  expect(state.selectedId.value).toBeUndefined()
+  expect(wrapper.find('textarea').exists()).toBe(true)
+})
+
+it.each(['filter', 'page'] as const)(
+  'guards a new unknown image/anchor draft before a destructive list %s change',
+  async (change) => {
+    vi.mocked(publicReviewThreadsApi.query).mockResolvedValue(pager([thread()], 41))
+    const { state } = setup()
+    await flushPromises()
+    state.text.value = 'New draft with an unknown receipt'
+    const image = file()
+    state.selectImage(image)
+    state.selectAnchor(anchorDraft)
+    vi.mocked(publicReviewThreadsApi.createImage).mockRejectedValue(new ApiError('network', 0))
+    await state.send()
+    const original = vi.mocked(publicReviewThreadsApi.createImage).mock.calls[0]!
+    const wrapper = feedbackDrawer(state)
+    await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+    const query = async () => {
+      if (change === 'filter') await wrapper.get('input[value="resolved"]').setValue(true)
+      else await wrapper.get('.ant-pagination-next button').trigger('click')
+    }
+    await query()
+    await flushPromises()
+    expect(state.text.value).toBe('New draft with an unknown receipt')
+    expect(state.imageFile.value).toBe(image)
+    expect(state.anchor.value).toEqual(anchorDraft)
+    expect(state.hasPendingRequest.value).toBe(true)
+    expect(state.filter.value).toBe('')
+    expect(state.pageIndex.value).toBe(0)
+    await feedbackButton(wrapper, '取消').trigger('click')
+    await feedbackButton(wrapper, protoLocales.zh.feedbackContinue).trigger('click')
+    await state.send()
+    expect(vi.mocked(publicReviewThreadsApi.createImage).mock.calls[1]!.slice(0, 3)).toEqual(
+      original.slice(0, 3),
+    )
+    await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+    await query()
+    await feedbackButton(wrapper, protoLocales.zh.feedbackLeaveConfirm).trigger('click')
+    await flushPromises()
+    expect(state.text.value).toBe('')
+    expect(state.imageFile.value).toBeUndefined()
+    expect(state.anchor.value).toBeUndefined()
+    expect(state.hasPendingRequest.value).toBe(false)
+    expect(state.filter.value).toBe(change === 'filter' ? 'resolved' : '')
+    expect(state.pageIndex.value).toBe(change === 'page' ? 1 : 0)
+    expect(publicReviewThreadsApi.createImage).toHaveBeenCalledTimes(2)
+  },
+)
+
+it('keeps located-thread drafts and receipt keys through safe list filtering and paging without confirmation', async () => {
+  vi.mocked(publicReviewThreadsApi.query).mockResolvedValue(pager([thread()], 41))
+  const { state, threadId } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Keep the selected thread reply'
+  const image = file()
+  state.selectImage(image)
+  vi.mocked(publicReviewThreadsApi.replyImage).mockRejectedValueOnce(new ApiError('network', 0))
+  await state.send()
+  const wrapper = feedbackDrawer(state)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  await wrapper.get('input[value="resolved"]').setValue(true)
+  await flushPromises()
+  await wrapper.get('.ant-pagination-next button').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false)
+  expect(state.filter.value).toBe('resolved')
+  expect(state.pageIndex.value).toBe(1)
+  expect(threadId.value).toBe('t1')
+  expect(state.text.value).toBe('Keep the selected thread reply')
+  expect(state.imageFile.value).toBe(image)
+  expect(state.hasPendingRequest.value).toBe(true)
+})
+
+it('cancels a new-draft filter confirmation on immediate Escape without closing the real drawer', async () => {
+  const { state } = setup()
+  await flushPromises()
+  const wrapper = feedbackDrawer(state, true)
+  await flushPromises()
+  state.text.value = 'Keep this new draft'
+  const image = file()
+  state.selectImage(image)
+  await flushPromises()
+  const area = new DOMWrapper(document.querySelector('.review-threads')!)
+  const click = async (label: string) => {
+    const button = area
+      .findAll('button')
+      .find((item) => item.text().replace(/\s/g, '') === label.replace(/\s/g, ''))
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+  }
+  await click(protoLocales.zh.feedbackBackToList)
+  const filter = area.get('input[value="resolved"]')
+  ;(filter.element as HTMLElement).focus()
+  await filter.setValue(true)
+  expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+  // The modal is visible before its entrance has moved focus out of the list.
+  await filter.trigger('keydown', { key: 'Escape', code: 'Escape', keyCode: 27 })
+  await flushPromises()
+  expect(wrapper.emitted('close')).toBeUndefined()
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+  expect(area.get('.feedback-task-heading').element).toBe(document.activeElement)
+  expect(state.filter.value).toBe('')
+  expect(state.text.value).toBe('Keep this new draft')
+  expect(state.imageFile.value).toBe(image)
+  await click(protoLocales.zh.feedbackContinue)
+  expect(area.get('textarea').element.value).toBe('Keep this new draft')
+  await area.get('textarea').trigger('keydown', { key: 'Escape', code: 'Escape', keyCode: 27 })
+  expect(wrapper.emitted('close')).toHaveLength(1)
+})
+
+it('guards assignment editing and unknown writes independently of the reply draft and blocks busy target changes', async () => {
+  const second = { ...thread(), id: 't2', summary: 'Second feedback' }
+  vi.mocked(reviewThreadsApi.query).mockResolvedValue(pager([thread(), second]))
+  vi.mocked(reviewThreadsApi.assignees).mockResolvedValue(pager([{ userId: 'u2', name: 'Editor' }]))
+  const { state, threadId } = setup(memberScope(), true, 't1')
+  await flushPromises()
+  const wrapper = feedbackDrawer(state)
+  state.assignment.edit()
+  await flushPromises()
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  await feedbackButton(wrapper, second.summary).trigger('click')
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true)
+  await feedbackButton(wrapper, '取消').trigger('click')
+  state.assignment.selection.value = 'u2'
+  const pending = deferred<Awaited<ReturnType<typeof reviewThreadsApi.assign>>>()
+  vi.mocked(reviewThreadsApi.assign).mockReturnValueOnce(pending.promise)
+  state.assignment.save()
+  await flushPromises()
+  expect(feedbackButton(wrapper, second.summary).attributes('disabled')).toBeDefined()
+  expect(threadId.value).toBe('t1')
+  // A lost response leaves the original assignment request explicitly retryable.
+  pending.resolve({ threadId: 't1', assignmentVersion: 1, updatedAt: 2, assignee: null })
+  await flushPromises()
+  state.assignment.edit()
+  await flushPromises()
+  state.assignment.selection.value = 'u2'
+  vi.mocked(reviewThreadsApi.assign).mockRejectedValueOnce(new ApiError('network', 0))
+  state.assignment.save()
+  await flushPromises()
+  const original = vi.mocked(reviewThreadsApi.assign).mock.calls[1]![2]
+  await feedbackButton(wrapper, second.summary).trigger('click')
+  expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true)
+  await feedbackButton(wrapper, '取消').trigger('click')
+  await feedbackButton(wrapper, protoLocales.zh.feedbackContinue).trigger('click')
+  expect(state.assignment.unknown.value).toBe(true)
+  vi.mocked(reviewThreadsApi.assign).mockResolvedValueOnce({
+    threadId: 't1',
+    assignmentVersion: 2,
+    updatedAt: 3,
+    assignee: { userId: 'u2', name: 'Editor', available: true },
+  })
+  state.assignment.retry()
+  await flushPromises()
+  expect(vi.mocked(reviewThreadsApi.assign).mock.calls[2]![2]).toBe(original)
+  expect(state.assignment.unknown.value).toBe(false)
+  expect(threadId.value).toBe('t1')
+})
+
+it('does not refocus the task heading on refresh or typing, and hides the list while a direct-link detail is active', async () => {
+  const { state } = setup(memberScope(), true, 't1')
+  await flushPromises()
+  const wrapper = feedbackDrawer(state)
+  await flushPromises()
+  expect(wrapper.find('.feedback-threads').exists()).toBe(false)
+  const focus = vi.spyOn(wrapper.get('.feedback-task-heading').element as HTMLElement, 'focus')
+  const input = wrapper.get('textarea')
+  await input.setValue('Still typing')
+  ;(input.element as HTMLElement).focus()
+  wrapper.findComponent({ name: 'FeedbackDrawerStub' }).vm.$emit('afterOpenChange', true)
+  await flushPromises()
+  expect(document.activeElement).toBe(input.element)
+  await state.load()
+  await flushPromises()
+  expect(focus).not.toHaveBeenCalled()
+  expect(state.text.value).toBe('Still typing')
+  await feedbackButton(wrapper, protoLocales.zh.feedbackBackToList).trigger('click')
+  expect(wrapper.find('textarea').exists()).toBe(false)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackContinue).trigger('click')
+  expect(wrapper.get('.feedback-task-heading').element).toBe(document.activeElement)
+  expect(wrapper.get('textarea').element.value).toBe('Still typing')
 })
 
 it('uses the existing cryptographic fallback on LAN HTTP and retains its key on an explicit unknown-result retry', async () => {
