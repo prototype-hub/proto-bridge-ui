@@ -21,7 +21,8 @@ export function useReviewThreadsOverview(
   const rows = shallowRef<ReviewThread[]>([])
   const total = ref(0),
     pageIndex = ref(0),
-    filter = ref<ReviewThreadState | ''>('')
+    filter = ref<ReviewThreadState | ''>(''),
+    assignment = ref<'mine' | 'unassigned' | ''>('')
   const loading = ref(false),
     error = ref(''),
     needsIdentity = ref(false)
@@ -34,7 +35,9 @@ export function useReviewThreadsOverview(
     return value
       ? JSON.stringify([
           value.kind,
-          value.kind === 'public' ? [value.share.token, value.share.accessKey] : value.versionId,
+          value.kind === 'public'
+            ? [value.share.token, value.share.accessKey]
+            : [value.project.id, value.versionId],
           value.revisionId,
         ])
       : ''
@@ -129,10 +132,17 @@ export function useReviewThreadsOverview(
               identity.value!.csrfToken,
               request.signal,
             )
-          : await reviewThreadsApi.overview(target.versionId, data, {
-              signal: request.signal,
-              silent: true,
-            })
+          : await reviewThreadsApi.overview(
+              target.versionId,
+              {
+                ...data,
+                ...(assignment.value ? { assignment: assignment.value } : {}),
+              },
+              {
+                signal: request.signal,
+                silent: true,
+              },
+            )
       if (epoch !== generation || request.signal.aborted) return
       if (result.data.some((row) => row.revisionId !== target.revisionId))
         throw new ApiError(t('proto.feedbackUnavailable'), 404)
@@ -164,6 +174,17 @@ export function useReviewThreadsOverview(
     pageIndex.value = 0
     void load()
   }
+  function changeAssignment(value: 'mine' | 'unassigned' | '') {
+    if (isPublic.value || !['', 'mine', 'unassigned'].includes(value)) return
+    assignment.value = value
+    pageIndex.value = 0
+    void load()
+  }
+  function clearFilters() {
+    filter.value = assignment.value = ''
+    pageIndex.value = 0
+    void load()
+  }
   watch(
     identity,
     (value) => {
@@ -178,13 +199,15 @@ export function useReviewThreadsOverview(
         lastScope = scopeKey.value
         lastActor = ''
         filter.value = ''
+        assignment.value = ''
         pageIndex.value = 0
         needsIdentity.value = false
       }
-      // Expiry and same-actor verification preserve the current query, never another actor's list.
-      if (actor.value) {
-        if (lastActor && lastActor !== actor.value) {
+      // Public expiry and same-actor verification retain the query; member actor changes reset it.
+      if (actor.value || scope.value?.kind === 'member') {
+        if (lastActor !== actor.value) {
           filter.value = ''
+          assignment.value = ''
           pageIndex.value = 0
         }
         lastActor = actor.value
@@ -199,6 +222,7 @@ export function useReviewThreadsOverview(
     total,
     pageIndex,
     filter,
+    assignment,
     loading,
     error,
     isPublic,
@@ -208,6 +232,8 @@ export function useReviewThreadsOverview(
     load,
     page,
     changeFilter,
+    changeAssignment,
+    clearFilters,
   }
 }
 export type ReviewThreadsOverviewController = ReturnType<typeof useReviewThreadsOverview>

@@ -83,6 +83,21 @@ watch([() => props.open, state.rows], () => {
         >
       </template>
       <template v-if="state.readable.value">
+        <div v-if="!state.isPublic.value" class="stack overview-assignment">
+          <strong>{{ t('proto.overviewAssignment') }}</strong>
+          <a-radio-group
+            :value="state.assignment.value"
+            :aria-label="t('proto.overviewAssignment')"
+            :disabled="state.loading.value"
+            @update:value="state.changeAssignment"
+          >
+            <a-radio-button value="">{{ t('proto.overviewAssignmentAll') }}</a-radio-button>
+            <a-radio-button value="mine">{{ t('proto.overviewAssignmentMine') }}</a-radio-button>
+            <a-radio-button value="unassigned">{{
+              t('proto.overviewAssignmentUnassigned')
+            }}</a-radio-button>
+          </a-radio-group>
+        </div>
         <a-radio-group
           :value="state.filter.value"
           :aria-label="t('proto.feedbackState')"
@@ -98,8 +113,8 @@ watch([() => props.open, state.rows], () => {
             t('common.refresh')
           }}</a-button>
           <a-button
-            :disabled="state.loading.value || !state.filter.value"
-            @click="state.changeFilter('')"
+            :disabled="state.loading.value || (!state.filter.value && !state.assignment.value)"
+            @click="state.clearFilters"
             >{{ t('proto.overviewClear') }}</a-button
           >
         </div>
@@ -169,6 +184,11 @@ watch([() => props.open, state.rows], () => {
 .feedback-overview {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
+}
+.overview-assignment {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
 }
 .feedback-overview :deep(.ant-btn),
 .feedback-overview :deep(.ant-radio-button-wrapper) {

@@ -74,6 +74,7 @@ export function threadResponse(
   guest?: { share: Share; identity: ReviewIdentity },
   image?: ThreadImage,
   assignees: ReviewAssignee[] = [],
+  memberActorId?: string,
 ) {
   const rid = String(input.revisionId),
     pageId = String(input.pageId),
@@ -93,8 +94,20 @@ export function threadResponse(
       send(res, 400, null, 'Invalid state')
       return
     }
+    const assignment = overview && !guest ? input.assignment : undefined
+    if (assignment != null && !['mine', 'unassigned'].includes(String(assignment))) {
+      send(res, 400, null, 'Invalid assignment filter')
+      return
+    }
     const rows = [...threads.values()]
       .filter(allowed)
+      .filter((row) =>
+        assignment === 'mine'
+          ? !!memberActorId && row.assignment?.assignee?.userId === memberActorId
+          : assignment === 'unassigned'
+            ? !row.assignment?.assignee
+            : true,
+      )
       .map((value) => value.thread)
       .filter((row) => !input.state || row.state === input.state)
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))

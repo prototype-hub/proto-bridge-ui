@@ -7,6 +7,7 @@ import type {
   PublicShare,
   ReviewContext,
   ReviewThread,
+  ReviewAssignment,
   Share,
 } from '../../src/modules/protohub-manager-ui/types'
 
@@ -108,6 +109,28 @@ const overview = (page: Page, locale: Locale = 'zh') =>
   page.getByRole('dialog', { name: protoLocales[locale].feedbackOverview, exact: true })
 const feedback = (page: Page, locale: Locale = 'zh') =>
   page.getByRole('dialog', { name: protoLocales[locale].feedback, exact: true })
+async function assign(
+  request: APIRequestContext,
+  thread: ReviewThread,
+  assigneeId: string | null,
+  expectedVersion = 0,
+) {
+  const response = await request.put(
+    `${origin}/api/prototype-hub/versions/v1/review-threads/${thread.id}/assignment`,
+    {
+      headers,
+      data: {
+        revisionId: thread.revisionId,
+        pageId: thread.pageId,
+        assigneeId,
+        expectedVersion,
+        clientRequestId: crypto.randomUUID(),
+      },
+    },
+  )
+  expect(response.ok()).toBe(true)
+  return (await response.json()).result as ReviewAssignment
+}
 async function openOverview(page: Page, locale: Locale = 'zh') {
   await page
     .getByRole('button', { name: protoLocales[locale].feedbackOverview, exact: true })
@@ -206,6 +229,184 @@ test('PM pages and filters a fixed revision across pages, then explicitly views 
   ).toBeVisible()
 })
 
+test('member responsibility queues combine state and real paging, then reflect explicit assignment and clear after returning and refreshing', async ({
+  page,
+  request,
+}, info) => {
+  await enable(page, request)
+  const seeded = await seed(page.request, 24)
+  const editor = await request.put(`${origin}/api/prototype-hub/projects/p1/members/u2`, {
+    headers,
+    data: { role: 'editor' },
+  })
+  expect(editor.ok()).toBe(true)
+  for (const thread of seeded.threads.slice(2)) await assign(request, thread, 'u1')
+  await assign(request, seeded.threads[1]!, 'u2')
+  const unassigned = seeded.threads[0]!,
+    mineThread = seeded.threads[2]!
+  await page.goto('preview/p1/v1')
+  const drawer = await openOverview(page)
+  const radio = (name: string) => drawer.getByRole('radio', { name, exact: true })
+  await drawer
+    .locator('.overview-assignment .ant-radio-button-wrapper')
+    .filter({ hasText: protoLocales.zh.overviewAssignmentMine })
+    .click()
+  await expect(radio(protoLocales.zh.overviewAssignmentMine)).toBeChecked()
+  await expect(drawer.locator('.overview-row')).toHaveCount(20)
+  const next = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/_overview') && response.request().postDataJSON().pageIndex === 1,
+  )
+  await drawer.locator('.ant-pagination-next').click()
+  const second = (await (await next).json()).result
+  expect(second.total).toBe(22)
+  expect(second.data).toHaveLength(2)
+  await expect(drawer.locator('.overview-row')).toHaveCount(2)
+  await drawer
+    .locator('.ant-radio-button-wrapper')
+    .filter({ hasText: protoLocales.zh.feedbackResolved })
+    .click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(0)
+  const resolve = await request.put(
+    `${origin}/api/prototype-hub/versions/v1/review-threads/${mineThread.id}/status`,
+    {
+      headers,
+      data: {
+        revisionId: mineThread.revisionId,
+        pageId: mineThread.pageId,
+        state: 'resolved',
+        expectedVersion: 0,
+        clientRequestId: crypto.randomUUID(),
+      },
+    },
+  )
+  expect(resolve.ok()).toBe(true)
+  await drawer.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(1)
+  await expect(radio(protoLocales.zh.overviewAssignmentMine)).toBeChecked()
+  await expect(radio(protoLocales.zh.feedbackResolved)).toBeChecked()
+  await drawer.getByRole('button', { name: protoLocales.zh.overviewClear, exact: true }).click()
+  await expect(radio(protoLocales.zh.overviewAssignmentAll)).toBeChecked()
+  await expect(drawer.locator('.overview-row')).toHaveCount(20)
+  await drawer
+    .locator('.overview-assignment .ant-radio-button-wrapper')
+    .filter({ hasText: protoLocales.zh.overviewAssignmentUnassigned })
+    .click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(1)
+  await view(page, drawer, unassigned)
+  const area = feedback(page).locator('.feedback-assignment')
+  await area.getByRole('button', { name: protoLocales.zh.assignmentEdit, exact: true }).click()
+  await area.locator('.assignment-picker .ant-select-selector').click()
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content',
+    )
+    .filter({ hasText: 'Admin' })
+    .click()
+  await area.getByRole('button', { name: protoLocales.zh.assignmentSave, exact: true }).click()
+  await expect(area.getByText('Admin', { exact: true })).toBeVisible()
+  await feedback(page)
+    .getByRole('button', { name: protoLocales.zh.feedbackOverview, exact: true })
+    .click()
+  await drawer.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(0)
+  await expect(radio(protoLocales.zh.overviewAssignmentUnassigned)).toBeChecked()
+  await drawer
+    .locator('.overview-assignment .ant-radio-button-wrapper')
+    .filter({ hasText: protoLocales.zh.overviewAssignmentMine })
+    .click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(20)
+  // The newly assigned oldest thread can be outside the first page; paging remains server-driven.
+  await drawer.locator('.ant-pagination-next').click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(3)
+  await view(page, drawer, unassigned)
+  await area.getByRole('button', { name: protoLocales.zh.assignmentClear, exact: true }).click()
+  await expect(area.getByText(protoLocales.zh.assignmentEmpty, { exact: true })).toBeVisible()
+  await feedback(page)
+    .getByRole('button', { name: protoLocales.zh.feedbackOverview, exact: true })
+    .click()
+  await drawer.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(drawer.locator('.overview-row')).toHaveCount(2)
+  await drawer
+    .locator('.overview-assignment .ant-radio-button-wrapper')
+    .filter({ hasText: protoLocales.zh.overviewAssignmentUnassigned })
+    .click()
+  await expect(rowFor(drawer, unassigned)).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('overview-assignment-member-desktop.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+})
+
+for (const locale of ['zh', 'en'] as const)
+  test(`390px ${locale} member responsibility controls support keyboard selection with real matched pagination`, async ({
+    page,
+    request,
+  }, info) => {
+    await enable(page, request)
+    const seeded = await seed(page.request, 22)
+    for (const thread of seeded.threads) await assign(request, thread, 'u1')
+    await page.evaluate(
+      (language) => localStorage.setItem('proto-bridge-ui:language', language),
+      locale,
+    )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('preview/p1/v1')
+    const drawer = await openOverview(page, locale),
+      text = protoLocales[locale]
+    const mine = drawer.getByRole('radio', { name: text.overviewAssignmentMine, exact: true })
+    await mine.focus()
+    await expect(mine).toBeFocused()
+    await page.keyboard.press('Space')
+    await expect(mine).toBeChecked()
+    await expect(drawer.locator('.overview-row')).toHaveCount(20)
+    const next = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/_overview') && response.request().postDataJSON().pageIndex === 1,
+    )
+    await drawer.locator('.ant-pagination-next').click()
+    const result = (await (await next).json()).result
+    expect(result.total).toBe(22)
+    expect(result.data).toHaveLength(2)
+    await expect(drawer.locator('.overview-row')).toHaveCount(2)
+    await expect(drawer.locator('.ant-pagination-simple-pager input')).toHaveValue('2')
+    await drawer.locator('.overview-pagination').scrollIntoViewIfNeeded()
+    await expect
+      .poll(async () => {
+        const container = await drawer.boundingBox(),
+          pager = await drawer.locator('.overview-pagination').boundingBox()
+        return (
+          !!container &&
+          !!pager &&
+          pager.x >= 0 &&
+          pager.x + pager.width <= 390 &&
+          pager.y >= 0 &&
+          pager.y + pager.height <= 844 &&
+          Math.abs(pager.x + pager.width - container.x - container.width) <= 2 &&
+          (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        )
+      })
+      .toBe(true)
+    await page.screenshot({
+      path: info.outputPath(`overview-assignment-member-390-${locale}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    })
+    const free = drawer.getByRole('radio', { name: text.overviewAssignmentUnassigned, exact: true })
+    await free.focus()
+    await page.keyboard.press('Space')
+    await expect(free).toBeChecked()
+    await expect(drawer.locator('.overview-row')).toHaveCount(0)
+    const clear = drawer.getByRole('button', { name: text.overviewClear, exact: true })
+    await clear.focus()
+    await page.keyboard.press('Enter')
+    await expect(
+      drawer.getByRole('radio', { name: text.overviewAssignmentAll, exact: true }),
+    ).toBeChecked()
+    await expect(drawer.locator('.overview-row')).toHaveCount(20)
+  })
+
 test('a visitor sees only their own feedback in the current share and overview never reads message/image/assignment bodies', async ({
   page,
   request,
@@ -236,6 +437,7 @@ test('a visitor sees only their own feedback in the current share and overview n
   })
   const drawer = await openOverview(page)
   await expect(drawer.locator('.overview-row')).toHaveCount(3)
+  await expect(drawer.locator('.overview-assignment')).toHaveCount(0)
   await expect(drawer).not.toContainText('other question')
   await Promise.all(reads)
   const requests = observed.filter((item) => item.url.endsWith('/_overview'))

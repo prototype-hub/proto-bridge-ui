@@ -217,6 +217,145 @@ it('gates member overview by current project EDIT and query permission, with no 
   expect(reviewThreadsApi.overview).not.toHaveBeenCalled()
 })
 
+it('combines responsibility and state in one bounded member request, resets pages and clears both filters', async () => {
+  const { state, open } = setup(memberScope())
+  await flushPromises()
+  state.page(3)
+  await flushPromises()
+  let calls = vi.mocked(reviewThreadsApi.overview).mock.calls.length
+  state.changeAssignment('mine')
+  await flushPromises()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  expect(state.pageIndex.value).toBe(0)
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual({
+    revisionId: 'r1',
+    pageIndex: 0,
+    pageSize: 20,
+    assignment: 'mine',
+  })
+  state.changeFilter('resolved')
+  await flushPromises()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  state.page(2)
+  await flushPromises()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  const query = {
+    revisionId: 'r1',
+    pageIndex: 1,
+    pageSize: 20,
+    state: 'resolved',
+    assignment: 'mine',
+  }
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual(query)
+  vi.mocked(reviewThreadsApi.overview).mockRejectedValueOnce(new ApiError('unavailable', 500))
+  await state.load()
+  expect(state.error.value).toBeTruthy()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  await state.load()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual(query)
+  open.value = false
+  await flushPromises()
+  open.value = true
+  await flushPromises()
+  expect(state.assignment.value).toBe('mine')
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual(query)
+  state.changeAssignment('unassigned')
+  await flushPromises()
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual({
+    ...query,
+    pageIndex: 0,
+    assignment: 'unassigned',
+  })
+  calls = vi.mocked(reviewThreadsApi.overview).mock.calls.length
+  state.clearFilters()
+  await flushPromises()
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(calls + 1)
+  expect(state.filter.value).toBe('')
+  expect(state.assignment.value).toBe('')
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual({
+    revisionId: 'r1',
+    pageIndex: 0,
+    pageSize: 20,
+  })
+})
+
+it.each(['project', 'version', 'revision', 'actor', 'no-actor', 'public'] as const)(
+  'clears both member filters on %s changes and rejects the old result',
+  async (kind) => {
+    const { state, scope } = setup(memberScope())
+    await flushPromises()
+    state.changeFilter('open')
+    await flushPromises()
+    const delayed = deferred<ReturnType<typeof pager>>()
+    vi.mocked(reviewThreadsApi.overview).mockReturnValueOnce(delayed.promise)
+    state.changeAssignment('mine')
+    const signal = vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![2]!.signal!
+    const selected = memberScope() as Extract<ReviewOverviewScope, { kind: 'member' }>
+    if (kind === 'project') selected.project = { ...selected.project, id: 'p2' }
+    if (kind === 'version') selected.versionId = 'v2'
+    if (kind === 'revision') selected.revisionId = 'r2'
+    if (kind === 'actor') selected.actorId = 'another-member'
+    if (kind === 'no-actor') selected.actorId = ''
+    scope.value = kind === 'public' ? publicScope() : selected
+    await flushPromises()
+    expect(signal.aborted).toBe(true)
+    expect(state.filter.value).toBe('')
+    expect(state.assignment.value).toBe('')
+    delayed.resolve(pager([row('late-member')]))
+    await flushPromises()
+    expect(state.rows.value.map((item) => item.pageId)).not.toContain('late-member')
+    if (kind === 'public') {
+      state.changeAssignment('unassigned')
+      await state.load()
+      expect(state.assignment.value).toBe('')
+      expect(vi.mocked(publicReviewThreadsApi.overview).mock.calls.at(-1)![1]).not.toHaveProperty(
+        'assignment',
+      )
+    }
+  },
+)
+
+it('aborts an older filter query without letting its rows overwrite a newer responsibility selection', async () => {
+  const { state } = setup(memberScope())
+  await flushPromises()
+  const delayed = deferred<ReturnType<typeof pager>>()
+  vi.mocked(reviewThreadsApi.overview).mockReturnValueOnce(delayed.promise)
+  state.changeAssignment('mine')
+  const signal = vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![2]!.signal!
+  vi.mocked(reviewThreadsApi.overview).mockResolvedValueOnce(pager([row('unassigned')]))
+  state.changeAssignment('unassigned')
+  await flushPromises()
+  delayed.resolve(pager([row('stale-mine')]))
+  await flushPromises()
+  expect(signal.aborted).toBe(true)
+  expect(state.rows.value.map((item) => item.pageId)).toEqual(['unassigned'])
+  const calls = vi.mocked(reviewThreadsApi.overview).mock.calls.length
+  state.changeAssignment('other' as 'mine')
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(calls)
+})
+
+it('never sends or displays member responsibility filters in a public overview', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.changeAssignment('mine')
+  state.changeFilter('resolved')
+  await flushPromises()
+  expect(state.assignment.value).toBe('')
+  expect(vi.mocked(publicReviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual({
+    revisionId: 'r1',
+    pageIndex: 0,
+    pageSize: 20,
+    state: 'resolved',
+  })
+  const wrapper = mount(ReviewThreadsOverviewDrawer, {
+    props: { open: true, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  expect(wrapper.find('.overview-assignment').exists()).toBe(false)
+})
+
 it('retains filter and page through session expiry and same-actor OTP, but never keeps another actor list', async () => {
   const { state, identity } = setup()
   await flushPromises()
@@ -372,6 +511,13 @@ it.each(['zh', 'en'] as const)(
     expect(wrapper.find('script').exists()).toBe(false)
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('textarea').exists()).toBe(false)
+    const assignment = wrapper.find('.overview-assignment')
+    expect(assignment.text()).toContain(protoLocales[locale].overviewAssignmentAll)
+    expect(assignment.text()).toContain(protoLocales[locale].overviewAssignmentMine)
+    expect(assignment.text()).toContain(protoLocales[locale].overviewAssignmentUnassigned)
+    await assignment.find('input[value="mine"]').setValue(true)
+    await flushPromises()
+    expect(state.assignment.value).toBe('mine')
     const button = (text: string) =>
       wrapper
         .findAll('button')
