@@ -54,6 +54,25 @@ it('uses independent revision-only overview requests with public CSRF or member 
     { signal, silent: true },
   )
 })
+it.each(['mine', 'unassigned', null] as const)(
+  'keeps the %s responsibility selector on the member overview API only',
+  async (assignment) => {
+    const input = {
+      revisionId: 'r1',
+      pageIndex: 1,
+      pageSize: 20,
+      state: 'resolved' as const,
+      assignment,
+    }
+    await reviewThreadsApi.overview('v1', input)
+    expect(request.post).toHaveBeenCalledWith(
+      '/prototype-hub/versions/v1/review-threads/_overview',
+      input,
+      undefined,
+    )
+    expect(fetch).not.toHaveBeenCalled()
+  },
+)
 it('keeps assignment detail, paged candidates and CAS clear on member-only encoded scope', async () => {
   const options = { signal: new AbortController().signal, silent: true }
   const target = { revisionId: 'r1', pageId: 'page' }

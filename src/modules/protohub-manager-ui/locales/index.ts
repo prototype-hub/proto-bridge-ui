@@ -23,11 +23,16 @@ export const protoLocales = {
     feedback: '页面反馈',
     feedbackOverview: '全部页面反馈',
     overviewVisitorHint: '查看当前固定修订下、此分享中您本人的反馈。点击“查看”返回原页面继续处理。',
-    overviewMemberHint: '查看当前固定修订中各页面的反馈。点击“查看”返回原页面继续处理。',
+    overviewMemberHint:
+      '查看当前固定修订中各页面的反馈。点击“查看”返回原页面继续处理；修改负责人后可手动刷新总览。',
+    overviewAssignment: '负责人筛选',
+    overviewAssignmentAll: '全部负责人',
+    overviewAssignmentMine: '分派给我',
+    overviewAssignmentUnassigned: '未分派',
     overviewAuthenticate: '请先验证访问者身份，再查看此分享中您本人的反馈；验证后可返回总览。',
     overviewReturn: '返回全部页面反馈',
     overviewView: '查看反馈',
-    overviewClear: '清空状态筛选',
+    overviewClear: '清空筛选',
     overviewLeaveTitle: '放弃当前草稿并查看其他反馈？',
     overviewLeaveHint:
       '切换后将放弃当前文字、图片、位置及未保存的负责人选择。如提交结果尚未确认，离开不会撤回可能已完成的提交。取消可保留原草稿及重试请求。',
@@ -515,12 +520,16 @@ export const protoLocales = {
     overviewVisitorHint:
       'Your feedback for this share and fixed revision. Choose View feedback to continue on its original page.',
     overviewMemberHint:
-      'Feedback across pages of this fixed revision. Choose View feedback to continue on its original page.',
+      'Feedback across pages of this fixed revision. Choose View feedback to continue on its original page. Refresh the overview after changing an assignee.',
+    overviewAssignment: 'Assignment filter',
+    overviewAssignmentAll: 'All assignees',
+    overviewAssignmentMine: 'Assigned to me',
+    overviewAssignmentUnassigned: 'Unassigned',
     overviewAuthenticate:
       'Verify your visitor identity to view your feedback in this share, then return to the overview.',
     overviewReturn: 'Return to all-page feedback',
     overviewView: 'View feedback',
-    overviewClear: 'Clear state filter',
+    overviewClear: 'Clear filters',
     overviewLeaveTitle: 'Discard the current draft and view another feedback?',
     overviewLeaveHint:
       'Switching discards the current text, image, position and unsaved assignee selection. Leaving does not undo a submission that may already have succeeded. Cancel to keep the original draft and retry request.',

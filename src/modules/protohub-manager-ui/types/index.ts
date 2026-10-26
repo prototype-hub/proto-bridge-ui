@@ -399,6 +399,9 @@ export interface ReviewThreadOverviewQuery {
   pageSize: number
   state?: ReviewThreadState
 }
+export interface ReviewMemberThreadOverviewQuery extends ReviewThreadOverviewQuery {
+  assignment?: 'mine' | 'unassigned' | null
+}
 export interface ReviewMessageInput extends ReviewThreadPage {
   text: string
   clientRequestId: string

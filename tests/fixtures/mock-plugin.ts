@@ -1189,6 +1189,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
             userId: member.userId,
             name: String(users.find((user) => user.id === member.userId)!.name),
           })),
+        member ? 'u2' : 'u1',
       )
   } else if (/^\/prototype-hub\/shares\/[^/]+\/review-invitations(?:\/.*)?$/.test(path)) {
     const value = shares.find((item) => item.id === decodeURIComponent(path.split('/')[3]!))

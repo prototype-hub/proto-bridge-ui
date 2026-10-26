@@ -6,6 +6,7 @@ import type {
   ReviewMessage,
   ReviewThreadQuery,
   ReviewThreadOverviewQuery,
+  ReviewMemberThreadOverviewQuery,
   ReviewMessageInput,
   ReviewCreateInput,
   ReviewStatusInput,
@@ -104,7 +105,11 @@ export const publicReviewThreadsApi = {
   ) => reviewRequest<ReviewThread>(grant, `${threadPath(id)}/status`, data, csrf, signal, 'PUT'),
 }
 export const reviewThreadsApi = {
-  overview: async (versionId: string, data: ReviewThreadOverviewQuery, options?: RequestOptions) =>
+  overview: async (
+    versionId: string,
+    data: ReviewMemberThreadOverviewQuery,
+    options?: RequestOptions,
+  ) =>
     (await request.post<PageResult<ReviewThread>>(`${base(versionId)}/_overview`, data, options))
       .result,
   assignment: async (

@@ -243,14 +243,14 @@
 
 成员从预览进入反馈，查询要求版本query与项目edit，写入要求版本save与项目edit；仅有项目read不能查看全部客户反馈或内部备注。管理接口基于 `/prototype-hub/versions/{versionId}/review-threads`，除跨页总览外所有请求提交 `{revisionId,pageId}`：
 
-| 请求                               | 额外字段                                                     | 结果                           |
-| ---------------------------------- | ------------------------------------------------------------ | ------------------------------ |
-| `POST /_query`                     | `{pageIndex,pageSize,state?}`                                | Thread分页                     |
-| `POST /_overview`                  | `{revisionId,pageIndex,pageSize,state?}`，不需pageId         | 当前固定修订全部页面Thread分页 |
-| `POST /{threadId}/_detail`         | 无                                                           | 当前管理范围的单个Thread       |
-| `POST /{threadId}/messages/_query` | `{pageIndex,pageSize}`                                       | 全部公开/内部Message分页       |
-| `POST /{threadId}/messages`        | `{text,visibility:'public'\|'internal',clientRequestId}`     | Message                        |
-| `PUT /{threadId}/status`           | `{state:'open'\|'resolved',expectedVersion,clientRequestId}` | Thread                         |
+| 请求                               | 额外字段                                                         | 结果                                                     |
+| ---------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| `POST /_query`                     | `{pageIndex,pageSize,state?}`                                    | Thread分页                                               |
+| `POST /_overview`                  | `{revisionId,pageIndex,pageSize,state?,assignment?}`，不需pageId | 当前固定修订全部页面Thread分页；assignment仅成员入口支持 |
+| `POST /{threadId}/_detail`         | 无                                                               | 当前管理范围的单个Thread                                 |
+| `POST /{threadId}/messages/_query` | `{pageIndex,pageSize}`                                           | 全部公开/内部Message分页                                 |
+| `POST /{threadId}/messages`        | `{text,visibility:'public'\|'internal',clientRequestId}`         | Message                                                  |
+| `PUT /{threadId}/status`           | `{state:'open'\|'resolved',expectedVersion,clientRequestId}`     | Thread                                                   |
 
 PM不能创建客户顶层线程。对客回复与内部备注使用明确不同的选择项和标识；内部备注永不进入公开列表。分享或访客停用后，当前有权PM仍可处理归档，项目/版本/修订不可用时拒绝。访客公开回复自动重开resolved，PM公开回复保持状态；访客只能明确重开，只有PM可解决。状态转换才增加configVersion，同版本同状态请求不重复转换；内部备注不改变公开updatedAt、状态、版本或排序。
 
@@ -258,7 +258,11 @@ Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorComp
 
 ### 全部页面反馈
 
-公开分享和成员预览工具栏提供显式“全部页面反馈”，原当前页反馈仍是默认入口。总览独立只读加载当前固定修订，不能跨分享、修订或合并身份；公开结果仍限定当前shareId、guestId与保障等级，成员仍须版本query及项目edit。两个\_overview接口使用独立请求，不放宽原逐页请求的pageId要求。revisionId必填，公开端另需accessKey；pageIndex为0–10000、默认0，pageSize为1–100、默认20，state可省略或为精确的open/resolved，空字符串无效。界面每页20条，按服务端total分页；越界页保留真实total且data为空，不自动回退。排序为公开updatedAt降序、ID升序，内部备注和分派不影响总数、时间、排序或Thread投影。
+公开分享和成员预览工具栏提供显式“全部页面反馈”，原当前页反馈仍是默认入口。总览独立只读加载当前固定修订，不能跨分享、修订或合并身份；公开结果仍限定当前shareId、guestId与保障等级，成员仍须版本query及项目edit。两个\_overview接口使用独立请求，不放宽原逐页请求的pageId要求。revisionId必填，公开端另需accessKey；pageIndex为0–10000、默认0，pageSize为1–100、默认20，state可省略或为精确的open/resolved，空字符串无效。界面每页20条，按服务端total分页；越界页保留真实total且data为空，不自动回退。排序为公开updatedAt降序、ID升序，内部备注和分派不改变公开时间、排序、状态版本或Thread投影。
+
+成员总览另支持assignment精确字符串mine或unassigned；省略或null为全部，空字符串、all及其他值无效。mine由服务端当前登录账号匹配，不发送actor或assignee ID；unassigned仅匹配负责人ID为NULL，停用或撤员的非空负责人仍为已分派，须在原线程入口明确清除。被分派不授予权限。公开总览继续使用原请求类型，不显示或发送责任筛选，返回投影不增加负责人字段。
+
+成员界面提供有标签的“全部负责人／分派给我／未分派”与状态筛选；两者按AND组合，修改任一项重置第一页且只发一次有界请求，清除同时重置两项。刷新、重试保留组合，范围、修订或实际账号变化清空两项并取消旧请求；迟到结果不能覆盖当前范围。分派和清除仍在原线程入口操作，返回总览后手动刷新，不自动轮询或修改分派。先部署支持责任筛选的后端，再发布前端；旧后端可能忽略新增字段，不能当作筛选成功。
 
 总览显示已有页面名称/路径、摘要、状态、作者自述/保障等级及时间，不加载消息、图片或负责人，不预取所有页面。只有明确“查看”才验证返回线程的修订和threadId，以及已加载manifest中唯一非目录pageId，再导航到原revisionId/pageId/threadId并调用详情接口重新授权；不传运行地址、正文或凭据。缺失身份或待用邀请时不请求总览，由原显式身份流程完成后返回原筛选和页号，不自动发送OTP或放弃邀请。
 
