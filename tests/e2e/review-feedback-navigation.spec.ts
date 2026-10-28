@@ -142,6 +142,14 @@ test('twenty-row member feedback separates finding from communication and visual
   await expect(area.locator('.feedback-thread')).toHaveCount(0)
   const bounds = await heading.boundingBox()
   expect(bounds!.y).toBeLessThan(1000)
+  await expect(area.getByText(protoLocales.zh.feedbackPageHint, { exact: true })).toBeHidden()
+  await expect
+    .poll(async () => {
+      const send = await action(area, 'feedbackSubmit').boundingBox()
+      return !!send && send.y >= 0 && send.y + send.height <= 1000
+    })
+    .toBe(true)
+  await expect(area.locator('.feedback-assignment .feedback-more')).not.toHaveAttribute('open', '')
   await expect(area.locator('.feedback-assignment')).toContainText(protoLocales.zh.assignmentEmpty)
   await area.locator('textarea').fill('Draft kept on visual return')
   await area.getByLabel(protoLocales.zh.feedbackImageSelect, { exact: true }).setInputFiles(upload)
@@ -175,6 +183,52 @@ test('twenty-row member feedback separates finding from communication and visual
   await page.screenshot({
     path: info.outputPath('q0-member-detail-desktop.png'),
     fullPage: true,
+    animations: 'disabled',
+  })
+})
+
+test('short desktop keeps a long image draft and a failed-send notice beside the visible send action', async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await prepare(page, request)
+  await page.setViewportSize({ width: 1440, height: 768 })
+  await page.goto(fixture.link('preview/p1/v1'))
+  const area = drawer(page)
+  const draft = 'A detailed customer reply\n'.repeat(18)
+  await area.locator('textarea').fill(draft)
+  await area.getByLabel(protoLocales.zh.feedbackImageSelect).setInputFiles(upload)
+  await area.locator('.feedback-workspace').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.route('**/review-threads/*/messages-with-image', (route) =>
+    route.fulfill({ status: 500, json: { status: 500, message: 'Controlled send failure' } }),
+  )
+  const send = action(area, 'feedbackSubmit')
+  await send.click()
+  const notice = area.getByText(protoLocales.zh.feedbackResultUnknown, { exact: true })
+  await expect(notice).toHaveCount(1)
+  await expect(notice).toBeVisible()
+  for (const control of [notice, send])
+    await expect
+      .poll(async () => {
+        const box = await control.boundingBox()
+        return (
+          !!box &&
+          box.x >= 0 &&
+          box.y >= 0 &&
+          box.x + box.width <= 1440 &&
+          box.y + box.height <= 768
+        )
+      })
+      .toBe(true)
+  await expect(area.locator('textarea')).toHaveValue(draft)
+  await expect(area.getByAltText(protoLocales.zh.feedbackImageDraftAlt)).toBeVisible()
+  expect(
+    await area.locator('.feedback-workspace').evaluate((element) => element.clientHeight),
+  ).toBeGreaterThan(80)
+  await page.screenshot({
+    path: info.outputPath('ui1-long-draft-send-notice-768.png'),
     animations: 'disabled',
   })
 })
