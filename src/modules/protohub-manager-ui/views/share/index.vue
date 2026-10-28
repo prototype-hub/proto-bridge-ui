@@ -184,7 +184,21 @@ watch(
         @page-change="selectedPage = $event"
         ><template #actions>
           <a-button
+            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
+            type="primary"
+            :disabled="!selectedPage"
+            @click="feedbackOpen = true"
+            >{{ t('proto.feedback') }}</a-button
+          >
+          <a-button
+            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
+            :disabled="drawing"
+            @click="overviewOpen = true"
+            >{{ t('proto.feedbackOverview') }}</a-button
+          >
+          <a-button
             v-if="resource.data.value.share?.reviewEnabled"
+            type="text"
             :title="
               resource.data.value.share.reviewAvailable ||
               resource.data.value.share.reviewUnverifiedAllowed
@@ -199,18 +213,6 @@ watch(
                   : 'proto.reviewIdentity',
               )
             }}</a-button
-          >
-          <a-button
-            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
-            :disabled="!selectedPage"
-            @click="feedbackOpen = true"
-            >{{ t('proto.feedback') }}</a-button
-          >
-          <a-button
-            v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
-            :disabled="drawing"
-            @click="overviewOpen = true"
-            >{{ t('proto.feedbackOverview') }}</a-button
           >
         </template></prototype-workspace
       >

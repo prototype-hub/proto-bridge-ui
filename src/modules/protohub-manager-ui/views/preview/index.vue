@@ -122,6 +122,7 @@ function locateAnchor(anchor: ReviewAnchor) {
         <template #actions
           ><a-button
             v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
+            type="primary"
             :disabled="!selectedPage"
             @click="feedbackOpen = true"
             >{{ t('proto.feedback') }}</a-button
