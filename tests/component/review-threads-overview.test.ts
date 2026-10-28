@@ -534,3 +534,104 @@ it.each(['zh', 'en'] as const)(
     expect(wrapper.emitted('view')).toHaveLength(2)
   },
 )
+
+it.each(['zh', 'en'] as const)(
+  'explains empty %s results and restores the unfiltered queue explicitly',
+  async (locale) => {
+    i18n.global.locale.value = locale
+    vi.mocked(reviewThreadsApi.overview).mockResolvedValue(pager([], 0))
+    const { state } = setup(memberScope())
+    await flushPromises()
+    const wrapper = mount(ReviewThreadsOverviewDrawer, {
+      props: { open: true, state },
+      global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+    })
+    wrappers.push(wrapper)
+    expect(wrapper.find('.overview-empty').text()).toContain(protoLocales[locale].overviewEmpty)
+    expect(wrapper.find('.overview-result-count').text()).toContain('0')
+    await state.changeFilter('resolved')
+    await flushPromises()
+    expect(wrapper.find('.overview-empty').text()).toContain(protoLocales[locale].overviewNoMatches)
+    const clear = wrapper
+      .findAll('button')
+      .find((button) => button.text() === protoLocales[locale].overviewClear)!
+    await clear.trigger('click')
+    await flushPromises()
+    expect(state.filter.value).toBe('')
+    expect(wrapper.find('.overview-empty').text()).toContain(protoLocales[locale].overviewEmpty)
+    expect(wrapper.find('.overview-help').attributes('open')).toBeUndefined()
+  },
+)
+
+it('retains the true total on an empty later page and only returns to page one on the explicit action', async () => {
+  const { state } = setup(memberScope())
+  await flushPromises()
+  vi.mocked(reviewThreadsApi.overview).mockResolvedValueOnce(pager([], 25))
+  state.page(3)
+  await flushPromises()
+  const calls = vi.mocked(reviewThreadsApi.overview).mock.calls.length
+  const wrapper = mount(ReviewThreadsOverviewDrawer, {
+    props: { open: true, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  expect(state.pageIndex.value).toBe(2)
+  expect(vi.mocked(reviewThreadsApi.overview)).toHaveBeenCalledTimes(calls)
+  expect(wrapper.find('.overview-result-count').text()).toContain('25')
+  expect(wrapper.find('.overview-empty').text()).toContain(protoLocales.zh.overviewEmptyPage)
+  expect(wrapper.find('.overview-pagination').exists()).toBe(true)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.overviewFirstPage)!
+    .trigger('click')
+  await flushPromises()
+  expect(state.pageIndex.value).toBe(0)
+  expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1].pageIndex).toBe(0)
+  expect(wrapper.find('.overview-empty').exists()).toBe(false)
+})
+
+it('keeps public identity, loading and error states distinct from an empty queue', async () => {
+  const { state, identity } = setup()
+  await flushPromises()
+  const wrapper = mount(ReviewThreadsOverviewDrawer, {
+    props: { open: true, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  expect(wrapper.find('.overview-assignment').exists()).toBe(false)
+  identity.value = { ...context(), session: null }
+  await flushPromises()
+  expect(wrapper.text()).toContain(protoLocales.zh.overviewAuthenticate)
+  expect(wrapper.find('.overview-empty').exists()).toBe(false)
+  expect(wrapper.find('.overview-result-count').exists()).toBe(false)
+  state.error.value = 'Unavailable'
+  await flushPromises()
+  expect(wrapper.find('.ant-result').text()).toContain('Unavailable')
+  state.error.value = protoLocales.zh.overviewAuthenticate
+  await flushPromises()
+  expect(wrapper.text().split(protoLocales.zh.overviewAuthenticate)).toHaveLength(2)
+  expect(wrapper.find('.ant-result').exists()).toBe(false)
+  const requests = vi.mocked(publicReviewThreadsApi.overview).mock.calls.length
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === i18n.global.t('common.retry'))!
+    .trigger('click')
+  await flushPromises()
+  expect(vi.mocked(publicReviewThreadsApi.overview)).toHaveBeenCalledTimes(requests)
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === protoLocales.zh.reviewIdentity)!
+    .trigger('click')
+  expect(wrapper.emitted('authenticate')).toEqual([[]])
+  identity.value = context()
+  await flushPromises()
+  state.loading.value = true
+  await flushPromises()
+  expect(wrapper.find('[role="status"]').exists()).toBe(true)
+  expect(wrapper.find('.overview-empty').exists()).toBe(false)
+  state.loading.value = false
+  state.error.value = 'Unavailable'
+  await flushPromises()
+  expect(wrapper.text()).toContain('Unavailable')
+  expect(wrapper.find('.overview-empty').exists()).toBe(false)
+})
