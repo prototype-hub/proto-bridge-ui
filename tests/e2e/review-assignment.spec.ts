@@ -85,6 +85,10 @@ async function member(
   await expect(area.getByText(protoLocales[locale].assignmentEmpty, { exact: true })).toBeVisible()
   return { drawer, area }
 }
+async function expandActions(area: Locator) {
+  const more = area.locator('.feedback-more')
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click()
+}
 async function choose(page: Page, area: Locator, name: string, locale: Locale = 'zh') {
   await area.getByRole('button', { name: protoLocales[locale].assignmentEdit, exact: true }).click()
   const select = area.locator('.assignment-picker')
@@ -124,6 +128,7 @@ test('members explicitly set and clear an assignee without changing the public t
     fullPage: true,
     animations: 'disabled',
   })
+  await expandActions(area)
   await area.getByRole('button', { name: protoLocales.zh.assignmentClear, exact: true }).click()
   await expect(area.getByText(protoLocales.zh.assignmentEmpty, { exact: true })).toBeVisible()
   const query = await fixture.call(
@@ -231,11 +236,13 @@ test('a removed assignee stays visibly unavailable until an explicit clear, with
   page.on('request', (sent) => {
     if (sent.method() === 'PUT' && sent.url() === fixture.assignmentUrl) writes.push(sent.url())
   })
+  await expandActions(area)
   await area.getByRole('button', { name: protoLocales.zh.assignmentRefresh, exact: true }).click()
   await expect(
     area.getByText(protoLocales.zh.assignmentFormerUnavailable, { exact: true }),
   ).toBeVisible()
   expect(writes).toHaveLength(0)
+  await expandActions(area)
   await area.getByRole('button', { name: protoLocales.zh.assignmentClear, exact: true }).click()
   await expect(area.getByText(protoLocales.zh.assignmentEmpty, { exact: true })).toBeVisible()
   expect(writes).toHaveLength(1)
@@ -383,5 +390,6 @@ for (const locale of ['zh', 'en'] as const)
     })
     await save.focus()
     await page.keyboard.press('Enter')
+    await expect(area.locator('.assignment-picker')).toHaveCount(0)
     await expect(area.getByText('Admin', { exact: true })).toBeVisible()
   })
