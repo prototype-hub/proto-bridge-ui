@@ -8,7 +8,7 @@ import {
   Alert as AAlert,
   Drawer as ADrawer,
 } from 'ant-design-vue'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
+import { MenuFoldOutlined, MenuUnfoldOutlined, LinkOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/modules/protohub-manager-ui/hooks/useWorkspace'
 import type {
@@ -93,32 +93,48 @@ function select(path: string, id?: string, page?: PrototypePage) {
 <template>
   <div class="workspace">
     <header class="workspace-header">
-      <div class="workspace-name">
-        <a-button :aria-label="toggleTitle" :title="toggleTitle" @click="navVisible = !navVisible"
-          ><menu-fold-outlined v-if="navVisible" /><menu-unfold-outlined v-else /></a-button
-        ><strong :title="context.title">{{ context.title }}</strong
-        ><span class="muted" :title="context.versionName">{{ context.versionName }}</span>
+      <div class="workspace-context">
+        <div class="workspace-name">
+          <a-button
+            :aria-label="toggleTitle"
+            :title="toggleTitle"
+            @click="navVisible = !navVisible"
+          >
+            <menu-fold-outlined v-if="navVisible" /><menu-unfold-outlined v-else />
+          </a-button>
+          <strong :title="context.title">{{ context.title }}</strong>
+          <span class="muted" :title="context.versionName">{{ context.versionName }}</span>
+        </div>
+        <div class="workspace-current" aria-live="polite">
+          <span :title="selectedPage?.path || currentPage"
+            >{{ t('proto.currentPage') }}: {{ selectedPage?.name || currentPage }}</span
+          >
+          <span v-if="selectedPage?.path" class="muted current-path" :title="selectedPage.path">{{
+            selectedPage.path
+          }}</span>
+        </div>
       </div>
       <div class="workspace-controls">
-        <a-radio-group v-model:value="mode" button-style="solid"
-          ><a-radio-button value="preview">{{ t('proto.preview') }}</a-radio-button
-          ><a-radio-button value="inspect">{{ t('proto.inspect') }}</a-radio-button></a-radio-group
-        ><a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
+        <a-radio-group
+          v-model:value="mode"
+          button-style="solid"
+          :aria-label="t('proto.workspaceMode')"
+        >
+          <a-radio-button value="preview">{{ t('proto.preview') }}</a-radio-button>
+          <a-radio-button value="inspect">{{ t('proto.inspect') }}</a-radio-button>
+        </a-radio-group>
+        <a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
           t('proto.details')
         }}</a-button>
-      </div>
-      <div class="workspace-current" aria-live="polite">
-        <span :title="selectedPage?.path || currentPage"
-          >{{ t('proto.currentPage') }}: {{ selectedPage?.name || currentPage }}</span
-        >
-        <span v-if="selectedPage?.path" class="muted current-path" :title="selectedPage.path">{{
-          selectedPage.path
-        }}</span>
         <a-button
+          type="text"
           :disabled="!canCopy"
+          :aria-label="t('proto.copyPageLink')"
           :title="canCopy ? t('proto.copyPageLink') : t('proto.noStablePageLink')"
           @click="copyCurrentPage"
-          >{{ t('proto.copyPageLink') }}</a-button
+          ><link-outlined /><span class="workspace-copy-label">{{
+            t('proto.copyPageLink')
+          }}</span></a-button
         >
       </div>
       <div class="workspace-actions"><slot name="actions" /></div>
@@ -211,12 +227,15 @@ function select(path: string, id?: string, page?: PrototypePage) {
 }
 .workspace-header {
   display: grid;
-  grid-template-columns: minmax(120px, 0.7fr) auto minmax(200px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+.workspace-context {
+  min-width: 0;
 }
 .workspace-name,
 .workspace-controls,
@@ -233,22 +252,23 @@ function select(path: string, id?: string, page?: PrototypePage) {
   white-space: nowrap;
 }
 .workspace-name > .muted {
-  flex-shrink: 1;
-  max-width: 160px;
+  flex: none;
+  max-width: 30%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .workspace-name :deep(.ant-btn),
-.workspace-controls,
-.workspace-actions {
-  flex-shrink: 0;
+.workspace-controls {
+  flex: none;
 }
 .workspace-current {
   display: flex;
   min-width: 0;
-  align-items: center;
   gap: var(--space-2);
+  padding-inline-start: 46px;
+  color: var(--color-muted);
+  font-size: var(--text-small);
 }
 .workspace-current span {
   min-width: 0;
@@ -259,9 +279,8 @@ function select(path: string, id?: string, page?: PrototypePage) {
 .workspace-current .current-path {
   flex: 1;
 }
-.workspace-current :deep(.ant-btn) {
-  margin-inline-start: auto;
-  flex: none;
+.workspace-actions {
+  justify-content: flex-end;
 }
 .workspace-actions:empty {
   display: none;
@@ -327,51 +346,48 @@ function select(path: string, id?: string, page?: PrototypePage) {
   left: 50%;
   z-index: var(--layer-overlay);
 }
-@container prototype-workspace (max-width: 1000px) {
+@container prototype-workspace (max-width: 1100px) {
   .workspace-header {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
   }
-  .workspace-current {
-    grid-row: 2;
-  }
   .workspace-actions {
-    grid-column: 2;
-    grid-row: 2;
+    grid-column: 1 / -1;
   }
-  .workspace-name > .muted {
-    flex-shrink: 1;
-    max-width: 24vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .workspace-current .current-path {
+    display: none;
   }
 }
 @container prototype-workspace (max-width: 760px) {
   .workspace-header {
     padding: var(--space-2);
   }
-  .workspace-name {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .workspace-actions {
-    grid-column: 2;
-    grid-row: 1;
+  .workspace-context {
+    grid-column: 1 / -1;
   }
   .workspace-controls {
     grid-column: 1 / -1;
-    grid-row: 2;
+    justify-content: space-between;
   }
-  .workspace-current {
-    grid-column: 1 / -1;
-    grid-row: 3;
-  }
-  .workspace-current .current-path {
+  .workspace-copy-label {
     display: none;
   }
-  .workspace-current > span:first-child {
-    flex: 1 1 0;
+  .workspace-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .workspace-actions :deep(.ant-btn) {
+    width: 100%;
+    height: auto;
+    min-height: 32px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .workspace-actions:empty {
+    display: none;
+  }
+  .workspace-name strong {
+    flex: 1;
   }
   .frame-stage {
     padding: var(--space-1);
