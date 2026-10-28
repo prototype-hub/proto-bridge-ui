@@ -430,3 +430,36 @@ export interface ReviewAssignmentInput extends ReviewThreadPage {
   expectedVersion: number
   clientRequestId: string
 }
+
+/** A member-owned link attached to one immutable revision and its canonical page. */
+export interface WorkItem {
+  id: string
+  projectId: string
+  versionId: string
+  revisionId: string
+  pageId: string
+  url: string
+  note: string
+  configVersion: number
+  createdAt: number
+  updatedAt: number
+}
+export interface WorkItemQuery {
+  revisionId: string
+  pageId: string
+  pageIndex: number
+  pageSize: number
+}
+export interface WorkItemInput {
+  revisionId: string
+  pageId: string
+  url: string
+  note: string
+  clientRequestId: string
+}
+export interface WorkItemDeleteInput {
+  revisionId: string
+  pageId: string
+  expectedVersion: number
+  clientRequestId: string
+}

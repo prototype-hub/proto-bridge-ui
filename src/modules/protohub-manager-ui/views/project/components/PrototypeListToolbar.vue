@@ -73,22 +73,31 @@ const options = computed(() => [
 </template>
 <style scoped>
 .prototype-list-toolbar {
-  display: grid;
-  gap: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
   min-width: 0;
 }
 .prototype-list-filters {
-  display: grid;
-  grid-template-columns: minmax(0, 580px) auto;
+  display: flex;
+  flex: 1;
   align-items: start;
-  gap: var(--space-4);
+  gap: var(--space-3);
   min-width: 0;
 }
 .prototype-query {
+  flex: 1;
   min-width: 0;
   container-type: inline-size;
   container-name: query-group;
+}
+.prototype-query :deep(.query-row-compact) {
+  grid-template-columns: 90px 102px minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.prototype-query :deep(.query-row-compact > .query-value-container) {
+  grid-column: auto;
 }
 .prototype-search-actions,
 .prototype-list-order {
@@ -98,17 +107,40 @@ const options = computed(() => [
   flex-wrap: wrap;
 }
 .prototype-search-actions {
-  justify-content: flex-end;
+  flex: 0 0 auto;
 }
 .prototype-list-order :deep(.ant-select) {
-  min-width: 180px;
+  width: 160px;
 }
 .prototype-list-order :deep(.ant-btn) {
   margin-inline-start: auto;
 }
-@media (width <= 1000px) {
+@media (width <= 1200px) {
+  .prototype-list-toolbar {
+    flex-wrap: wrap;
+  }
   .prototype-list-filters {
-    grid-template-columns: minmax(0, 1fr);
+    flex-basis: 100%;
+  }
+  .prototype-list-order {
+    width: 100%;
+  }
+}
+@media (width <= 575px) {
+  .prototype-list-filters {
+    flex-wrap: wrap;
+  }
+  .prototype-query {
+    flex-basis: 100%;
+  }
+  .prototype-query :deep(.query-row-compact) {
+    grid-template-columns: 90px 102px minmax(0, 1fr);
+  }
+  .prototype-search-actions {
+    width: 100%;
+  }
+  .prototype-search-actions > :deep(.ant-btn) {
+    flex: 1;
   }
 }
 </style>

@@ -75,7 +75,7 @@ test('project cards navigate from content and keyboard without leaking operation
       originalPushState(data, unused, url)
     }
   })
-  await card.getByRole('button', { name: '详情', exact: true }).click()
+  await card.getByRole('link', { name: /^打开项目：/ }).click()
   await expect(page).toHaveURL(/\/prototype-hub\/projects\/p1\?source=card$/)
   expect(
     await page.evaluate(
@@ -105,7 +105,8 @@ test('project create edit and delete', async ({ page }) => {
     await card
       .locator('.project-actions button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
-  ).toEqual(['详情', '编辑', '删除'])
+  ).toEqual(['编辑', '删除'])
+  await expect(card.getByRole('link', { name: /^打开项目：/ })).toBeVisible()
   await card.getByRole('button', { name: '编辑', exact: true }).click()
   await modal.getByLabel('名称', { exact: true }).fill('Updated project')
   await modal.getByRole('button', { name: '保存' }).click()
@@ -136,13 +137,14 @@ test('project deletion is blocked until all versions are deleted', async ({ page
   ).toBeVisible()
   await expect(card).toBeVisible()
 
-  await card.getByRole('button', { name: '详情', exact: true }).click()
+  await card.getByRole('link', { name: /^打开项目：/ }).click()
   const versionRow = page
     .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
+    .filter({ has: page.locator('.version-name').filter({ hasText: /^V1$/ }) })
+  await versionRow.locator('.version-management summary').click()
   await versionRow.getByRole('button', { name: '删除', exact: true }).click()
   await page.locator('.ant-popconfirm').getByRole('button', { name: '确定', exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toHaveCount(0)
+  await expect(page.locator('.version-name').filter({ hasText: /^V1$/ })).toHaveCount(0)
 
   await page.getByRole('button', { name: '返回', exact: true }).click()
   const deletableCard = page.locator('.project-card').filter({ hasText: 'Contract project' })
@@ -161,7 +163,7 @@ test('project cards keep compact actions and long content inside a mobile viewpo
     body.result.data.push({
       ...body.result.data[0],
       id: 'p-long',
-      name: 'A very long prototype project name that must stay on one line',
+      name: 'A very long prototype project name that remains readable on small screens',
       description: 'A long project summary used to verify the responsive card layout.',
       updatedAt: 1700000000001,
     })
@@ -169,9 +171,9 @@ test('project cards keep compact actions and long content inside a mobile viewpo
     await route.fulfill({ response, json: body })
   })
   await login(page)
-  const card = page
-    .locator('.project-card')
-    .filter({ hasText: 'A very long prototype project name that must stay on one line' })
+  const card = page.locator('.project-card').filter({
+    hasText: 'A very long prototype project name that remains readable on small screens',
+  })
   await expect(card).toBeVisible()
   expect(
     await card.locator('.project-name').evaluate((element) => {
@@ -183,12 +185,13 @@ test('project cards keep compact actions and long content inside a mobile viewpo
         clipped: element.scrollWidth > element.clientWidth,
       }
     }),
-  ).toEqual({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', clipped: true })
+  ).toEqual({ overflow: 'visible', textOverflow: 'clip', whiteSpace: 'normal', clipped: false })
   expect(
     await card
       .locator('.project-actions button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
-  ).toEqual(['详情', '编辑', '删除'])
+  ).toEqual(['编辑', '删除'])
+  await expect(card.getByRole('link', { name: /^打开项目：/ })).toBeVisible()
   const updated = card.locator('.project-updated-text')
   const fullUpdatedText = (await updated.textContent())!.trim()
   expect(
@@ -212,7 +215,7 @@ test('project cards keep compact actions and long content inside a mobile viewpo
 })
 test('version upload update preserves a share, then deletion', async ({ page }) => {
   await login(page)
-  await page.getByRole('button', { name: '详情', exact: true }).click()
+  await page.getByRole('link', { name: /^打开项目：/ }).click()
   await page.getByRole('button', { name: '上传版本', exact: true }).click()
   const modal = page.getByRole('dialog')
   await modal.getByLabel('版本名称').fill('V2')
@@ -222,10 +225,11 @@ test('version upload update preserves a share, then deletion', async ({ page }) 
     buffer: Buffer.from('fixture zip'),
   })
   await modal.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'V2', exact: true })).toBeVisible()
+  await expect(page.locator('.version-name').filter({ hasText: /^V2$/ })).toBeVisible()
   const row = page
     .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
+    .filter({ has: page.locator('.version-name').filter({ hasText: /^V1$/ }) })
+  await row.locator('.version-management summary').click()
   await row.getByRole('button', { name: '上传新修订' }).click()
   const updateActions = modal.locator('.upload-actions button')
   await expect(updateActions).toHaveText(['取消', '保存'])
@@ -240,17 +244,17 @@ test('version upload update preserves a share, then deletion', async ({ page }) 
     buffer: Buffer.from('fixture zip'),
   })
   await modal.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'V1 updated', exact: true })).toBeVisible()
+  await expect(page.locator('.version-name').filter({ hasText: /^V1 updated$/ })).toBeVisible()
   await page.goto('share/open')
   await expect(page.getByText('V1', { exact: true })).toBeVisible()
   await page.goto('protohub/projects/p1')
-  await page
+  const removedVersion = page
     .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'V2', exact: true }) })
-    .getByRole('button', { name: '删除', exact: true })
-    .click()
+    .filter({ has: page.locator('.version-name').filter({ hasText: /^V2$/ }) })
+  await removedVersion.locator('.version-management summary').click()
+  await removedVersion.getByRole('button', { name: '删除', exact: true }).click()
   await page.getByRole('button', { name: '确定', exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'V2', exact: true })).toHaveCount(0)
+  await expect(page.locator('.version-name').filter({ hasText: /^V2$/ })).toHaveCount(0)
 })
 test('failed version replacement keeps the current version and can retry', async ({ page }) => {
   await login(page)
@@ -263,6 +267,7 @@ test('failed version replacement keeps the current version and can retry', async
         })
       : route.continue(),
   )
+  await page.locator('.version-management summary').first().click()
   await page.getByRole('button', { name: '上传新修订' }).click()
   const modal = page.getByRole('dialog')
   await modal.getByLabel('版本名称').fill('Replacement')
@@ -273,7 +278,7 @@ test('failed version replacement keeps the current version and can retry', async
   await expect(modal.getByText('Unsafe ZIP')).toBeVisible()
   await page.unroute('**/api/prototype-hub/versions/v1')
   await modal.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('cell', { name: 'Replacement', exact: true })).toBeVisible()
+  await expect(page.locator('.version-name').filter({ hasText: /^Replacement$/ })).toBeVisible()
 })
 test('cancel aborts an upload and does not leave the dialog blocked', async ({ page }) => {
   await login(page)
@@ -300,6 +305,7 @@ test('share create copies a full origin and deployment base URL', async ({ page,
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await login(page)
   await page.goto('protohub/projects/p1')
+  await page.locator('.version-management summary').first().click()
   await page.getByRole('button', { name: '分享管理', exact: true }).click()
   const modal = page.getByRole('dialog')
   await modal.getByLabel('分享密码', { exact: true }).fill('private-share')

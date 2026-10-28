@@ -17,6 +17,7 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   const current = await opening
   await expect(current.locator('.frame-stage > iframe')).toHaveAttribute('src', /\/runtime\/v1\//)
   const originalRuntime = await current.locator('.frame-stage > iframe').getAttribute('src')
+  await page.locator('.version-management summary').first().click()
   await page.getByRole('button', { name: '上传新修订', exact: true }).click()
   const upload = page.getByRole('dialog')
   await expect(
@@ -123,6 +124,7 @@ test('a concurrent upload shows refresh guidance and sends no automatic retry', 
       },
     })
   })
+  await page.locator('.version-management summary').first().click()
   await page.getByRole('button', { name: '上传新修订', exact: true }).click()
   const upload = page.getByRole('dialog')
   await upload.locator('input[type=file]').setInputFiles({
@@ -137,7 +139,7 @@ test('a concurrent upload shows refresh guidance and sends no automatic retry', 
     }),
   ).toBeVisible()
   expect(requests).toBe(1)
-  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  await expect(page.locator('.version-name').filter({ hasText: /^V1$/ })).toBeVisible()
 })
 
 test('legacy rows remain visible with all revision content actions disabled', async ({ page }) => {
@@ -155,12 +157,13 @@ test('legacy rows remain visible with all revision content actions disabled', as
   })
   await login(page)
   await page.goto('prototype-hub/projects/p1')
-  await expect(page.getByRole('cell', { name: 'V1', exact: true })).toBeVisible()
+  await expect(page.locator('.version-name').filter({ hasText: /^V1$/ })).toBeVisible()
   await expect(
     page.getByText('旧版本尚未完成修订迁移，请联系管理员迁移后再预览、上传新修订或创建分享。', {
       exact: true,
     }),
   ).toBeVisible()
+  await page.locator('.version-management summary').first().click()
   for (const name of ['预览', '上传新修订', '分享管理', '历史修订'])
     await expect(page.getByRole('button', { name, exact: true })).toBeDisabled()
 })
