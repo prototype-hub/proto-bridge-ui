@@ -189,7 +189,9 @@ test('PM pages and filters a fixed revision across pages, then explicitly views 
   page.on('request', (outgoing) => requests.push(outgoing.url()))
   const drawer = await openOverview(page)
   await expect(drawer.locator('.overview-row')).toHaveCount(20)
-  expect(new Set(await drawer.locator('.overview-row > strong').allTextContents()).size).toBe(2)
+  expect(
+    new Set(await drawer.locator('.overview-row .overview-page > strong').allTextContents()).size,
+  ).toBe(2)
   expect(requests.some((url) => /\/messages|\/assignment/.test(url))).toBe(false)
   const input = requests.find((url) => url.endsWith('/_overview'))
   expect(input).toBeTruthy()
@@ -228,6 +230,63 @@ test('PM pages and filters a fixed revision across pages, then explicitly views 
     feedback(page).getByRole('heading', { name: second.summary, exact: true }),
   ).toBeVisible()
 })
+
+for (const locale of ['zh', 'en'] as const)
+  test(`${locale} overview keeps help optional, summaries readable and matched pagination visible while results scroll`, async ({
+    page,
+    request,
+  }) => {
+    await enable(page, request)
+    await seed(page.request, 23)
+    await page.evaluate(
+      (language) => localStorage.setItem('proto-bridge-ui:language', language),
+      locale,
+    )
+    const text = protoLocales[locale]
+    for (const viewport of [
+      { width: 1440, height: 1000 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('preview/p1/v1')
+      const drawer = await openOverview(page, locale)
+      await expect(drawer.locator('.overview-row')).toHaveCount(20)
+      await expect(
+        drawer.getByText(text.overviewResultCount.replace('{count}', '23')),
+      ).toBeVisible()
+      const help = drawer.locator('.overview-help'),
+        summary = help.locator('summary'),
+        results = drawer.locator('.overview-results'),
+        footer = drawer.locator('.overview-footer')
+      await expect(help).not.toHaveAttribute('open')
+      await summary.focus()
+      await page.keyboard.press('Enter')
+      await expect(help).toHaveAttribute('open', '')
+      await page.keyboard.press('Space')
+      await expect(help).not.toHaveAttribute('open')
+      const before = await footer.boundingBox()
+      expect(before).not.toBeNull()
+      expect(before!.y + before!.height).toBeLessThanOrEqual(viewport.height)
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      expect(await results.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+      const after = await footer.boundingBox()
+      expect(after?.y).toBe(before!.y)
+      expect(after?.height).toBe(before!.height)
+      await expect
+        .poll(() => drawer.evaluate((element) => element.scrollWidth <= element.clientWidth))
+        .toBe(true)
+      const next = drawer.locator('.ant-pagination-next button')
+      await next.focus()
+      await page.keyboard.press('Enter')
+      await expect(drawer.locator('.overview-row')).toHaveCount(3)
+      await expect(drawer.locator('.ant-pagination-simple-pager input')).toHaveValue('2')
+      const firstRow = drawer.locator('.overview-row').first()
+      await firstRow.scrollIntoViewIfNeeded()
+      await expect(firstRow.getByRole('heading', { level: 3 })).toBeVisible()
+    }
+  })
 
 test('member responsibility queues combine state and real paging, then reflect explicit assignment and clear after returning and refreshing', async ({
   page,
@@ -320,6 +379,7 @@ test('member responsibility queues combine state and real paging, then reflect e
   await drawer.locator('.ant-pagination-next').click()
   await expect(drawer.locator('.overview-row')).toHaveCount(3)
   await view(page, drawer, unassigned)
+  await area.locator('summary').click()
   await area.getByRole('button', { name: protoLocales.zh.assignmentClear, exact: true }).click()
   await expect(area.getByText(protoLocales.zh.assignmentEmpty, { exact: true })).toBeVisible()
   await feedback(page)
@@ -459,7 +519,7 @@ test('a visitor sees only their own feedback in the current share and overview n
 test('session loss on page two makes no further overview request before fresh OTP and returns to the same resolved query', async ({
   page,
   request,
-}) => {
+}, info) => {
   await enable(page, request)
   const seeded = await seed(page.request, 24, 'return@example.invalid', 'open', true)
   await page.goto('share/open')
@@ -475,6 +535,15 @@ test('session loss on page two makes no further overview request before fresh OT
   await expect(
     drawer.getByRole('button', { name: protoLocales.zh.reviewIdentity, exact: true }),
   ).toBeVisible()
+  await expect(drawer.getByText(protoLocales.zh.overviewAuthenticate, { exact: true })).toHaveCount(
+    1,
+  )
+  await expect(drawer.locator('.ant-result')).toHaveCount(0)
+  await page.screenshot({
+    path: info.outputPath('overview-session-loss.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
   let calls = 0
   page.on('request', (outgoing) => {
     if (outgoing.url().endsWith('/_overview')) calls++
@@ -634,6 +703,12 @@ for (const locale of ['zh', 'en'] as const)
       drawer.getByRole('radio', { name: text.feedbackResolved, exact: true }),
     ).toBeChecked()
     await expect(drawer.locator('.overview-row')).toHaveCount(0)
+    await expect(drawer.getByText(text.overviewNoMatchesHint, { exact: true })).toBeVisible()
+    await page.screenshot({
+      path: info.outputPath(`overview-public-no-matches-390-${locale}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    })
     const clear = drawer.getByRole('button', { name: text.overviewClear, exact: true })
     await clear.focus()
     await page.keyboard.press('Enter')
