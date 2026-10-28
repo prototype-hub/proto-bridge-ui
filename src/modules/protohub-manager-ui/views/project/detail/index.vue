@@ -1,16 +1,14 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectDetailView' })
-import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Space as ASpace, Tag as ATag, Alert as AAlert } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import {
-  EyeOutlined,
   UploadOutlined,
   ShareAltOutlined,
   DeleteOutlined,
   TeamOutlined,
-  HistoryOutlined,
 } from '@ant-design/icons-vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
@@ -18,7 +16,6 @@ import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/perm
 import PageContainer from '@/shared/components/PageContainer.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import DataTable from '@/shared/components/DataTable.vue'
-import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import UploadDialog from '@/modules/protohub-manager-ui/views/project/components/UploadDialog.vue'
 import PrototypeListToolbar from '@/modules/protohub-manager-ui/views/project/components/PrototypeListToolbar.vue'
@@ -26,6 +23,7 @@ import CapacityNotice from '@/modules/protohub-manager-ui/views/project/componen
 import ShareDialog from '@/modules/protohub-manager-ui/views/project/components/ShareDialog.vue'
 import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
 import { useSession } from '@/app/stores/session'
+import type { Revision, Version } from '@/modules/protohub-manager-ui/types'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
 const RevisionHistoryDrawer = defineAsyncComponent(
@@ -34,6 +32,23 @@ const RevisionHistoryDrawer = defineAsyncComponent(
 const ReviewGuestsDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/ReviewGuestsDrawer.vue'),
 )
+const WorkItemsDrawer = defineAsyncComponent(
+  () => import('@/modules/protohub-manager-ui/views/project/components/WorkItemsDrawer.vue'),
+)
+const workItems = ref<{ version: Version; revision: Revision }>()
+function openWorkItems(version: Version, revision: Revision) {
+  historyVersion.value = undefined
+  workItems.value = { version, revision }
+}
+async function closeWorkItems() {
+  const versionId = workItems.value?.version.id
+  workItems.value = undefined
+  await nextTick()
+  // The history trigger lived in a drawer that has closed; return to its version row.
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[data-version-history]'))
+    .find((button) => button.dataset.versionHistory === versionId)
+    ?.focus()
+}
 const reviewGuestsOpen = ref(false)
 const { t } = useI18n()
 const router = useRouter()
@@ -66,22 +81,18 @@ watch(
   () => resource.data.value.project?.id,
   () => {
     reviewGuestsOpen.value = false
+    workItems.value = undefined
   },
 )
 const columns = computed(() => [
   { title: t('proto.versionName'), dataIndex: 'versionName' },
-  { title: t('common.description'), dataIndex: 'description' },
-  { title: t('common.status'), dataIndex: 'status' },
-  { title: t('proto.revision'), dataIndex: 'revisionCount' },
-  {
-    title: t('common.createdAt'),
-    dataIndex: 'createdAt',
-  },
-  { title: t('common.actions'), key: 'actions', width: 224 },
+  { title: t('common.createdAt'), dataIndex: 'createdAt', width: 190 },
+  { title: t('common.actions'), key: 'actions', width: 294 },
 ])
 </script>
 <template>
   <page-container
+    class="project-detail-page"
     :title="resource.data.value.project?.name || t('proto.versions')"
     back
     @back="router.push(projectListLocation(router, session.menus, route.query))"
@@ -109,6 +120,9 @@ const columns = computed(() => [
         ></a-space
       ></template
     >
+    <p v-if="resource.data.value.project?.description" class="project-summary">
+      {{ resource.data.value.project.description }}
+    </p>
     <prototype-list-toolbar
       v-model:keyword="search"
       :sort="sort"
@@ -121,100 +135,124 @@ const columns = computed(() => [
       v-if="resource.data.value.project?.claimRequired"
       type="warning"
       show-icon
-      :message="t('proto.claimRequired')" /><capacity-notice
+      :message="t('proto.claimRequired')" />
+    <capacity-notice
       :capacity="usage.data.value?.versions"
       :loading="usage.loading.value"
       :error="usage.error.value"
       kind="versions"
-      @retry="loadUsage" /><load-state
+      @retry="loadUsage" />
+    <load-state
       :loading="resource.loading.value"
       :error="resource.error.value"
       @retry="resource.load"
       ><div class="panel stack project-versions-panel">
-        <text-ellipsis :text="resource.data.value.project?.description" /><a-alert
-          v-if="task.error.value"
-          type="error"
-          :message="task.error.value"
-        /><a-alert
+        <div class="version-list-heading">
+          <h2>{{ t('proto.versions') }}</h2>
+          <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
+        </div>
+        <a-alert v-if="task.error.value" type="error" :message="task.error.value" />
+        <a-alert
           v-if="resource.data.value.versions.some((version) => version.migrationRequired)"
           type="warning"
           show-icon
           :message="t('proto.revisionMigrationRequired')"
-        /><data-table
+        />
+        <data-table
+          class="version-table"
           :rows="resource.data.value.versions"
           :columns="columns"
           :pagination="pagination"
           @page="page"
-          ><template #cell="{ column, record }"
-            ><a-space v-if="column.key === 'actions'" :size="8">
-              <action-button
+          ><template #cell="{ column, record }">
+            <div v-if="column.dataIndex === 'versionName'" class="version-summary">
+              <strong class="version-name">{{ record.versionName }}</strong>
+              <p v-if="record.description" class="version-description">{{ record.description }}</p>
+              <div class="version-metadata">
+                <a-tag
+                  :color="
+                    record.migrationRequired
+                      ? 'orange'
+                      : record.status === 'ready'
+                        ? 'green'
+                        : 'red'
+                  "
+                >
+                  {{
+                    t(
+                      record.migrationRequired
+                        ? 'proto.revisionMigration'
+                        : `proto.${record.status}`,
+                    )
+                  }}
+                </a-tag>
+                <span v-if="!record.migrationRequired" class="muted">{{
+                  t('proto.revisionCount', { count: record.revisionCount })
+                }}</span>
+              </div>
+            </div>
+            <span v-else-if="column.dataIndex === 'createdAt'" class="version-created">
+              <span class="mobile-label">{{ t('common.createdAt') }} · </span
+              >{{ new Date(record.createdAt).toLocaleString() }}
+            </span>
+            <div v-else-if="column.key === 'actions'" class="version-actions">
+              <permission-button
                 v-if="projectAllows(resource.data.value.project, 'read')"
-                :label="t('proto.preview')"
-                :icon="EyeOutlined"
                 :permission="p.version.query"
+                :aria-label="t('proto.preview')"
                 :disabled="record.status !== 'ready' || record.migrationRequired"
-                @action="preview(record)"
-              />
-              <action-button
+                @click="preview(record)"
+                >{{ t('proto.preview') }}</permission-button
+              >
+              <permission-button
                 v-if="projectAllows(resource.data.value.project, 'read')"
-                :label="t('proto.revisionHistory')"
-                :icon="HistoryOutlined"
                 :permission="p.version.query"
+                :aria-label="t('proto.revisionHistory')"
+                :data-version-history="record.id"
                 :disabled="record.migrationRequired"
-                @action="historyVersion = record"
-              />
-              <action-button
-                v-if="projectAllows(resource.data.value.project, 'edit')"
-                :label="t('proto.update')"
-                :icon="UploadOutlined"
-                :permission="p.version.save"
-                :disabled="record.migrationRequired"
-                @action="upload(record)"
-              />
-              <action-button
-                v-if="projectAllows(resource.data.value.project, 'manageShares')"
-                :label="t('proto.share')"
-                :icon="ShareAltOutlined"
-                :permission="p.share.query"
-                :disabled="record.status !== 'ready' || record.migrationRequired"
-                @action="shareVersion = record"
-              />
-              <action-button
-                v-if="projectAllows(resource.data.value.project, 'edit')"
-                :label="t('common.delete')"
-                :icon="DeleteOutlined"
-                :permission="p.version.delete"
-                danger
-                :disabled="task.busy.value"
-                :confirm="t('proto.versionDeleteConfirm')"
-                @action="remove(record.id)"
-              /> </a-space
-            ><a-tag
-              v-else-if="column.dataIndex === 'status'"
-              :color="
-                record.migrationRequired ? 'orange' : record.status === 'ready' ? 'green' : 'red'
-              "
-              >{{
-                t(record.migrationRequired ? 'proto.revisionMigration' : `proto.${record.status}`)
-              }}</a-tag
-            ><template v-else-if="column.dataIndex === 'revisionCount'">
-              {{
-                record.migrationRequired
-                  ? '—'
-                  : t('proto.revisionCount', { count: record.revisionCount })
-              }} </template
-            ><text-ellipsis
-              v-else-if="column.dataIndex === 'description'"
-              :text="record.description"
-            /><template v-else-if="column.dataIndex === 'createdAt'">{{
-              new Date(record.createdAt).toLocaleString()
-            }}</template
-            ><template v-else>{{
-              record[column.dataIndex as keyof typeof record]
-            }}</template></template
-          ></data-table
-        >
-      </div></load-state
+                @click="historyVersion = record"
+                >{{ t('proto.revisionHistory') }}</permission-button
+              >
+              <details
+                v-if="
+                  projectAllows(resource.data.value.project, 'edit') ||
+                  projectAllows(resource.data.value.project, 'manageShares')
+                "
+                class="version-management"
+              >
+                <summary>{{ t('proto.manageVersion') }}</summary>
+                <a-space :size="4">
+                  <action-button
+                    v-if="projectAllows(resource.data.value.project, 'edit')"
+                    :label="t('proto.update')"
+                    :icon="UploadOutlined"
+                    :permission="p.version.save"
+                    :disabled="record.migrationRequired"
+                    @action="upload(record)"
+                  />
+                  <action-button
+                    v-if="projectAllows(resource.data.value.project, 'manageShares')"
+                    :label="t('proto.share')"
+                    :icon="ShareAltOutlined"
+                    :permission="p.share.query"
+                    :disabled="record.status !== 'ready' || record.migrationRequired"
+                    @action="shareVersion = record"
+                  />
+                  <action-button
+                    v-if="projectAllows(resource.data.value.project, 'edit')"
+                    :label="t('common.delete')"
+                    :icon="DeleteOutlined"
+                    :permission="p.version.delete"
+                    danger
+                    :disabled="task.busy.value"
+                    :confirm="t('proto.versionDeleteConfirm')"
+                    @action="remove(record.id)"
+                  />
+                </a-space>
+              </details>
+            </div>
+          </template>
+        </data-table></div></load-state
     ><upload-dialog
       :open="uploadOpen"
       :context="uploadContext"
@@ -235,14 +273,119 @@ const columns = computed(() => [
       :project="resource.data.value.project"
       :version="historyVersion"
       @close="historyVersion = undefined"
-      @preview="preview"
+      @work-items="openWorkItems"
+      @preview="preview" /><work-items-drawer
+      v-if="workItems"
+      :project="resource.data.value.project"
+      :version="workItems.version"
+      :revision="workItems.revision"
+      @close="closeWorkItems"
   /></page-container>
 </template>
 <style scoped>
+.project-summary {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+  max-width: 75ch;
+}
 .project-versions-panel {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+}
+.version-list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.version-list-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.version-summary {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.version-name {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+.version-description {
+  margin: 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.version-metadata,
+.version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.version-created {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-label {
+  display: none;
+}
+.version-management {
+  width: 100%;
+}
+.version-management summary {
+  width: fit-content;
+  padding-block: var(--space-1);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: var(--text-small);
+}
+.version-management summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+@media (width <= 767px) {
+  .version-table :deep(.ant-table-content) {
+    overflow: visible !important;
+  }
+  .version-table :deep(table) {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+  }
+  .version-table :deep(colgroup),
+  .version-table :deep(thead) {
+    display: none;
+  }
+  .version-table :deep(tbody) {
+    display: block;
+  }
+  .version-table :deep(.ant-table-row) {
+    display: block;
+    padding-block: var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+  .version-table :deep(.ant-table-row > td) {
+    display: block;
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+  .version-actions {
+    margin-top: var(--space-2);
+  }
+  .version-management {
+    width: auto;
+    margin-inline-start: auto;
+  }
+  .version-management[open] {
+    width: 100%;
+  }
+  .mobile-label {
+    display: inline;
+  }
 }
 </style>

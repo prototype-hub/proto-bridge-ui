@@ -5,10 +5,9 @@ import {
   Drawer as ADrawer,
   Button as AButton,
   Tag as ATag,
-  Alert as AAlert,
   Checkbox as ACheckbox,
 } from 'ant-design-vue'
-import { EyeOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
+import { FileSearchOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermissions } from '@/shared/auth/provider'
 import type { Project, Revision, Version } from '@/modules/protohub-manager-ui/types'
@@ -18,12 +17,17 @@ import { useRevisions } from '@/modules/protohub-manager-ui/views/project/hooks/
 import DataTable from '@/shared/components/DataTable.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 import ActionButton from '@/shared/components/ActionButton.vue'
+import PermissionButton from '@/shared/components/PermissionButton.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 
 const props = defineProps<{ version?: Version; project?: Project }>()
 const RevisionQualityDrawer = defineAsyncComponent(() => import('./RevisionQualityDrawer.vue'))
-const emit = defineEmits<{ close: []; preview: [version: Version, revisionId: string] }>()
+const emit = defineEmits<{
+  close: []
+  preview: [version: Version, revisionId: string]
+  workItems: [version: Version, revision: Revision]
+}>()
 const { t } = useI18n()
 const permissions = usePermissions()
 const open = computed(
@@ -66,12 +70,9 @@ function compare() {
   )
 }
 const columns = computed(() => [
-  { title: t('proto.compareSelect'), key: 'select', width: 64 },
-  { title: t('proto.revision'), dataIndex: 'id', width: 180 },
-  { title: t('common.createdAt'), dataIndex: 'createdAt', width: 180 },
-  { title: t('proto.revisionFiles'), dataIndex: 'fileCount', width: 90 },
-  { title: t('proto.revisionSize'), dataIndex: 'totalBytes', width: 110 },
-  { title: t('common.actions'), key: 'actions', width: 96 },
+  { title: t('proto.compareSelect'), key: 'select', width: 48 },
+  { title: t('proto.revision'), dataIndex: 'id' },
+  { title: t('common.actions'), key: 'actions', width: 240 },
 ])
 </script>
 <template>
@@ -79,22 +80,35 @@ const columns = computed(() => [
     root-class-name="revision-history-drawer"
     :open="open"
     :title="t('proto.revisionHistory')"
-    :width="800"
+    width="min(800px, 100vw)"
     @close="emit('close')"
   >
     <section role="dialog" aria-modal="true" :aria-label="t('proto.revisionHistory')" class="stack">
-      <a-alert type="info" show-icon :message="t('proto.revisionHistoryHint')" />
-      <p>{{ t('proto.compareSelectionHint') }}</p>
-      <a-button type="primary" :disabled="selected.length !== 2 || !open" @click="compare">{{
-        t('proto.compareRevisions')
-      }}</a-button>
+      <header class="history-context">
+        <strong>{{ version?.versionName }}</strong>
+        <p class="muted">{{ t('proto.historyFixedContext') }}</p>
+      </header>
+      <div class="history-compare-bar">
+        <span aria-live="polite">{{
+          t('proto.compareSelectedCount', { count: selected.length })
+        }}</span>
+        <a-button type="primary" :disabled="selected.length !== 2 || !open" @click="compare">{{
+          t('proto.compareRevisions')
+        }}</a-button>
+      </div>
+      <details class="history-help">
+        <summary>{{ t('proto.feedbackHelp') }}</summary>
+        <p class="muted">
+          {{ t('proto.revisionHistoryHint') }} {{ t('proto.compareSelectionHint') }}
+        </p>
+      </details>
       <load-state
         :loading="state.loading.value && !state.rows.value.length"
         :error="state.error.value"
         :empty="!state.rows.value.length"
         @retry="state.load()"
       >
-        <data-table :rows="state.rows.value" :columns="columns">
+        <data-table class="history-table" :rows="state.rows.value" :columns="columns">
           <template #cell="{ record, column }">
             <a-checkbox
               v-if="column.key === 'select'"
@@ -103,33 +117,40 @@ const columns = computed(() => [
               :disabled="selected.length === 2 && !selected.includes(record.id)"
               @change="(event) => select(record.id, event.target.checked)"
             />
-            <template v-else-if="column.dataIndex === 'id'">
-              <text-ellipsis :text="record.id" />
-              <a-tag v-if="record.id === version?.currentRevisionId" color="green">{{
-                t('proto.currentRevision')
-              }}</a-tag>
-            </template>
-            <template v-else-if="column.dataIndex === 'createdAt'">{{
-              new Date(record.createdAt).toLocaleString()
-            }}</template>
-            <template v-else-if="column.dataIndex === 'totalBytes'"
-              >{{ (record.totalBytes / 1024 / 1024).toFixed(2) }} MiB</template
-            >
-            <template v-else-if="column.key === 'actions'">
-              <action-button
-                :label="t('proto.preview')"
-                :icon="EyeOutlined"
+            <div v-else-if="column.dataIndex === 'id'" class="history-revision">
+              <div class="history-revision-title">
+                <text-ellipsis :text="record.id" /><a-tag
+                  v-if="record.id === version?.currentRevisionId"
+                  color="green"
+                  >{{ t('proto.currentRevision') }}</a-tag
+                >
+              </div>
+              <span class="muted history-numbers"
+                >{{ new Date(record.createdAt).toLocaleString() }} ·
+                {{ t('proto.historyFileCount', { count: record.fileCount }) }} ·
+                {{ (record.totalBytes / 1024 / 1024).toFixed(2) }} MiB</span
+              >
+              <p v-if="record.description" class="muted">{{ record.description }}</p>
+            </div>
+            <div v-else-if="column.key === 'actions'" class="history-actions">
+              <permission-button
                 :permission="p.version.query"
-                @action="version && emit('preview', version, record.id)"
-              />
+                :aria-label="t('proto.preview')"
+                @click="version && emit('preview', version, record.id)"
+                >{{ t('proto.preview') }}</permission-button
+              >
+              <permission-button
+                :permission="p.version.query"
+                @click="version && emit('workItems', version, record)"
+                >{{ t('proto.workItems') }}</permission-button
+              >
               <action-button
                 :label="t('proto.qualityCheck')"
                 :icon="FileSearchOutlined"
                 :permission="p.version.query"
                 @action="qualityRevision = record"
               />
-            </template>
-            <template v-else>{{ record.fileCount }}</template>
+            </div>
           </template>
         </data-table>
         <a-button
@@ -150,3 +171,90 @@ const columns = computed(() => [
     @close="qualityRevision = undefined"
   />
 </template>
+
+<style scoped>
+.history-context {
+  display: grid;
+  gap: var(--space-2);
+}
+.history-context strong {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.history-context p,
+.history-help p,
+.history-revision p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.history-compare-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.history-help summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+.history-help summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.history-help p {
+  margin-top: var(--space-2);
+}
+.history-revision {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.history-revision-title,
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.history-revision-title > :first-child {
+  max-width: 100%;
+}
+.history-numbers {
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+@media (width <= 575px) {
+  .history-table :deep(.ant-table-content) {
+    overflow: visible !important;
+  }
+  .history-table :deep(table) {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .history-table :deep(colgroup),
+  .history-table :deep(thead) {
+    display: none;
+  }
+  .history-table :deep(tbody) {
+    display: block;
+  }
+  .history-table :deep(.ant-table-row) {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: var(--space-2);
+    padding-block: var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+  .history-table :deep(.ant-table-row > td) {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .history-table :deep(.ant-table-row > td:last-child) {
+    grid-column: 2;
+  }
+}
+</style>

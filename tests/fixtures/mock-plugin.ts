@@ -1,3 +1,4 @@
+import { resetWorkItems, workItemResponse } from './work-item'
 import { ownerProjectAccess } from './project-access'
 import { systemMenus } from './system-menu'
 import { settings, stores, userTypes } from './system-data'
@@ -206,6 +207,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
   return typeof key === 'string' ? `${req.headers['x-access-token']}:${path}:${key}` : undefined
 }
 function reset() {
+  resetWorkItems()
   resetReview()
   resetSystem()
   menus = structuredClone(initialMenus)
@@ -847,6 +849,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, 404, null, 'Resource unavailable')
     return true
   }
+  if (workItemResponse(path, method, data, member, revisions, revisionPages, res, send, now()))
+    return true
   if (
     member &&
     method !== 'GET' &&

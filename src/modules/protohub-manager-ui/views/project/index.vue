@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { computed, toRef } from 'vue'
 import {
   Pagination as APagination,
@@ -13,7 +13,6 @@ import {
   UndoOutlined,
   DeleteOutlined,
   EditOutlined,
-  EyeOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -113,6 +112,10 @@ function openDetail(id: string) {
       :error="usage.error.value"
       kind="projects"
       @retry="loadUsage" />
+    <div v-if="!resource.loading.value && !resource.error.value" class="list-heading">
+      <h2>{{ t(trash ? 'proto.projectRecycleBin' : 'proto.projectListTitle') }}</h2>
+      <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
+    </div>
     <a-alert v-if="task.error.value" type="error" :message="task.error.value" /><load-state
       :loading="resource.loading.value"
       :error="resource.error.value"
@@ -156,12 +159,17 @@ function openDetail(id: string) {
                   :confirm="t('proto.projectRestoreConfirm')"
                   @action="restore(project)"
                 />
-                <action-button
+                <router-link
                   v-if="!trash"
-                  :label="t('common.detail')"
-                  :icon="EyeOutlined"
-                  @action="openDetail(project.id)"
-                />
+                  class="project-open"
+                  :aria-label="`${t('proto.openProject')}：${project.name}`"
+                  :to="{
+                    name: 'project-detail',
+                    params: { id: project.id },
+                    query: { ...route.query },
+                  }"
+                  >{{ t('proto.openProject') }}</router-link
+                >
                 <action-button
                   v-if="!trash && projectAllows(project, 'edit')"
                   :label="t('common.edit')"
@@ -198,6 +206,18 @@ function openDetail(id: string) {
   /></component>
 </template>
 <style scoped>
+.list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.list-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
 .project-pagination {
   display: flex;
   flex-wrap: wrap;
@@ -262,12 +282,10 @@ function openDetail(id: string) {
   flex: 1;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-weight: 600;
   font-size: 16px;
   text-align: left;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .project-description {
   flex: 1;
@@ -283,6 +301,7 @@ function openDetail(id: string) {
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 .project-updated {
   display: flex;
@@ -298,8 +317,13 @@ function openDetail(id: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.project-open {
+  padding: var(--space-1) var(--space-2);
+  text-underline-offset: 3px;
+}
 .project-actions {
   flex: 0 0 auto;
+  margin-inline-start: auto;
 }
 @media (max-width: 575px) {
   .project-updated {

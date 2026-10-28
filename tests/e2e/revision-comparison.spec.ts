@@ -163,7 +163,8 @@ test('390px comparison keeps fixed identities, visible controls and both preview
     const copy = pane.getByRole('button', { name: protoLocales.zh.copyPageLink, exact: true })
     await expect(copy).toBeEnabled()
     await expect(copy).toHaveText(protoLocales.zh.copyPageLink)
-    for (const element of [copy, copy.locator('span')]) {
+    await expect(copy.locator('.workspace-copy-label')).toBeHidden()
+    for (const element of [copy, copy.locator('.anticon')]) {
       const bounds = await element.boundingBox()
       expect(bounds!.width).toBeGreaterThan(0)
       expect(bounds!.x).toBeGreaterThanOrEqual(box!.x)
