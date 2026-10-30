@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { computed, toRef } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 import {
   Pagination as APagination,
   Card as ACard,
@@ -67,21 +67,30 @@ const versionRecycle = computed(() =>
 function openDetail(id: string) {
   void router.push({ name: 'project-detail', params: { id }, query: { ...route.query } })
 }
+const creationAction = ref<HTMLElement>()
+const listHeading = ref<HTMLElement>()
+let returnToCreation = false
+function createProject() {
+  returnToCreation = true
+  edit()
+}
+// Usage refresh temporarily disables the trigger; return focus once its new admission is known.
+watch(
+  [open, task.busy, usage.loading],
+  ([dialogOpen, busy, loading]) => {
+    if (!returnToCreation || dialogOpen || busy || loading) return
+    returnToCreation = false
+    const button = creationAction.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+    ;(button || listHeading.value)?.focus()
+  },
+  { flush: 'post' },
+)
 </script>
 <template>
   <component
     :is="embedded ? 'section' : PageContainer"
     :title="embedded ? undefined : t(trash ? 'proto.projectRecycleBin' : 'proto.projects')"
-    ><template #actions
-      ><permission-button
-        v-if="!trash"
-        :permission="p.project.save"
-        type="primary"
-        :disabled="trash || usage.data.value?.projects.canCreate === false"
-        @click="edit()"
-        >{{ t('proto.newProject') }}</permission-button
-      ></template
-    >
+  >
     <a-alert v-if="trash" type="info" show-icon :message="t('proto.recycleHint')" />
     <a-alert
       v-if="trash && restoredProject"
@@ -111,9 +120,28 @@ function openDetail(id: string) {
       :loading="usage.loading.value"
       :error="usage.error.value"
       kind="projects"
-      @retry="loadUsage" />
+      @retry="loadUsage"
+    >
+      <template v-if="!trash" #actions>
+        <span ref="creationAction"
+          ><permission-button
+            :permission="p.project.save"
+            type="primary"
+            :disabled="
+              usage.loading.value ||
+              !!usage.error.value ||
+              usage.data.value?.projects.canCreate !== true
+            "
+            @click="createProject"
+            >{{ t('proto.newProject') }}</permission-button
+          ></span
+        >
+      </template>
+    </capacity-notice>
     <div v-if="!resource.loading.value && !resource.error.value" class="list-heading">
-      <h2>{{ t(trash ? 'proto.projectRecycleBin' : 'proto.projectListTitle') }}</h2>
+      <h2 ref="listHeading" tabindex="-1">
+        {{ t(trash ? 'proto.projectRecycleBin' : 'proto.projectListTitle') }}
+      </h2>
       <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
     </div>
     <a-alert v-if="task.error.value" type="error" :message="task.error.value" /><load-state
@@ -155,7 +183,12 @@ function openDetail(id: string) {
                   :label="t('proto.restore')"
                   :icon="UndoOutlined"
                   :permission="p.project.save"
-                  :disabled="task.busy.value"
+                  :disabled="
+                    task.busy.value ||
+                    usage.loading.value ||
+                    !!usage.error.value ||
+                    usage.data.value?.projects.canCreate !== true
+                  "
                   :confirm="t('proto.projectRestoreConfirm')"
                   @action="restore(project)"
                 />

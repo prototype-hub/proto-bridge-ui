@@ -132,7 +132,7 @@ test('restores the same parent and child identities separately while old grants 
   })
   await prompt.getByRole('button', { name: '确定', exact: true }).click()
   await expect(card).toHaveCount(0)
-  await expect(page.locator('.capacity-notice')).toContainText('项目用量：1 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
   expect((await request.get(`${origin}/api/prototype-hub/versions/v1`, { headers })).status()).toBe(
     404,
   )
@@ -293,7 +293,7 @@ for (const kind of ['projects', 'versions'] as const)
     await expect(row).toHaveCount(0)
     await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
     if (kind === 'projects')
-      await expect(page.locator('.capacity-notice')).toContainText('项目用量：0 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 0 / 5')
     else
       expect(
         (

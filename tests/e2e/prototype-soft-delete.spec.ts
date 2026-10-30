@@ -58,11 +58,12 @@ test('soft deletion releases usage while replacement IDs cannot revive old membe
     created.push(value.id)
   }
   await page.goto('prototype-hub/projects/p1')
-  await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
   await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeDisabled()
   const row = page
     .getByRole('row')
-    .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
+    .filter({ has: page.locator('.version-name').getByText('V1', { exact: true }) })
+  await row.locator('summary').click()
   await row.getByRole('button', { name: '删除', exact: true }).click()
   const prompt = page
     .getByRole('tooltip')
@@ -89,7 +90,7 @@ test('soft deletion releases usage while replacement IDs cannot revive old membe
   await prompt.getByRole('button', { name: '确定', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 720 })
   await expect(row).toHaveCount(0)
-  await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：4 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 4 / 5')
   await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeEnabled()
   expect((await request.get(`${origin}${session.previewUrl}`)).status()).toBe(403)
   for (const path of [
@@ -142,7 +143,7 @@ test('soft deletion releases usage while replacement IDs cannot revive old membe
   await projectPrompt.getByRole('button', { name: '确定', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 720 })
   await expect(card).toHaveCount(0)
-  await expect(page.locator('.capacity-notice')).toContainText('项目用量：0 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 0 / 5')
   for (const path of [
     '/api/prototype-hub/projects/p1',
     '/api/prototype-hub/projects/p1/members',

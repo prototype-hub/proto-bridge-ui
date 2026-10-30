@@ -167,6 +167,12 @@ it('keeps existing projects visible while usage is pending, and treats failed us
   const { wrapper } = await render('projects', true)
   expect(wrapper.text()).toContain(project.name)
   expect(wrapper.text()).toContain('正在获取用量')
+  expect(
+    wrapper
+      .findAll('button')
+      .find((button) => button.text() === '新建项目')
+      ?.attributes('disabled'),
+  ).toBeDefined()
   reject(new ApiError('Usage unavailable', 503))
   await flushPromises()
   expect(wrapper.text()).toContain(project.name)
@@ -178,11 +184,11 @@ it('keeps existing projects visible while usage is pending, and treats failed us
       .findAll('button')
       .find((button) => button.text() === '新建项目')
       ?.attributes('disabled'),
-  ).toBeUndefined()
+  ).toBeDefined()
   vi.mocked(request.get).mockImplementation(original)
-  await wrapper.getComponent(CapacityNotice).get('button').trigger('click')
+  await wrapper.getComponent(CapacityNotice).get('.ant-alert button').trigger('click')
   await flushPromises()
-  expect(wrapper.text()).toContain('项目用量：1 / 5')
+  expect(wrapper.text()).toContain('已用 1 / 5')
 })
 
 it('blocks only new projects at capacity and retains edit/delete actions for existing projects', async () => {
@@ -193,7 +199,7 @@ it('blocks only new projects at capacity and retains edit/delete actions for exi
       : original(path, ...args),
   )
   const { wrapper } = await render('projects', true)
-  expect(wrapper.text()).toContain('项目用量：7 / 5')
+  expect(wrapper.text()).toContain('已用 7 / 5')
   expect(wrapper.text()).toContain(protoLocales.zh.capacity.overLimit)
   expect(
     wrapper
@@ -213,7 +219,7 @@ it('retains version preview/replacement/deletion when no new version can be uplo
       : original(path, ...args),
   )
   const { wrapper } = await render('detail', true)
-  expect(wrapper.text()).toContain('当前项目版本用量：5 / 5')
+  expect(wrapper.text()).toContain('已用 5 / 5')
   expect(
     wrapper
       .findAll('button')
@@ -222,6 +228,79 @@ it('retains version preview/replacement/deletion when no new version can be uplo
   ).toBeDefined()
   for (const label of ['预览', '上传新修订', '删除'])
     expect(wrapper.find(`button[aria-label="${label}"]`).attributes('disabled')).toBeUndefined()
+})
+
+it.each(['projects', 'detail'] as const)(
+  'shows unlimited %s usage and follows server admission instead of comparing counts',
+  async (kind) => {
+    const original = vi.mocked(request.get).getMockImplementation()!
+    const unlimited: Capacity = {
+      used: 12,
+      limit: -1,
+      remaining: -1,
+      overLimit: false,
+      canCreate: true,
+    }
+    vi.mocked(request.get).mockImplementation((path, ...args) =>
+      path.endsWith('/_usage')
+        ? Promise.resolve(
+            response(
+              kind === 'projects'
+                ? { installationId: 'private-installation', projects: unlimited }
+                : { projectId: 'p1', versions: unlimited },
+            ),
+          )
+        : original(path, ...args),
+    )
+    const { wrapper } = await render(kind, true)
+    expect(wrapper.getComponent(CapacityNotice).text()).toContain('已用 12 / 不限')
+    expect(wrapper.getComponent(CapacityNotice).text()).not.toContain('-1')
+    expect(wrapper.getComponent(CapacityNotice).text()).not.toContain(protoLocales.zh.capacity.full)
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === (kind === 'projects' ? '新建项目' : '上传版本'))
+        ?.attributes('disabled'),
+    ).toBeUndefined()
+  },
+)
+
+it('does not grant version creation from an unlimited allowance to a project viewer', async () => {
+  const original = vi.mocked(request.get).getMockImplementation()!
+  vi.mocked(request.get).mockImplementation((path, ...args) => {
+    if (path === '/prototype-hub/versions/_usage')
+      return Promise.resolve(
+        response({
+          projectId: 'p1',
+          versions: {
+            used: 12,
+            limit: -1,
+            remaining: -1,
+            overLimit: false,
+            canCreate: true,
+          },
+        }),
+      )
+    if (path === '/prototype-hub/projects/p1')
+      return Promise.resolve(
+        response({
+          ...project,
+          role: 'viewer',
+          capabilities: {
+            read: true,
+            edit: false,
+            deleteProject: false,
+            manageMembers: false,
+            manageShares: false,
+          },
+        }),
+      )
+    return original(path, ...args)
+  })
+  const { wrapper } = await render('detail', true)
+  expect(wrapper.text()).toContain('已用 12 / 不限')
+  expect(wrapper.findAll('button').find((button) => button.text() === '上传版本')).toBeUndefined()
+  expect(wrapper.find('button[aria-label="预览"]').exists()).toBe(true)
 })
 
 it('cancels old project usage and ignores a late result after changing projects', async () => {
