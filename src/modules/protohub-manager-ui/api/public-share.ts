@@ -4,6 +4,14 @@ import type { RequestOptions } from '@/shared/api/types'
 import type { PublicShare, PrototypePage } from '../types'
 const segment = encodeURIComponent
 export const publicApi = {
+  visit: async (share: PublicShare, options?: RequestOptions) => {
+    if (!share.accessKey || !share.visitTicket || !share.revisionId) return
+    await publicRequest.post<boolean>(
+      `/prototype-hub/public/shares/${segment(share.token)}/${segment(share.accessKey)}/revisions/${segment(share.revisionId)}/visits`,
+      { ticket: share.visitTicket },
+      { ...options, silent: true },
+    )
+  },
   get: async (token: string, options?: RequestOptions) =>
     (
       await publicRequest.get<PublicShare>(
