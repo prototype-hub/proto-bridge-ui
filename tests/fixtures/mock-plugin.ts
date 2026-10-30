@@ -1,4 +1,5 @@
 import { resetWorkItems, workItemResponse } from './work-item'
+import { fixtureStatistics } from './statistics'
 import { ownerProjectAccess } from './project-access'
 import { systemMenus } from './system-menu'
 import { settings, stores, userTypes } from './system-data'
@@ -104,6 +105,17 @@ const initialMenus: ServerMenu[] = [
       },
       {
         ...menu(
+          'prototype-statistics',
+          'prototype-hub/Statistics',
+          '统计概览',
+          '/prototype-hub/statistics',
+          [],
+        ),
+        i18nMessages: { name: { zh_CN: '统计概览', en_US: 'Overview', en: 'Overview' } },
+        permissions: [{ permission: 'prototype-hub-project', actions: ['query'] }],
+      },
+      {
+        ...menu(
           'prototype-hub-recycle',
           'prototype-hub/Recycle',
           '回收站',
@@ -181,6 +193,7 @@ let grants: ServerMenu[] = []
 const roleGrants = new Map<string, ServerMenu[]>()
 let counter = 10
 const passwords = new Map<string, string>()
+const visitTickets = new Set<string>()
 const projectMembers = new Map<string, ProjectMember[]>()
 const previewSessions = new Map<
   string,
@@ -238,6 +251,7 @@ function reset() {
   ]
   for (const record of shares) shareRevisions.set(record.token, 'r-v1')
   passwords.clear()
+  visitTickets.clear()
   creationReceipts.clear()
   previewSessions.clear()
   projectMembers.clear()
@@ -662,7 +676,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       send(res, 404, null, 'Share unavailable', 'PROTOHUB_SHARE_UNAVAILABLE')
       return true
     }
-    const canonical = suffix.match(/^\/([^/]+)\/revisions\/([^/]+)\/(pages|runtime)(?:\/.*)?$/)
+    const canonical = suffix.match(
+      /^\/([^/]+)\/revisions\/([^/]+)\/(pages|runtime|visits)(?:\/.*)?$/,
+    )
     if (canonical) {
       const rid = decodeURIComponent(canonical[2])
       const revision = revisions.get(rid)
@@ -674,7 +690,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         send(res, 404, null, 'Grant unavailable')
         return true
       }
-      if (canonical[3] === 'pages') send(res, 200, revisionPages(rid))
+      if (canonical[3] === 'visits') {
+        if (method !== 'POST' || typeof data.ticket !== 'string' || !visitTickets.has(data.ticket))
+          send(res, 403, null, 'Invalid visit ticket')
+        else send(res, 200, true)
+      } else if (canonical[3] === 'pages') send(res, 200, revisionPages(rid))
       else {
         res.setHeader('Content-Type', 'text/html')
         res.end(runtimeDocument(path))
@@ -714,6 +734,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       return true
     }
     const info: PublicShare = {
+      visitTicket: access ? `fixture-${record.token}-${rid}-${++counter}` : null,
       reviewEnabled: access && reviewEnabled(record.id),
       reviewAvailable: access && reviewEnabled(record.id),
       reviewUnverifiedAllowed: access && reviewUnverifiedAllowed(record.id),
@@ -728,6 +749,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       runtimeBaseUrl: access ? `${grantBase}/runtime` : undefined,
       previewUrl: access ? `${grantBase}/runtime/index.html` : undefined,
     }
+    if (info.visitTicket) visitTickets.add(info.visitTicket)
     send(res, 200, info)
     return true
   }
@@ -737,6 +759,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     return true
   }
   const member = token === 'mock-member'
+  if (path === '/prototype-hub/statistics' && method === 'GET') {
+    const days = url.searchParams.get('days') === '30' ? 30 : 7
+    send(res, 200, fixtureStatistics(days, now()))
+    return true
+  }
   // Recovery is a separate scoped API, never an include-deleted flag on ordinary reads.
   if (method === 'POST' && path === '/prototype-hub/projects/_deleted/_query') {
     send(

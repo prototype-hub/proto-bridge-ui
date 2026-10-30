@@ -12,6 +12,7 @@ import { computed, ref, watch, defineAsyncComponent } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
 import { useReviewIdentity } from './hooks/useReviewIdentity'
+import { useShareVisit } from './hooks/useShareVisit'
 import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
 import {
   useReviewThreads,
@@ -41,6 +42,7 @@ const identityOpen = ref(false),
   drawing = ref(false)
 const selectedPage = ref<ReviewPage>()
 const share = computed(() => resource.data.value.share)
+const visit = useShareVisit(share)
 const identity = useReviewIdentity(
   share,
   computed(() => identityOpen.value || feedbackOpen.value || overviewOpen.value || drawing.value),
@@ -180,6 +182,7 @@ watch(
         ref="workspace"
         :context="resource.data.value.context"
         :anchor-epoch="feedback.anchorEpoch.value"
+        @runtime-ready="visit.opened"
         @anchor-capture="capturedAnchor"
         @page-change="selectedPage = $event"
         ><template #actions>

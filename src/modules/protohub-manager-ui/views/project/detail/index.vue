@@ -91,6 +91,34 @@ const columns = computed(() => [
 ])
 const creationAction = ref<HTMLElement>()
 const listHeading = ref<HTMLElement>()
+const shareEntries = ref<HTMLElement>()
+let shareEntryFocused = false
+watch(
+  () => [route.params.id, route.query.focus],
+  () => {
+    shareEntryFocused = false
+  },
+)
+watch(
+  () => resource.loading.value,
+  async (loading) => {
+    if (loading || shareEntryFocused || route.query.focus !== 'shares') return
+    await nextTick()
+    const details = shareEntries.value?.querySelector<HTMLDetailsElement>(
+      'details[data-share-manage]',
+    )
+    if (!details) return
+    details.open = true
+    const button = Array.from(
+      details.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+    ).find((element) => element.getAttribute('aria-label') === t('proto.share'))
+    if (button) {
+      shareEntryFocused = true
+      button.focus()
+    }
+  },
+  { flush: 'post' },
+)
 let returnToCreation = false
 // A successful upload refreshes capacity before its disabled trigger can receive focus again.
 watch(
@@ -133,6 +161,9 @@ watch(
     <p v-if="resource.data.value.project?.description" class="project-summary">
       {{ resource.data.value.project.description }}
     </p>
+    <p v-if="route.query.focus === 'shares'" class="muted" role="status">
+      {{ t('proto.statisticsShareEntry') }}
+    </p>
     <prototype-list-toolbar
       v-model:keyword="search"
       :sort="sort"
@@ -174,7 +205,7 @@ watch(
       :loading="resource.loading.value"
       :error="resource.error.value"
       @retry="resource.load"
-      ><div class="panel stack project-versions-panel">
+      ><div ref="shareEntries" class="panel stack project-versions-panel">
         <div class="version-list-heading">
           <h2 ref="listHeading" tabindex="-1">{{ t('proto.versions') }}</h2>
           <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
@@ -247,6 +278,14 @@ watch(
                   projectAllows(resource.data.value.project, 'manageShares')
                 "
                 class="version-management"
+                :data-share-manage="
+                  projectAllows(resource.data.value.project, 'manageShares') &&
+                  session.can(p.share.query) &&
+                  record.status === 'ready' &&
+                  !record.migrationRequired
+                    ? record.id
+                    : undefined
+                "
               >
                 <summary>{{ t('proto.manageVersion') }}</summary>
                 <a-space :size="4">

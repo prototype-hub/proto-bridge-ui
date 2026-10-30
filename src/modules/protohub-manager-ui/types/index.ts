@@ -224,6 +224,7 @@ export interface Share {
   sharePath: string
 }
 export interface PublicShare {
+  visitTicket?: string | null
   reviewEnabled?: boolean
   reviewAvailable?: boolean
   reviewUnverifiedAllowed?: boolean
@@ -238,6 +239,20 @@ export interface PublicShare {
   accessKey?: string
   runtimeBaseUrl?: string
   previewUrl?: string
+}
+/** Current authorized stock and best-effort share opens; null never means zero. */
+export interface PrototypeStatistics {
+  timeZone: string
+  fromDate: string
+  toDate: string
+  collectedSince: number
+  retentionDays: number
+  projectCount: number
+  versionCount: number | null
+  shareCount: number | null
+  visits: number | null
+  trend: { date: string; visits: number | null }[] | null
+  ranking: { projectId: string; projectName: string; visits: number }[] | null
 }
 export interface ReviewPolicy {
   allowComment?: boolean

@@ -27,6 +27,7 @@ const props = defineProps({
   anchorEpoch: { type: Number, default: 0 },
 })
 const emit = defineEmits<{
+  runtimeReady: []
   pageChange: [page: ReviewPage | undefined]
   anchorCapture: [anchor?: ReviewAnchor]
 }>()
@@ -60,6 +61,10 @@ const {
 defineExpose({ captureAnchor, locateAnchor, clearAnchor })
 watch(anchorCapture, (result) => {
   if (result) emit('anchorCapture', result.anchor)
+})
+// A browser load also fires on HTTP errors. Only the existing validated root handshake confirms a prototype.
+watch(anchorStatus, (status) => {
+  if (status === 'ready' && !loading.value && !error.value) emit('runtimeReady')
 })
 watch(() => props.anchorEpoch, clearAnchor)
 // Emit only validated manifest identity; the opaque iframe cannot define a discussion target.
