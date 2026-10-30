@@ -54,7 +54,9 @@ export interface ProjectInput {
 }
 export interface Capacity {
   used: number
+  /** -1 means no count limit; admission still comes from canCreate. */
   limit: number
+  /** -1 when unlimited; otherwise the server-calculated available count. */
   remaining: number
   overLimit: boolean
   canCreate: boolean

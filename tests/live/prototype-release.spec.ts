@@ -173,7 +173,7 @@ liveTest(
       owned.headers = { 'X-Access-Token': body.result.token, 'Accept-Language': 'zh-CN' }
       await page.goto('/prototype-hub')
       await expect(page.getByRole('heading', { name: '原型项目', exact: true })).toBeVisible()
-      await expect(page.locator('.capacity-notice')).toContainText('项目用量：0 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 0 / 5')
     })
 
     await test.step('create a project and upload a multi-page ZIP through the UI', async () => {
@@ -191,7 +191,7 @@ liveTest(
       projectId = ((await response.json()) as { result: Resource }).result.id
       owned.projects.push(projectId)
       expect(Boolean(response.request().headers()['idempotency-key'])).toBe(true)
-      await expect(page.locator('.capacity-notice')).toContainText('项目用量：1 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
       await page.getByRole('link', { name: `详情：${name}`, exact: true }).click()
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
       await page.getByRole('button', { name: '上传版本', exact: true }).click()
@@ -220,7 +220,7 @@ liveTest(
       shareToken = shared.token
       owned.versions.push(versionId)
       expect(Boolean(saved.request().headers()['idempotency-key'])).toBe(true)
-      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
       await preview(page)
     })
 
@@ -452,7 +452,7 @@ liveTest(
       await expect(
         page.getByRole('cell', { name: 'Browser replacement', exact: true }),
       ).toBeVisible()
-      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
       await preview(page, 'Runtime fixture revision two', secondRevisionId)
     })
 
@@ -1322,7 +1322,7 @@ liveTest(
         owned.versions.push(version.id)
       }
       await page.reload()
-      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
       await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeDisabled()
       await expect(
         page.getByRole('button', { name: '上传新修订', exact: true }).first(),
@@ -1362,7 +1362,7 @@ liveTest(
         owned.projects.push(project.id)
       }
       await page.goto('/prototype-hub')
-      await expect(page.locator('.capacity-notice')).toContainText('项目用量：5 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
       await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeDisabled()
       await expect(page.getByRole('link', { name: `详情：${name}`, exact: true })).toBeVisible()
       const overflow = await request.post('/api/prototype-hub/projects', {
@@ -1499,7 +1499,7 @@ liveTest(
       owned.versions = owned.versions.filter((id) => id !== versionId)
       owned.shares = owned.shares.filter((id) => !retainedShares.some((share) => share.id === id))
       await expect(row).toHaveCount(0)
-      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：4 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 4 / 5')
       await expect(page.getByRole('button', { name: '上传版本', exact: true })).toBeEnabled()
       const usage = await result<{ versions: Capacity }>(
         await request.get(`/api/prototype-hub/versions/_usage?projectId=${projectId}`, {
@@ -1565,7 +1565,7 @@ liveTest(
         await stalePage.close()
       }
       await page.reload()
-      await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：5 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
       const emptyProjectId = owned.projects[1]!
       await page.goto('/prototype-hub')
       const card = page.getByRole('link', { name: `详情：${name} 2`, exact: true })
@@ -1582,7 +1582,7 @@ liveTest(
       expect((await deletingProject).status()).toBe(200)
       owned.projects = owned.projects.filter((id) => id !== emptyProjectId)
       await expect(card).toHaveCount(0)
-      await expect(page.locator('.capacity-notice')).toContainText('项目用量：4 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 4 / 5')
       await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled()
       const replacementProject = await result<Resource>(
         await request.post('/api/prototype-hub/projects', {

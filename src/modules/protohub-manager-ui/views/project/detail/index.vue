@@ -89,6 +89,23 @@ const columns = computed(() => [
   { title: t('common.createdAt'), dataIndex: 'createdAt', width: 190 },
   { title: t('common.actions'), key: 'actions', width: 294 },
 ])
+const creationAction = ref<HTMLElement>()
+const listHeading = ref<HTMLElement>()
+let returnToCreation = false
+// A successful upload refreshes capacity before its disabled trigger can receive focus again.
+watch(
+  [uploadOpen, usage.loading, resource.loading],
+  ([dialogOpen, loading, resourceLoading], [wasOpen]) => {
+    if (wasOpen && !dialogOpen && !uploadContext.value.version) returnToCreation = true
+    if (!returnToCreation || dialogOpen || loading || resourceLoading) return
+    const button = creationAction.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+    const target = button || listHeading.value
+    if (!target) return
+    returnToCreation = false
+    target.focus()
+  },
+  { flush: 'post' },
+)
 </script>
 <template>
   <page-container
@@ -110,13 +127,6 @@ const columns = computed(() => [
           :aria-label="t('proto.members')"
           @click="membersOpen = true"
           ><team-outlined />{{ t('proto.members') }}</permission-button
-        ><permission-button
-          v-if="projectAllows(resource.data.value.project, 'edit')"
-          :permission="p.version.save"
-          type="primary"
-          :disabled="!resource.data.value.project || usage.data.value?.versions.canCreate === false"
-          @click="upload()"
-          >{{ t('proto.upload') }}</permission-button
         ></a-space
       ></template
     >
@@ -141,14 +151,32 @@ const columns = computed(() => [
       :loading="usage.loading.value"
       :error="usage.error.value"
       kind="versions"
-      @retry="loadUsage" />
+      @retry="loadUsage"
+    >
+      <template #actions>
+        <span ref="creationAction"
+          ><permission-button
+            v-if="projectAllows(resource.data.value.project, 'edit')"
+            :permission="p.version.save"
+            type="primary"
+            :disabled="
+              usage.loading.value ||
+              !!usage.error.value ||
+              usage.data.value?.versions.canCreate !== true
+            "
+            @click="upload()"
+            >{{ t('proto.upload') }}</permission-button
+          ></span
+        >
+      </template>
+    </capacity-notice>
     <load-state
       :loading="resource.loading.value"
       :error="resource.error.value"
       @retry="resource.load"
       ><div class="panel stack project-versions-panel">
         <div class="version-list-heading">
-          <h2>{{ t('proto.versions') }}</h2>
+          <h2 ref="listHeading" tabindex="-1">{{ t('proto.versions') }}</h2>
           <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
         </div>
         <a-alert v-if="task.error.value" type="error" :message="task.error.value" />

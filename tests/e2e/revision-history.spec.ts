@@ -39,7 +39,7 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   }
   expect(updated.currentRevisionId).not.toBe('r-v1')
   expect(updated.revisionCount).toBe(2)
-  await expect(page.locator('.capacity-notice')).toContainText('当前项目版本用量：1 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
   expect((await request.get(originalRuntime!)).status()).toBe(200)
   await current.close()
   const shared = (await (await request.get('/api/prototype-hub/public/shares/open')).json())
