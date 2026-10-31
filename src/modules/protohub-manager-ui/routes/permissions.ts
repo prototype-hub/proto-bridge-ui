@@ -1,4 +1,8 @@
 export const protoPermissions = {
+  license: {
+    query: 'prototype-hub-license:query',
+    save: 'prototype-hub-license:save',
+  },
   project: {
     query: 'prototype-hub-project:query',
     save: 'prototype-hub-project:save',
