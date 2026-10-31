@@ -14,6 +14,7 @@ import { useSession } from './stores/session'
 import { router } from './router'
 import App from './App.vue'
 import { layoutLocales } from './locales'
+import { extensions } from './modules/extensions'
 const pinia = createPinia()
 const app = createApp(App).use(pinia).use(i18n)
 for (const language of ['zh', 'en'] as const)
@@ -21,6 +22,7 @@ for (const language of ['zh', 'en'] as const)
     ...authenticationMessages[language],
     layout: layoutLocales[language],
     proto: protoLocales[language],
+    ...extensions.locales[language],
   })
 useSettings(pinia)
 const session = useSession(pinia)

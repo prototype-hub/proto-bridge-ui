@@ -24,7 +24,12 @@ export interface PrototypeLicenseStatus {
     maintenanceUntil: number | null
   } | null
   freeEntitlements: { maxProjects: number; baseVersionsPerProject: number; features: string[] }
-  enforcedCapacity: { projectLimit: number; versionLimit: number; source: 'deployment' }
+  enforcedCapacity: {
+    projectLimit: number
+    versionLimit: number
+    source: 'deployment' | 'free' | 'license'
+    projectVersionLimits?: Record<string, number>
+  }
 }
 
 export interface PrototypeLicenseImport {
