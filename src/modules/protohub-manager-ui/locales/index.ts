@@ -1,5 +1,7 @@
+import { reviewAssociationLocales } from './review-associations'
 export const protoLocales = {
   zh: {
+    ...reviewAssociationLocales.zh,
     originalAssets: '原始资产',
     assetsSearch: '搜索原始文件路径',
     assetsClearSearch: '清除搜索',
@@ -296,7 +298,7 @@ export const protoLocales = {
     feedbackPublic: '公开回复',
     feedbackInternal: '内部备注',
     feedbackInternalHint: '仅有权限的项目成员可见，客户不可见。',
-    feedbackPublicHint: '有权限的项目成员与此反馈的客户可见。',
+    feedbackPublicHint: '有权限的项目成员与获准访问此反馈的客户可见。',
     feedbackPlainText: '仅支持纯文本，最多 4000 字；不解析 HTML 或 Markdown。',
     feedbackImageSelect: '选择反馈图片',
     feedbackImageHint:
@@ -722,6 +724,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...reviewAssociationLocales.en,
     originalAssets: 'Original assets',
     assetsSearch: 'Search original file paths',
     assetsClearSearch: 'Clear search',
@@ -1059,7 +1062,8 @@ export const protoLocales = {
     feedbackPublic: 'Public reply',
     feedbackInternal: 'Internal note',
     feedbackInternalHint: 'Only authorized project members can see this. Hidden from visitors.',
-    feedbackPublicHint: 'Visible to authorized project members and this feedback’s visitor.',
+    feedbackPublicHint:
+      'Visible to authorized project members and visitors with access to this feedback.',
     feedbackImageSelect: 'Choose a feedback image',
     feedbackImageHint:
       'One PNG or JPEG, up to 5 MiB; text is required. The file uploads only when you send. The server checks the actual image.',

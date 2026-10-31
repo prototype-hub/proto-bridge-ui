@@ -22,9 +22,11 @@ function runtimeDocument(path: string) {
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
 import { fixtureAssets, fixtureAssetDownload } from './revision-assets'
-import { threadResponse, type ThreadImage } from './review-thread'
+import { associationResponse } from './review-association'
+import { threadResponse, associationSource, type ThreadImage } from './review-thread'
 import { invitationManagement } from './review-invitation'
 import {
+  reviewGuestRecords,
   reviewEnabled,
   reviewUnverifiedAllowed,
   reviewPolicy,
@@ -1277,6 +1279,34 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       send(res, 200, value)
     }
+  } else if (/^\/prototype-hub\/projects\/[^/]+\/review-associations(?:\/.*)?$/.test(path)) {
+    const projectId = decodeURIComponent(path.split('/')[3]!)
+    if (member) send(res, 403, null, 'Access denied')
+    else
+      associationResponse(
+        res,
+        projectId,
+        path.split('/review-associations')[1] || '',
+        method,
+        data,
+        associationSource(String(data.sourceThreadId)),
+        shares,
+        reviewGuestRecords(projectId),
+        send,
+      )
+  } else if (/^\/prototype-hub\/projects\/[^/]+\/review-guests\/_query$/.test(path)) {
+    const projectId = decodeURIComponent(path.split('/')[3]!)
+    const rows = reviewGuestRecords(projectId),
+      pageIndex = Number(data.pageIndex),
+      pageSize = Number(data.pageSize)
+    if (member) send(res, 403, null, 'Access denied')
+    else
+      send(res, 200, {
+        data: rows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+        total: rows.length,
+        pageIndex,
+        pageSize,
+      })
   } else if (/^\/prototype-hub\/versions\/[^/]+\/review-threads(?:\/.*)?$/.test(path)) {
     const versionId = decodeURIComponent(path.split('/')[3]!),
       revision = revisions.get(String(data.revisionId))

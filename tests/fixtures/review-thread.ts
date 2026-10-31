@@ -1,3 +1,4 @@
+import { associatedAccess } from './review-association'
 import { isReviewAnchor } from '../../src/modules/protohub-manager-ui/utils/review-anchor'
 import { randomUUID, randomBytes, createHash } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
@@ -26,6 +27,9 @@ const images = new Map<string, ThreadImage>()
 export interface ThreadImage {
   bytes: Buffer
   info: ReviewImage
+}
+export function associationSource(id: string) {
+  return threads.get(id)
 }
 export function resetThreads() {
   threads.clear()
@@ -88,7 +92,21 @@ export function threadResponse(
     row.versionId === versionId &&
     row.thread.revisionId === rid &&
     (overview || row.thread.pageId === pageId) &&
-    (!guest || (row.shareId === guest.share.id && row.owner === owner(guest.identity)))
+    (!guest ||
+      (row.shareId === guest.share.id &&
+        (row.owner === owner(guest.identity) ||
+          (guest.identity.verificationLevel === 'email' &&
+            associatedAccess(row, guest.identity.guestId, guest.share)))))
+  const projectThread = (thread: ReviewThread): ReviewThread =>
+    guest
+      ? {
+          ...thread,
+          canReopen:
+            threads.get(thread.id)?.owner === owner(guest.identity) && thread.state === 'resolved',
+          accessMode:
+            threads.get(thread.id)?.owner === owner(guest.identity) ? 'own' : 'associated',
+        }
+      : thread
   if ((suffix === '/_query' || overview) && method === 'POST') {
     if (input.state !== undefined && !['open', 'resolved'].includes(String(input.state))) {
       send(res, 400, null, 'Invalid state')
@@ -108,7 +126,7 @@ export function threadResponse(
             ? !row.assignment?.assignee
             : true,
       )
-      .map((value) => value.thread)
+      .map((value) => projectThread(value.thread))
       .filter((row) => !input.state || row.state === input.state)
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
     const result = pageRows(rows, input)
@@ -218,7 +236,7 @@ export function threadResponse(
     return
   }
   if (action === '_detail' && method === 'POST') {
-    send(res, 200, stored!.thread)
+    send(res, 200, projectThread(stored!.thread))
     return
   }
   if (action === 'messages' && query === '_query' && method === 'POST') {
@@ -271,11 +289,15 @@ export function threadResponse(
         200,
         existing.message
           ? [...messages.values()].flat().find((row) => row.id === existing.id)
-          : threads.get(existing.id)?.thread,
+          : projectThread(threads.get(existing.id)!.thread),
       )
     return
   }
   if (action === 'status' && method === 'PUT' && stored) {
+    if (guest && stored.owner !== owner(guest.identity)) {
+      send(res, 404, null, 'Feedback unavailable')
+      return
+    }
     if (!['open', 'resolved'].includes(String(input.state)) || (guest && input.state !== 'open'))
       send(res, 400, null, 'Invalid state')
     else if (stored.thread.configVersion !== input.expectedVersion)
@@ -287,7 +309,7 @@ export function threadResponse(
         stored.thread.updatedAt = Date.now()
       }
       receipts.set(key, { body, id: stored.thread.id, message: false })
-      send(res, 200, stored.thread)
+      send(res, 200, projectThread(stored.thread))
     }
     return
   }
@@ -357,5 +379,5 @@ export function threadResponse(
     }
   }
   receipts.set(key, { body, id: initial ? thread.id : message.id, message: !initial })
-  send(res, 200, initial ? thread : message)
+  send(res, 200, initial ? projectThread(thread) : message)
 }

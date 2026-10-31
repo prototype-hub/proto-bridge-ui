@@ -440,7 +440,11 @@ export function useReviewThreads(
       return
     if (targeted.value && !thread) return
     if (selectedId.value && !thread) return
-    if (state && (!thread || (target.kind === 'public' && state !== 'open'))) return
+    if (
+      state &&
+      (!thread || (target.kind === 'public' && (state !== 'open' || thread.canReopen !== true)))
+    )
+      return
     if (!state && target.kind === 'member' && !thread) return
     const file = !state ? imageFile.value : undefined
     const body = text.value.trim()

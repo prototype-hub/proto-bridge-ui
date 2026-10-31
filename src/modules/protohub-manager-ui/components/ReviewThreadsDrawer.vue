@@ -23,6 +23,8 @@ const props = defineProps<{
   page?: ReviewPage
   state: ReviewThreadsController
   identityLoading?: boolean
+  canAssociate?: boolean
+  restoreAssociationFocus?: boolean
 }>()
 const emit = defineEmits<{
   close: []
@@ -31,6 +33,8 @@ const emit = defineEmits<{
   captureAnchor: [shape: ReviewAnchor['shape']]
   locateAnchor: [anchor: ReviewAnchor]
   overview: []
+  associate: []
+  associationFocusRestored: []
 }>()
 const { t } = useI18n()
 const state = props.state
@@ -56,7 +60,13 @@ const guarded = computed(
 async function show(next: 'list' | 'detail') {
   mode.value = next
   await nextTick()
-  if (props.open) (next === 'list' ? listHeading : taskHeading).value?.focus()
+  if (props.open) {
+    const trigger = props.restoreAssociationFocus
+      ? content.value?.querySelector<HTMLElement>('[data-association-trigger]')
+      : undefined
+    ;(trigger || (next === 'list' ? listHeading : taskHeading).value)?.focus()
+    if (props.restoreAssociationFocus) emit('associationFocusRestored')
+  }
 }
 function afterOpen(visible: boolean) {
   // The drawer's entrance may finish after the user has already started editing.
@@ -359,7 +369,25 @@ function selectImage(event: Event) {
                 >
               </div>
 
+              <a-alert
+                v-if="state.isPublic.value && state.selected.value.accessMode === 'associated'"
+                type="info"
+                show-icon
+                :message="t('proto.associationHistoricalAccess')"
+                :description="t('proto.associationHistoricalHelp')"
+              />
               <div class="feedback-status-actions feedback-thread-actions">
+                <a-button
+                  v-if="
+                    canAssociate &&
+                    !state.isPublic.value &&
+                    state.selected.value.verificationLevel === 'unverified'
+                  "
+                  data-association-trigger
+                  :disabled="blocked || state.loading.value || assignment.unknown.value"
+                  @click="emit('associate')"
+                  >{{ t('proto.associationTitle') }}</a-button
+                >
                 <a-button
                   :disabled="state.loading.value || state.busy.value"
                   @click="emit('copyThread', $event)"
@@ -372,7 +400,10 @@ function selectImage(event: Event) {
                   >{{ t('proto.feedbackResolve') }}</a-button
                 >
                 <a-button
-                  v-if="state.selected.value.state === 'resolved'"
+                  v-if="
+                    state.selected.value.state === 'resolved' &&
+                    (!state.isPublic.value || state.selected.value.canReopen === true)
+                  "
                   :disabled="!state.writable.value || state.busy.value"
                   @click="state.status('open')"
                   >{{ t('proto.feedbackReopen') }}</a-button

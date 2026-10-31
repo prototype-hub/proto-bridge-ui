@@ -1535,3 +1535,26 @@ it('uses a new key on explicit geometry edits and clears anchor with actor/page 
   member.selectAnchor(anchorDraft)
   expect(member.anchor.value).toBeUndefined()
 })
+
+it.each([undefined, false, true])(
+  'uses server canReopen=%s for public explicit reopen without blocking a reply',
+  async (canReopen) => {
+    const { state } = setup()
+    const resolved = {
+      ...thread(),
+      state: 'resolved' as const,
+      canReopen,
+      accessMode: canReopen === true ? ('own' as const) : ('associated' as const),
+    }
+    vi.mocked(publicReviewThreadsApi.query).mockResolvedValue(pager([resolved]))
+    vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue(resolved)
+    await state.load()
+    state.choose(state.threads.value[0])
+    await flushPromises()
+    await state.status('open')
+    expect(publicReviewThreadsApi.status).toHaveBeenCalledTimes(canReopen === true ? 1 : 0)
+    state.text.value = 'Reply with my actual identity'
+    await state.send()
+    expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(1)
+  },
+)
