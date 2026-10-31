@@ -1,5 +1,7 @@
 import { resetWorkItems, workItemResponse } from './work-item'
 import { fixtureStatistics } from './statistics'
+import { fixtureLicense, fixtureAcceptedLicense, fixtureLicenseDocument } from './license'
+import { licenseFingerprint } from '../../src/modules/protohub-manager-ui/utils/license'
 import { ownerProjectAccess } from './project-access'
 import { systemMenus } from './system-menu'
 import { settings, stores, userTypes } from './system-data'
@@ -116,6 +118,23 @@ const initialMenus: ServerMenu[] = [
       },
       {
         ...menu(
+          'prototype-license',
+          'prototype-hub/License',
+          '授权与安装',
+          '/prototype-hub/license',
+          [],
+        ),
+        i18nMessages: {
+          name: {
+            zh_CN: '授权与安装',
+            en_US: 'License & installation',
+            en: 'License & installation',
+          },
+        },
+        permissions: [{ permission: 'prototype-hub-license', actions: ['query', 'save'] }],
+      },
+      {
+        ...menu(
           'prototype-hub-recycle',
           'prototype-hub/Recycle',
           '回收站',
@@ -194,6 +213,7 @@ const roleGrants = new Map<string, ServerMenu[]>()
 let counter = 10
 const passwords = new Map<string, string>()
 const visitTickets = new Set<string>()
+let licenseStatus = fixtureLicense()
 const projectMembers = new Map<string, ProjectMember[]>()
 const previewSessions = new Map<
   string,
@@ -220,6 +240,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
   return typeof key === 'string' ? `${req.headers['x-access-token']}:${path}:${key}` : undefined
 }
 function reset() {
+  licenseStatus = fixtureLicense()
   resetWorkItems()
   resetReview()
   resetSystem()
@@ -644,15 +665,18 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     else if (path === '/authorize/login/configs') send(res, 200, { encrypt: { enabled: false } })
     else if (path === '/authorize/me')
       send(res, 200, {
-        permissions: ['prototype-hub-project', 'prototype-hub-version', 'prototype-hub-share'].map(
-          (id) => ({
-            id,
-            actions:
-              req.headers['x-access-token'] === 'mock-member'
-                ? ['query']
-                : ['query', 'save', 'delete'],
-          }),
-        ),
+        permissions: [
+          'prototype-hub-project',
+          'prototype-hub-version',
+          'prototype-hub-share',
+          ...(req.headers['x-access-token'] === 'mock-member' ? [] : ['prototype-hub-license']),
+        ].map((id) => ({
+          id,
+          actions:
+            req.headers['x-access-token'] === 'mock-member'
+              ? ['query']
+              : ['query', 'save', 'delete'],
+        })),
       })
     else send(res, 404, null, 'Unknown auth endpoint')
     return true
@@ -759,6 +783,33 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     return true
   }
   const member = token === 'mock-member'
+  if (path === '/prototype-hub/license' && method === 'GET') {
+    send(
+      res,
+      member ? 403 : 200,
+      member ? null : licenseStatus,
+      member ? 'Access denied' : undefined,
+    )
+    return true
+  }
+  if (path === '/prototype-hub/license/_import' && method === 'POST') {
+    if (member) send(res, 403, null, 'Access denied')
+    else {
+      try {
+        const parsed = JSON.parse(String(data.document))
+        if (parsed.signature !== fixtureLicenseDocument.signature)
+          throw new Error('Invalid fixture')
+        const fingerprint = await licenseFingerprint(String(data.document))
+        if (!fingerprint) throw new Error('Fixture digest unavailable')
+        const unchanged = licenseStatus.acceptedCredential?.fingerprint === fingerprint
+        licenseStatus = fixtureAcceptedLicense(fingerprint)
+        send(res, 200, { result: unchanged ? 'unchanged' : 'imported', status: licenseStatus })
+      } catch {
+        send(res, 400, null, 'Credential could not be verified')
+      }
+    }
+    return true
+  }
   if (path === '/prototype-hub/statistics' && method === 'GET') {
     const days = url.searchParams.get('days') === '30' ? 30 : 7
     send(res, 200, fixtureStatistics(days, now()))
