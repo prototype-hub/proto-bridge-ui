@@ -133,6 +133,7 @@ async function setup(kind: 'share' | 'preview') {
     load: identityLoad,
   } as unknown as ReturnType<typeof useReviewIdentity>)
   vi.mocked(usePreview).mockReturnValue({
+    revision: shallowRef(),
     data: shallowRef(context),
     project: shallowRef({
       id: 'p1',

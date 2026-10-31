@@ -21,6 +21,7 @@ function runtimeDocument(path: string) {
 
 import { comparisonIds, comparisonPages, fixtureComparison } from './comparison'
 import { fixtureQuality } from './quality'
+import { fixtureAssets, fixtureAssetDownload } from './revision-assets'
 import { threadResponse, type ThreadImage } from './review-thread'
 import { invitationManagement } from './review-invitation'
 import {
@@ -1145,7 +1146,38 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         (item) => item.projectId === url.searchParams.get('projectId') && activeVersion(item.id),
       ),
     )
-  else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/[^/]+\/quality$/.test(path)) {
+  else if (
+    /^\/prototype-hub\/versions\/[^/]+\/revisions\/[^/]+\/assets(?:\/_(?:file|zip|manifest))?$/.test(
+      path,
+    )
+  ) {
+    const id = decodeURIComponent(path.split('/')[3]!),
+      rid = decodeURIComponent(path.split('/')[5]!)
+    const revision = revisions.get(rid)
+    if (!activeVersion(id) || !revision || revision.versionId !== id)
+      send(res, 404, null, 'Revision unavailable')
+    else if (method === 'GET') send(res, 200, fixtureAssets(revision, url.searchParams))
+    else if (data.expectedManifestSha256 !== revision.manifestSha256)
+      send(res, 409, null, 'Manifest changed', 'ASSET_MANIFEST_CONFLICT')
+    else {
+      const file = fixtureAssetDownload(
+        revision,
+        path.split('/')[7]!.slice(1),
+        data.paths as string[],
+        data.all === true,
+      )
+      if (!file) send(res, 400, null, 'Invalid selection', 'ASSET_SELECTION_INVALID')
+      else {
+        res.writeHead(200, {
+          'content-type': file.contentType,
+          'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        })
+        res.end(file.bytes)
+      }
+    }
+  } else if (/^\/prototype-hub\/versions\/[^/]+\/revisions\/[^/]+\/quality$/.test(path)) {
     const id = decodeURIComponent(path.split('/')[3]!)
     const rid = decodeURIComponent(path.split('/')[5]!)
     const value = activeVersion(id)

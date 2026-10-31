@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'PreviewView' })
 import LoadState from '@/shared/components/LoadState.vue'
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSession } from '@/app/stores/session'
 import { usePermissions } from '@/shared/auth/provider'
@@ -18,12 +18,15 @@ import {
   useReviewThreadsOverview,
   type ReviewOverviewScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreadsOverview'
-import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Drawer as ADrawer } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/usePreview'
 import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
-const { data, project, loading, error, expired, load } = usePreview()
+const { data, project, revision, loading, error, expired, load } = usePreview()
+const RevisionAssetsPanel = defineAsyncComponent(
+  () => import('../../components/RevisionAssetsPanel.vue'),
+)
 const { t } = useI18n()
 const route = useRoute(),
   session = useSession(),
@@ -31,6 +34,22 @@ const route = useRoute(),
 const feedbackOpen = ref(false),
   overviewOpen = ref(false),
   selectedPage = ref<ReviewPage>()
+const assetsOpen = ref(false)
+const assetsTrigger = ref<{ $el: HTMLElement }>()
+const assetsAllowed = computed(
+  () =>
+    !!data.value &&
+    !!revision.value &&
+    projectAllows(project.value, 'read') &&
+    permissions.can(p.version.query),
+)
+watch(assetsAllowed, (allowed) => {
+  if (!allowed) assetsOpen.value = false
+})
+function closeAssets() {
+  assetsOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
   data.value &&
   project.value &&
@@ -120,6 +139,9 @@ function locateAnchor(anchor: ReviewAnchor) {
         @page-change="selectedPage = $event"
       >
         <template #actions
+          ><a-button v-if="assetsAllowed" ref="assetsTrigger" @click="assetsOpen = true">{{
+            t('proto.originalAssets')
+          }}</a-button
           ><a-button
             v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
             type="primary"
@@ -135,6 +157,21 @@ function locateAnchor(anchor: ReviewAnchor) {
       </prototype-workspace></load-state
     >
   </div>
+  <a-drawer
+    :open="assetsOpen && assetsAllowed"
+    :title="t('proto.originalAssets')"
+    width="min(960px, 100vw)"
+    root-class-name="revision-assets-drawer"
+    @close="closeAssets"
+  >
+    <revision-assets-panel
+      v-if="assetsOpen && assetsAllowed && revision"
+      :revision="revision"
+      :project-name="project?.name || revision.projectId"
+      :allowed="assetsAllowed"
+      @close="closeAssets"
+    />
+  </a-drawer>
   <review-threads-drawer
     :open="
       feedbackOpen &&
