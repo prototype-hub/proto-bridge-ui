@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, toRef, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, toRef, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Drawer as ADrawer,
@@ -7,7 +7,6 @@ import {
   Tag as ATag,
   Checkbox as ACheckbox,
 } from 'ant-design-vue'
-import { FileSearchOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermissions } from '@/shared/auth/provider'
 import type { Project, Revision, Version } from '@/modules/protohub-manager-ui/types'
@@ -16,13 +15,15 @@ import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/perm
 import { useRevisions } from '@/modules/protohub-manager-ui/views/project/hooks/useRevisions'
 import DataTable from '@/shared/components/DataTable.vue'
 import LoadState from '@/shared/components/LoadState.vue'
-import ActionButton from '@/shared/components/ActionButton.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
 import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 
 const props = defineProps<{ version?: Version; project?: Project }>()
 const RevisionQualityDrawer = defineAsyncComponent(() => import('./RevisionQualityDrawer.vue'))
+const RevisionAssetsPanel = defineAsyncComponent(
+  () => import('../../../components/RevisionAssetsPanel.vue'),
+)
 const emit = defineEmits<{
   close: []
   preview: [version: Version, revisionId: string]
@@ -41,12 +42,25 @@ const state = useRevisions(toRef(props, 'version'), open)
 const router = useRouter()
 const selected = ref<string[]>([])
 const qualityRevision = shallowRef<Revision>()
+const assetsRevision = shallowRef<Revision>()
+let assetsTrigger: HTMLElement | undefined
+function openAssets(revision: Revision, event: MouseEvent) {
+  if (!open.value) return
+  assetsTrigger = event.currentTarget as HTMLElement
+  assetsRevision.value = revision
+}
+function closeAssets() {
+  assetsRevision.value = undefined
+  void nextTick(() => assetsTrigger?.focus())
+}
 // Selection survives cursor appends, but cannot cross a closed or replaced version scope.
 watch(
   () => [open.value, props.version?.id],
   () => {
     selected.value = []
     qualityRevision.value = undefined
+    assetsRevision.value = undefined
+    assetsTrigger = undefined
   },
 )
 function select(id: string, checked: boolean) {
@@ -72,18 +86,32 @@ function compare() {
 const columns = computed(() => [
   { title: t('proto.compareSelect'), key: 'select', width: 48 },
   { title: t('proto.revision'), dataIndex: 'id' },
-  { title: t('common.actions'), key: 'actions', width: 240 },
+  { title: t('common.actions'), key: 'actions', width: 280 },
 ])
 </script>
 <template>
   <a-drawer
     root-class-name="revision-history-drawer"
     :open="open"
-    :title="t('proto.revisionHistory')"
-    width="min(800px, 100vw)"
-    @close="emit('close')"
+    :title="t(assetsRevision ? 'proto.originalAssets' : 'proto.revisionHistory')"
+    :width="assetsRevision ? 'min(960px, 100vw)' : 'min(800px, 100vw)'"
+    @close="assetsRevision ? closeAssets() : emit('close')"
   >
-    <section role="dialog" aria-modal="true" :aria-label="t('proto.revisionHistory')" class="stack">
+    <revision-assets-panel
+      v-if="assetsRevision"
+      :revision="assetsRevision"
+      :project-name="project?.name || assetsRevision.projectId"
+      :allowed="open"
+      :return-label="t('proto.assetsBackToHistory')"
+      @close="closeAssets"
+    />
+    <section
+      v-show="!assetsRevision"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('proto.revisionHistory')"
+      class="stack"
+    >
       <header class="history-context">
         <strong>{{ version?.versionName }}</strong>
         <p class="muted">{{ t('proto.historyFixedContext') }}</p>
@@ -141,15 +169,17 @@ const columns = computed(() => [
               >
               <permission-button
                 :permission="p.version.query"
+                @click="openAssets(record, $event)"
+                >{{ t('proto.originalAssets') }}</permission-button
+              >
+              <permission-button
+                :permission="p.version.query"
                 @click="version && emit('workItems', version, record)"
                 >{{ t('proto.workItems') }}</permission-button
               >
-              <action-button
-                :label="t('proto.qualityCheck')"
-                :icon="FileSearchOutlined"
-                :permission="p.version.query"
-                @action="qualityRevision = record"
-              />
+              <permission-button :permission="p.version.query" @click="qualityRevision = record">{{
+                t('proto.qualityCheck')
+              }}</permission-button>
             </div>
           </template>
         </data-table>

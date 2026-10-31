@@ -6,13 +6,14 @@ import { previewIdentity } from '@/modules/protohub-manager-ui/utils/preview-loc
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { ApiError } from '@/shared/api/errors'
 import { t } from '@/shared/i18n'
-import type { WorkspaceContext, Project } from '@/modules/protohub-manager-ui/types'
+import type { WorkspaceContext, Project, Revision } from '@/modules/protohub-manager-ui/types'
 
 /** Exchange a member session only on entry or an explicit retry; expiry unmounts the untrusted frame. */
 export function usePreview() {
   const route = useRoute()
   const data = shallowRef<WorkspaceContext>()
   const project = shallowRef<Project>()
+  const revision = shallowRef<Revision>()
   const loading = ref(false)
   const error = ref('')
   const expired = ref(false)
@@ -26,6 +27,7 @@ export function usePreview() {
     clearTimeout(timer)
     data.value = undefined
     project.value = undefined
+    revision.value = undefined
   }
   async function load() {
     clear()
@@ -56,38 +58,40 @@ export function usePreview() {
         throw new Error(t('proto.projectUnavailable'))
       if (version.migrationRequired) throw new Error(t('proto.revisionMigrationRequired'))
       // Resolve the current pointer once. Every subsequent read uses that immutable identity.
-      const revision = revisionId
+      const selectedRevision = revisionId
         ? await versionsApi.revision(versionId, revisionId, options)
         : await versionsApi.currentRevision(versionId, options)
       if (current !== generation || request.signal.aborted) return
       if (
-        !revision.id ||
-        revision.versionId !== versionId ||
-        revision.projectId !== projectId ||
-        (revisionId && revision.id !== revisionId)
+        !selectedRevision.id ||
+        selectedRevision.versionId !== versionId ||
+        selectedRevision.projectId !== projectId ||
+        (revisionId && selectedRevision.id !== revisionId)
       )
         throw new Error(t('proto.projectUnavailable'))
       const [pages, session] = await Promise.all([
-        versionsApi.revisionPages(versionId, revision.id, options),
-        versionsApi.revisionPreviewSession(versionId, revision.id, options),
+        versionsApi.revisionPages(versionId, selectedRevision.id, options),
+        versionsApi.revisionPreviewSession(versionId, selectedRevision.id, options),
       ])
       if (current !== generation || request.signal.aborted) return
       if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now())
         throw new Error(t('proto.previewExpired'))
-      runtimePageUrl(session.runtimeBaseUrl, revision.entryFile)
+      runtimePageUrl(session.runtimeBaseUrl, selectedRevision.entryFile)
       project.value = selectedProject
+      revision.value = selectedRevision
       data.value = {
-        revisionId: revision.id,
+        revisionId: selectedRevision.id,
         locationPath,
         title: selectedProject.name,
-        versionName: revision.versionName,
+        versionName: selectedRevision.versionName,
         runtimeBaseUrl: session.runtimeBaseUrl,
-        entryFile: revision.entryFile,
+        entryFile: selectedRevision.entryFile,
         pages,
       }
       timer = setTimeout(() => {
         data.value = undefined
         project.value = undefined
+        revision.value = undefined
         expired.value = true
         error.value = t('proto.previewExpired')
       }, session.expiresAt - Date.now())
@@ -120,5 +124,5 @@ export function usePreview() {
     { immediate: true, flush: 'sync' },
   )
   onScopeDispose(clear)
-  return { data, project, loading, error, expired, load }
+  return { data, project, revision, loading, error, expired, load }
 }

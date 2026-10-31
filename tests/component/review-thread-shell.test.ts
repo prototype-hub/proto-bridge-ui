@@ -85,6 +85,7 @@ it.each(['viewer', 'no-query'] as const)(
   'explains a valid target denied to %s without any detail/message request',
   async (kind) => {
     vi.mocked(usePreview).mockReturnValue({
+      revision: shallowRef(),
       data: shallowRef(context),
       project: shallowRef({
         id: 'p1',
@@ -137,6 +138,7 @@ it('explains a closed review policy only after password authorization has loaded
 
 it('does not mistake a still-loading member shell for a denied target', async () => {
   vi.mocked(usePreview).mockReturnValue({
+    revision: shallowRef(),
     data: shallowRef(),
     project: shallowRef(),
     loading: ref(true),

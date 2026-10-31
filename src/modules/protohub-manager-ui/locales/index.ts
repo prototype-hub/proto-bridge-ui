@@ -1,5 +1,36 @@
 export const protoLocales = {
   zh: {
+    originalAssets: '原始资产',
+    assetsSearch: '搜索原始文件路径',
+    assetsClearSearch: '清除搜索',
+    assetsTotal: '本修订共 {count} 个图片 / SVG · {size}',
+    assetsMatches: '匹配 {count} 项 · {size}',
+    assetsSelectionHint: '按文件路径选择资源，可跨页保留选择。原文件不会被转换或重新生成。',
+    assetsSelectPage: '选择本页',
+    assetsSelect: '选择 {path}',
+    assetsSelected: '已选择 {count} 项 · {size}',
+    assetsClearSelection: '清空选择',
+    assetsDownloadSelected: '下载所选 ZIP',
+    assetsSelectedManifest: '所选路径清单',
+    assetsOriginalFile: '原文件',
+    assetsDownloadFile: '下载原文件 {path}',
+    assetsWholeRevision: '整个修订与导出说明',
+    assetsAllScope: '以下操作包含本修订的全部原始资产，不受搜索结果或当前选择影响。',
+    assetsDownloadAll: '下载全部 ZIP',
+    assetsAllManifest: '全部路径清单',
+    assetsScope:
+      '仅导出上传文件中独立存储的图片和 SVG。页面内联 SVG、外部链接和 data URL 不包含在内；ZIP 内附相同范围的 JSON 路径、大小及校验清单。',
+    assetsLimits:
+      '单次原文件或 ZIP 最多 500 MiB，清单最多 32 MiB。浏览器会暂存下载内容，大量资产建议分批选择下载。',
+    assetsEmpty: '此修订没有可导出的原始图片或 SVG',
+    assetsNoMatches: '没有匹配的文件路径，请修改或清除搜索',
+    assetsPreparing: '正在核验并准备下载，可取消或关闭；不会自动重试。',
+    assetsCancelDownload: '取消下载',
+    assetsUnavailable:
+      '修订或资产暂不可用，已清除选择。请刷新核对项目权限、固定修订及原始文件后重试。',
+    assetsTooLarge: '本次导出超过大小限制，请减少所选文件，或仅下载路径清单。',
+    assetsBusy: '当前导出任务较多，请稍后手动重试。不会自动重新提交下载。',
+    assetsBackToHistory: '返回历史修订',
     licenseTitle: '授权与安装',
     licenseStatusLabel: '凭证状态',
     licenseStatus_missing: '免费基础版',
@@ -691,6 +722,41 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    originalAssets: 'Original assets',
+    assetsSearch: 'Search original file paths',
+    assetsClearSearch: 'Clear search',
+    assetsTotal: '{count} images / SVGs in this revision · {size}',
+    assetsMatches: '{count} matches · {size}',
+    assetsSelectionHint:
+      'Select files by path, across pages. Original files are not converted or regenerated.',
+    assetsSelectPage: 'Select this page',
+    assetsSelect: 'Select {path}',
+    assetsSelected: '{count} selected · {size}',
+    assetsClearSelection: 'Clear selection',
+    assetsDownloadSelected: 'Download selected ZIP',
+    assetsSelectedManifest: 'Selected path manifest',
+    assetsOriginalFile: 'Original file',
+    assetsDownloadFile: 'Download original file {path}',
+    assetsWholeRevision: 'Whole revision & export details',
+    assetsAllScope:
+      'These actions include every original asset in this revision, regardless of search or selection.',
+    assetsDownloadAll: 'Download all ZIP',
+    assetsAllManifest: 'All paths manifest',
+    assetsScope:
+      'Exports standalone image and SVG files from the upload. Inline SVGs, external links and data URLs are excluded. ZIPs include a JSON manifest of the same files, with paths, sizes and checksums.',
+    assetsLimits:
+      'Original file or ZIP downloads are limited to 500 MiB; manifests to 32 MiB. Your browser buffers the download. Select smaller batches for large collections.',
+    assetsEmpty: 'No original image or SVG files to export in this revision',
+    assetsNoMatches: 'No matching file paths. Change or clear the search.',
+    assetsPreparing:
+      'Checking files and preparing the download. You may cancel or close; no automatic retry.',
+    assetsCancelDownload: 'Cancel download',
+    assetsUnavailable:
+      'This revision or its assets are unavailable. Selection was cleared. Refresh to check project access, the fixed revision and original files, then retry.',
+    assetsTooLarge:
+      'This export exceeds the size limit. Select fewer files or download the path manifest only.',
+    assetsBusy: 'Exports are busy. Try again later; the download will not retry automatically.',
+    assetsBackToHistory: 'Back to revision history',
     licenseTitle: 'License & installation',
     licenseStatusLabel: 'Credential status',
     licenseStatus_missing: 'Free basic edition',
