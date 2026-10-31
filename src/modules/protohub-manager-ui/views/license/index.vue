@@ -18,6 +18,17 @@ import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/ic
 import { download } from '@/shared/api/client'
 import PageContainer from '@/shared/components/PageContainer.vue'
 import { useLicense } from './hooks/useLicense'
+import type { PrototypeLicenseStatus } from '../../types/license'
+
+defineSlots<{
+  overview(props: {
+    status: PrototypeLicenseStatus
+    loading: boolean
+    importCredential: () => void
+    reloadStatus: () => Promise<void>
+  }): unknown
+  installation(props: { status: PrototypeLicenseStatus; downloadRequest: () => void }): unknown
+}>()
 
 const { t, locale } = useI18n()
 const AInputTextArea = AInput.TextArea
@@ -40,6 +51,7 @@ const {
 } = state
 const resultHeading = ref<HTMLElement>()
 const field = ref<{ focus: () => void }>()
+const importHeading = ref<HTMLElement>()
 const locked = computed(() => busy.value || unknown.value)
 const statusTitle = computed(() => t(`proto.licenseStatus_${data.value?.status || 'missing'}`))
 const statusHint = computed(() => t(`proto.licenseHint_${data.value?.status || 'missing'}`))
@@ -81,6 +93,17 @@ function downloadRequest() {
     filename: 'prototype-hub-installation-request.json',
     contentType: 'application/json',
   })
+}
+function focusImport() {
+  if (locked.value) {
+    const target = unknown.value ? resultHeading.value : importHeading.value
+    target?.scrollIntoView({ block: 'start', behavior: 'instant' })
+    target?.focus()
+    return
+  }
+  importHeading.value?.scrollIntoView({ block: 'start', behavior: 'instant' })
+  if (canImport.value && data.value?.trustConfigured) field.value?.focus()
+  else importHeading.value?.focus()
 }
 function confirmLeave(): Promise<boolean> {
   if (busy.value) return Promise.resolve(false)
@@ -141,23 +164,31 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
         ></a-alert
       >
       <template v-if="data">
-        <section class="license-overview" aria-labelledby="license-status-title">
-          <div class="license-status">
-            <h2 id="license-status-title">{{ statusTitle }}</h2>
-            <p>{{ statusHint }}</p>
-          </div>
-          <dl class="license-capacity">
-            <div>
-              <dt>{{ t('proto.licenseActualProjects') }}</dt>
-              <dd>{{ limit(data.enforcedCapacity.projectLimit) }}</dd>
+        <slot
+          name="overview"
+          :status="data"
+          :loading="loading"
+          :import-credential="focusImport"
+          :reload-status="state.load"
+        >
+          <section class="license-overview" aria-labelledby="license-status-title">
+            <div class="license-status">
+              <h2 id="license-status-title">{{ statusTitle }}</h2>
+              <p>{{ statusHint }}</p>
             </div>
-            <div>
-              <dt>{{ t('proto.licenseActualVersions') }}</dt>
-              <dd>{{ limit(data.enforcedCapacity.versionLimit) }}</dd>
-            </div>
-          </dl>
-          <p class="license-boundary">{{ t('proto.licenseEnforcementHint') }}</p>
-        </section>
+            <dl class="license-capacity">
+              <div>
+                <dt>{{ t('proto.licenseActualProjects') }}</dt>
+                <dd>{{ limit(data.enforcedCapacity.projectLimit) }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('proto.licenseActualVersions') }}</dt>
+                <dd>{{ limit(data.enforcedCapacity.versionLimit) }}</dd>
+              </div>
+            </dl>
+            <p class="license-boundary">{{ t('proto.licenseEnforcementHint') }}</p>
+          </section>
+        </slot>
 
         <div
           v-if="success || unknown"
@@ -190,37 +221,41 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
         </div>
 
         <div class="license-workspace">
-          <section class="license-installation" aria-labelledby="license-installation-title">
-            <h2 id="license-installation-title">{{ t('proto.licenseInstallation') }}</h2>
-            <p class="license-secondary">{{ t('proto.licenseInstallationHint') }}</p>
-            <dl class="license-identity">
-              <div>
-                <dt>{{ t('proto.licenseInstallationId') }}</dt>
-                <dd translate="no">{{ data.installationId }}</dd>
-              </div>
-            </dl>
-            <a-button @click="downloadRequest"
-              ><download-outlined aria-hidden="true" />{{
-                t('proto.licenseDownloadRequest')
-              }}</a-button
-            >
-            <details class="license-help">
-              <summary>{{ t('proto.licenseAbout') }}</summary>
-              <p>
-                {{
-                  t('proto.licenseFreeHint', {
-                    projects: number(data.freeEntitlements.maxProjects),
-                    versions: number(data.freeEntitlements.baseVersionsPerProject),
-                  })
-                }}
-              </p>
-              <p>{{ t('proto.licenseOfflineHint') }}</p>
-              <p>{{ t('proto.licenseRestoreHint') }}</p>
-            </details>
-          </section>
+          <slot name="installation" :status="data" :download-request="downloadRequest">
+            <section class="license-installation" aria-labelledby="license-installation-title">
+              <h2 id="license-installation-title">{{ t('proto.licenseInstallation') }}</h2>
+              <p class="license-secondary">{{ t('proto.licenseInstallationHint') }}</p>
+              <dl class="license-identity">
+                <div>
+                  <dt>{{ t('proto.licenseInstallationId') }}</dt>
+                  <dd translate="no">{{ data.installationId }}</dd>
+                </div>
+              </dl>
+              <a-button @click="downloadRequest"
+                ><download-outlined aria-hidden="true" />{{
+                  t('proto.licenseDownloadRequest')
+                }}</a-button
+              >
+              <details class="license-help">
+                <summary>{{ t('proto.licenseAbout') }}</summary>
+                <p>
+                  {{
+                    t('proto.licenseFreeHint', {
+                      projects: number(data.freeEntitlements.maxProjects),
+                      versions: number(data.freeEntitlements.baseVersionsPerProject),
+                    })
+                  }}
+                </p>
+                <p>{{ t('proto.licenseOfflineHint') }}</p>
+                <p>{{ t('proto.licenseRestoreHint') }}</p>
+              </details>
+            </section>
+          </slot>
 
           <section class="license-import" aria-labelledby="license-import-title">
-            <h2 id="license-import-title">{{ t('proto.licenseImportTitle') }}</h2>
+            <h2 id="license-import-title" ref="importHeading" tabindex="-1">
+              {{ t('proto.licenseImportTitle') }}
+            </h2>
             <p class="license-secondary">{{ t('proto.licenseImportHint') }}</p>
             <a-alert
               v-if="!data.trustConfigured"
@@ -385,6 +420,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
   margin: 0 0 var(--space-3);
   font-size: calc(var(--text-body) * 1.15);
   line-height: 1.5;
+  scroll-margin-block: var(--space-6);
   text-wrap: balance;
 }
 .license-page p {

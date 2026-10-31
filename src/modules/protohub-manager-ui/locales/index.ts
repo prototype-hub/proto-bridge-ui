@@ -15,7 +15,7 @@ export const protoLocales = {
     licenseActualProjects: '当前项目上限',
     licenseActualVersions: '每项目版本上限',
     licenseUnlimited: '不限',
-    licenseEnforcementHint: '以上为当前实际准入；已验证的凭证声明不会自动启用扩容或高级功能。',
+    licenseEnforcementHint: '当前容量以服务端实际执行结果为准；功能声明不代表高级模块已激活。',
     licenseInstallation: '安装身份',
     licenseInstallationHint: '下载安装请求，交给签发方生成与本安装绑定的凭证。',
     licenseInstallationId: '安装标识',
@@ -710,7 +710,7 @@ export const protoLocales = {
     licenseActualVersions: 'Version limit per project',
     licenseUnlimited: 'Unlimited',
     licenseEnforcementHint:
-      'These are the limits currently enforced. Verified declarations do not automatically activate capacity or advanced features.',
+      'Capacity follows the server’s actual enforcement. Feature declarations do not mean advanced modules are activated.',
     licenseInstallation: 'Installation identity',
     licenseInstallationHint:
       'Download the installation request and give it to the issuer for an installation-bound credential.',
