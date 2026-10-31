@@ -1,3 +1,5 @@
+import { resetAssociations } from './review-association'
+import type { ReviewGuest } from '../../src/modules/protohub-manager-ui/types'
 import { resetThreads, threadResponse, type ThreadImage } from './review-thread'
 import type { PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 import { createHash, randomUUID } from 'node:crypto'
@@ -6,6 +8,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ReviewIdentity, Share } from '../../src/modules/protohub-manager-ui/types'
 
 // UI fixtures only: fixed codes and in-memory records never ship in production or prove DB security.
+const guests = new Map<string, ReviewGuest & { projectId: string }>()
+export const reviewGuestRecords = (projectId: string) =>
+  [...guests.values()]
+    .filter((row) => row.projectId === projectId)
+    .map(({ projectId: _projectId, ...row }) => row)
 const enabled = new Set<string>()
 const unverifiedAllowed = new Set<string>()
 const commentsAllowed = new Set<string>()
@@ -19,6 +26,8 @@ export const reviewUnverifiedAllowed = (id: string) => unverifiedAllowed.has(id)
 export function resetReview() {
   resetInvitations()
   resetThreads()
+  resetAssociations()
+  guests.clear()
   commentsAllowed.clear()
   enabled.clear()
   unverifiedAllowed.clear()
@@ -209,6 +218,18 @@ export function reviewResponse(
     else {
       challenges.delete(String(data.challengeId))
       selected.identity = challenge.identity
+      guests.set(challenge.identity.guestId, {
+        id: challenge.identity.guestId,
+        projectId: record.projectId,
+        displayName: challenge.identity.displayName,
+        company: challenge.identity.company,
+        maskedEmail: challenge.identity.maskedEmail,
+        verificationLevel: 'email',
+        enabled: true,
+        configVersion: 0,
+        createTime: Date.now(),
+        modifyTime: Date.now(),
+      })
       send(res, 200, context())
     }
   } else if (action === 'logout') {

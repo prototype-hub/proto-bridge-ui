@@ -12,6 +12,8 @@ import {
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
 import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
+import ReviewAssociationsDrawer from '@/modules/protohub-manager-ui/components/ReviewAssociationsDrawer.vue'
+import { useReviewAssociations } from '@/modules/protohub-manager-ui/hooks/useReviewAssociations'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
 import ReviewThreadsOverviewDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsOverviewDrawer.vue'
 import {
@@ -72,6 +74,30 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, threadLocation)
+const associationOpen = ref(false),
+  restoreAssociationFocus = ref(false)
+const association = useReviewAssociations(
+  project,
+  feedback.selected,
+  associationOpen,
+  computed(() => session.user?.id || ''),
+)
+function openAssociation() {
+  if (
+    !association.readable.value ||
+    feedback.busy.value ||
+    feedback.assignment.busy.value ||
+    feedback.assignment.unknown.value
+  )
+    return
+  restoreAssociationFocus.value = false
+  associationOpen.value = true
+}
+function closeAssociation() {
+  if (association.busy.value || association.unknown.value) return
+  restoreAssociationFocus.value = true
+  associationOpen.value = false
+}
 const overviewScope = computed<ReviewOverviewScope | undefined>(() =>
   data.value?.revisionId && project.value
     ? {
@@ -84,7 +110,13 @@ const overviewScope = computed<ReviewOverviewScope | undefined>(() =>
     : undefined,
 )
 const overview = useReviewThreadsOverview(overviewScope, overviewOpen)
-const navigationBlocked = computed(() => feedback.busy.value || feedback.assignment.busy.value)
+const navigationBlocked = computed(
+  () =>
+    feedback.busy.value ||
+    feedback.assignment.busy.value ||
+    association.busy.value ||
+    association.unknown.value,
+)
 const navigationGuarded = computed(
   () =>
     !!feedback.text.value ||
@@ -175,6 +207,7 @@ function locateAnchor(anchor: ReviewAnchor) {
   <review-threads-drawer
     :open="
       feedbackOpen &&
+      !associationOpen &&
       !overviewOpen &&
       !!data &&
       projectAllows(project, 'edit') &&
@@ -182,10 +215,21 @@ function locateAnchor(anchor: ReviewAnchor) {
     "
     :page="selectedPage"
     :state="feedback"
+    :can-associate="association.readable.value"
+    :restore-association-focus="restoreAssociationFocus"
+    @associate="openAssociation"
+    @association-focus-restored="restoreAssociationFocus = false"
     @close="threadLocation.close"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
     @overview="overviewOpen = true"
+  />
+  <review-associations-drawer
+    :open="associationOpen"
+    :state="association"
+    :project-name="project?.name || ''"
+    :version-name="data?.versionName || ''"
+    @close="closeAssociation"
   />
   <review-threads-overview-drawer
     :open="

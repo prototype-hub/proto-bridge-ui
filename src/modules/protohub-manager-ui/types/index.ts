@@ -367,6 +367,9 @@ export interface ReviewAnchor {
 }
 export type ReviewThreadState = 'open' | 'resolved'
 export interface ReviewThread {
+  /** Visitor-only, server-authorized capabilities; omission must never grant access. */
+  canReopen?: boolean
+  accessMode?: 'own' | 'associated'
   anchor?: ReviewAnchor | null
   id: string
   revisionId: string
@@ -478,5 +481,52 @@ export interface WorkItemDeleteInput {
   revisionId: string
   pageId: string
   expectedVersion: number
+  clientRequestId: string
+}
+
+/** Internal-only audit. Never pass these records to a public workspace or prototype frame. */
+export interface ReviewAssociation {
+  id: string
+  sourceThreadId: string
+  versionId: string
+  shareId: string
+  revisionId: string
+  targetGuestId: string
+  targetGuest: ReviewGuest | null
+  status: 'active' | 'invalidated' | 'revoked'
+  invalidReason: string | null
+  configVersion: number
+  shareConfigVersion: number
+  targetGuestConfigVersion: number
+  evidenceReference: string
+  createdBy: string
+  createdByName: string
+  createdAt: number
+  revokedBy: string | null
+  revokedByName: string | null
+  revokedAt: number | null
+  revokeReason: string | null
+}
+export interface ReviewAssociationContext {
+  sourceThread: ReviewThread
+  versionId: string
+  shareId: string
+  revisionId: string
+  shareConfigVersion: number | null
+  eligible: boolean
+  unavailableReason: string | null
+  activeAssociation: ReviewAssociation | null
+}
+export interface ReviewAssociationCreateInput {
+  sourceThreadId: string
+  targetGuestId: string
+  expectedShareVersion: number
+  expectedTargetVersion: number
+  evidenceReference: string
+  clientRequestId: string
+}
+export interface ReviewAssociationRevokeInput {
+  expectedVersion: number
+  reason: string
   clientRequestId: string
 }
