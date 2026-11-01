@@ -25,6 +25,7 @@ function resolvePackage(from, name) {
 /** Conservative production dependency closure, including installed peer and optional dependencies. */
 export function runtimeDependencies(root) {
   const source = join(root, 'package.json'),
+    overrides = readJson(source).pnpm?.overrides || {},
     seen = new Set(),
     packages = new Map()
   function visit(file, isRoot = false) {
@@ -39,6 +40,9 @@ export function runtimeDependencies(root) {
       ...pkg.optionalDependencies,
     }
     for (const name of Object.keys(dependencies)) {
+      // pnpm preserves upstream declarations after removing an exact dependency edge.
+      const edge = `${pkg.name}@${pkg.version}>${name}`
+      if (!isRoot && Object.hasOwn(overrides, edge) && overrides[edge] === '-') continue
       const resolved = resolvePackage(file, name)
       const optional =
         name in (pkg.optionalDependencies || {}) || pkg.peerDependenciesMeta?.[name]?.optional

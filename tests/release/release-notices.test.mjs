@@ -69,6 +69,57 @@ test('does not turn an absent required dependency into an incomplete successful 
     })
     assert.throws(() => runtimeDependencies(root), /Missing installed dependency missing/)
   }))
+test('excludes only an explicitly removed exact parent-version dependency edge', () =>
+  fixture(({ root, file, supplements }) => {
+    file('package.json', {
+      name: 'fixture',
+      dependencies: { a: '1.0.0' },
+      pnpm: { overrides: { 'a@1.0.0>b': '-' } },
+    })
+    assert.deepEqual(
+      runtimeDependencies(root).map((pkg) => pkg.name),
+      ['a'],
+    )
+    rmSync(join(root, 'node_modules/b'), { recursive: true })
+    assert.deepEqual(
+      runtimeDependencies(root).map((pkg) => pkg.name),
+      ['a'],
+    )
+    assert.doesNotThrow(() => assertReleaseLicenses(licenseRecords(root, supplements)))
+  }))
+test('does not interpret broad, mismatched or replacement overrides as removed edges', () => {
+  for (const overrides of [
+    { 'a>b': '-' },
+    { 'a@*>b': '-' },
+    { 'a@2.0.0>b': '-' },
+    { 'a@1.0.0>other': '-' },
+    { 'a@1.0.0>b': '2.0.0' },
+  ])
+    fixture(({ root, file }) => {
+      file('package.json', {
+        name: 'fixture',
+        dependencies: { a: '1.0.0' },
+        pnpm: { overrides },
+      })
+      rmSync(join(root, 'node_modules/b'), { recursive: true })
+      assert.throws(() => runtimeDependencies(root), /Missing installed dependency b required by a/)
+    })
+})
+test('does not remove the same required child from another parent', () =>
+  fixture(({ root, file }) => {
+    file('package.json', {
+      name: 'fixture',
+      dependencies: { a: '1.0.0', c: '1.0.0' },
+      pnpm: { overrides: { 'a@1.0.0>b': '-' } },
+    })
+    file('node_modules/c/package.json', {
+      name: 'c',
+      version: '1.0.0',
+      dependencies: { b: '1.0.0' },
+    })
+    rmSync(join(root, 'node_modules/b'), { recursive: true })
+    assert.throws(() => runtimeDependencies(root), /Missing installed dependency b required by c/)
+  }))
 test('fails when a new package lacks license text instead of emitting only its SPDX label', () =>
   fixture(({ root, supplements }) => {
     rmSync(join(root, 'node_modules/a/LICENSE'))
