@@ -1558,3 +1558,316 @@ it.each([undefined, false, true])(
     expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(1)
   },
 )
+
+it('retains an unknown write warning through refresh, close and same-actor identity recovery', async () => {
+  const { state, open, identity } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Possibly committed reply'
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('connection lost'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]![2]
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  await state.load()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  open.value = false
+  identity.value = { ...context(), session: null }
+  await flushPromises()
+  identity.value = { ...context(), csrfToken: 'renewed' }
+  open.value = true
+  await flushPromises()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  expect(state.text.value).toBe('Possibly committed reply')
+  expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(1)
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[1]![2]).toEqual(first)
+})
+
+it('marks a cancelled in-flight close as unknown and rejects its late success', async () => {
+  const { state, open } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Reply before close'
+  const deferredReply = deferred<ReviewMessage>()
+  vi.mocked(publicReviewThreadsApi.reply).mockReturnValueOnce(deferredReply.promise)
+  const writing = state.send()
+  const first = vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]!
+  expect(state.busy.value).toBe(true)
+  open.value = false
+  await flushPromises()
+  expect(first[4]!.aborted).toBe(true)
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  open.value = true
+  await flushPromises()
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  expect(state.text.value).toBe('Reply before close')
+  deferredReply.resolve(message())
+  await writing
+  expect(state.text.value).toBe('Reply before close')
+  expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[1]![2]).toEqual(first[2])
+})
+
+it.each([
+  [400, undefined],
+  [403, 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED'],
+  [403, 'PROTOTYPE_HUB_REVIEW_COMMENTS_DISABLED'],
+  [404, 'PROTOTYPE_HUB_REVIEW_THREAD_UNAVAILABLE'],
+  [409, undefined],
+  [413, undefined],
+  [429, undefined],
+] as const)(
+  'does not label a received %s/%s rejection as an unknown write',
+  async (status, code) => {
+    const { state, open, identity } = setup(publicScope(), true, 't1')
+    await flushPromises()
+    state.text.value = 'Rejected reply'
+    vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(
+      new ApiError('rejected', status, code),
+    )
+    await state.send()
+    expect(state.unknown.value).toBe(false)
+    expect(state.notice.value).not.toBe(protoLocales.zh.feedbackResultUnknown)
+    open.value = false
+    identity.value = { ...context(), csrfToken: 'renewed' }
+    open.value = true
+    await flushPromises()
+    expect(state.unknown.value).toBe(false)
+    expect(state.notice.value).not.toBe(protoLocales.zh.feedbackResultUnknown)
+    expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(1)
+  },
+)
+
+it('explicitly retries the original reply snapshot without clearing newer text, File or visibility edits', async () => {
+  const { state, open } = setup(memberScope(), true, 't1')
+  await flushPromises()
+  const originalImage = file(),
+    newerImage = file('image/png', 'new image')
+  state.text.value = 'Original internal reply'
+  state.visibility.value = 'internal'
+  state.selectImage(originalImage)
+  vi.mocked(reviewThreadsApi.replyImage).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(reviewThreadsApi.replyImage).mock.calls[0]!
+  state.text.value = 'A newer public draft'
+  state.visibility.value = 'public'
+  state.selectImage(newerImage)
+  open.value = false
+  open.value = true
+  await flushPromises()
+  expect(state.unknown.value).toBe(true)
+  await state.retry()
+  const second = vi.mocked(reviewThreadsApi.replyImage).mock.calls[1]!
+  expect(second[2]).toEqual(first[2])
+  expect(second[3]).toBe(originalImage)
+  expect(state.text.value).toBe('A newer public draft')
+  expect(state.imageFile.value).toBe(newerImage)
+  expect(state.visibility.value).toBe('public')
+  expect(state.unknown.value).toBe(false)
+  await state.send()
+  expect(vi.mocked(reviewThreadsApi.replyImage).mock.calls[2]![2].clientRequestId).not.toBe(
+    first[2].clientRequestId,
+  )
+  expect(state.text.value).toBe('')
+})
+
+it('retries the original status CAS even when refresh changed the thread state and later text was edited', async () => {
+  const { state } = setup(memberScope(), true, 't1')
+  await flushPromises()
+  vi.mocked(reviewThreadsApi.status).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.status('resolved')
+  const first = vi.mocked(reviewThreadsApi.status).mock.calls[0]![2]
+  vi.mocked(reviewThreadsApi.detail).mockResolvedValue({
+    ...thread(),
+    state: 'resolved',
+    configVersion: 3,
+  })
+  await state.load()
+  state.text.value = 'Unsent later reply'
+  await state.retry()
+  expect(vi.mocked(reviewThreadsApi.status).mock.calls[1]![2]).toEqual(first)
+  expect(state.text.value).toBe('Unsent later reply')
+  expect(state.unknown.value).toBe(false)
+})
+
+it('does not navigate a successful original create retry over a later create draft', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.text.value = 'Original question'
+  state.selectAnchor(anchorDraft)
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1]
+  state.text.value = 'Later question'
+  await state.retry()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1]).toEqual(first)
+  expect(state.selectedId.value).toBeUndefined()
+  expect(state.text.value).toBe('Later question')
+  expect(state.anchor.value).toEqual(anchorDraft)
+  expect(state.unknown.value).toBe(false)
+})
+
+it('keeps the unknown original anchor available while a later anchor draft is edited', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.text.value = 'Original anchored question'
+  state.selectAnchor(anchorDraft)
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1]
+  state.selectAnchor({ ...anchorDraft, x: 6 })
+  expect(state.unknown.value).toBe(true)
+  await state.retry()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1]).toEqual(first)
+  expect(state.anchor.value?.x).toBe(6)
+  expect(state.text.value).toBe('Original anchored question')
+  expect(state.selectedId.value).toBeUndefined()
+})
+
+it('offers original public status recovery after refresh hides the already-applied reopen action', async () => {
+  const { state } = setup(publicScope(), true, 't1')
+  vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({
+    ...thread(),
+    state: 'resolved',
+    canReopen: true,
+  })
+  await state.load()
+  vi.mocked(publicReviewThreadsApi.status).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.status('open')
+  const first = vi.mocked(publicReviewThreadsApi.status).mock.calls[0]![2]
+  vi.mocked(publicReviewThreadsApi.detail).mockResolvedValue({
+    ...thread(),
+    state: 'open',
+    configVersion: 3,
+    canReopen: false,
+  })
+  await state.load()
+  await state.retry()
+  expect(vi.mocked(publicReviewThreadsApi.status).mock.calls[1]![2]).toEqual(first)
+  expect(state.unknown.value).toBe(false)
+})
+
+it('keeps an explicit original-operation recovery action visible after later image edits without automatic writes', async () => {
+  const { state } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Original reply'
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]![2]
+  const wrapper = feedbackDrawer(state)
+  state.text.value = 'Later unsent draft'
+  state.selectImage(file())
+  await flushPromises()
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackResultUnknown)
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackRetryOriginalHint)
+  expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(1)
+  await feedbackButton(wrapper, protoLocales.zh.feedbackRetryOriginal).trigger('click')
+  await flushPromises()
+  expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[1]![2]).toEqual(first)
+  expect(state.text.value).toBe('Later unsent draft')
+  expect(state.imageFile.value).toBeDefined()
+  expect(wrapper.text()).not.toContain(protoLocales.zh.feedbackRetryOriginalHint)
+})
+
+it('shows a current invalid-image warning beside the retained unknown result instead of hiding either state', async () => {
+  const { state } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Possibly committed reply'
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const wrapper = feedbackDrawer(state)
+  state.selectImage(file('text/plain'))
+  await flushPromises()
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackResultUnknown)
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackImageInvalid)
+  expect(wrapper.text()).toContain(protoLocales.zh.feedbackRetryOriginal)
+  expect(state.unknown.value).toBe(true)
+})
+
+it.each([
+  [403, 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED'],
+  [429, undefined],
+] as const)(
+  'keeps the first unknown snapshot when its original retry is rejected by %s/%s',
+  async (status, code) => {
+    const { state, open, identity } = setup(publicScope(), true, 't1')
+    await flushPromises()
+    state.text.value = 'Original possibly committed reply'
+    vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('unknown'))
+    await state.send()
+    const original = vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]![2]
+    state.text.value = 'Later unsent reply'
+    vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(
+      new ApiError('rejected retry', status, code),
+    )
+    await state.retry()
+    expect(state.unknown.value).toBe(true)
+    expect(state.text.value).toBe('Later unsent reply')
+    open.value = false
+    identity.value = { ...context(), session: null }
+    identity.value = { ...context(), csrfToken: 'renewed' }
+    open.value = true
+    await flushPromises()
+    expect(state.unknown.value).toBe(true)
+    expect(state.notice.value).toBe(protoLocales.zh.feedbackResultUnknown)
+    expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(2)
+    await state.retry()
+    expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[2]![2]).toEqual(original)
+    expect(state.text.value).toBe('Later unsent reply')
+    expect(state.unknown.value).toBe(false)
+  },
+)
+
+it('returns focus to the task heading if original recovery needs identity and its replacement action is disabled', async () => {
+  const { state } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Possibly committed reply'
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const wrapper = feedbackDrawer(state)
+  await flushPromises()
+  const retry = feedbackButton(wrapper, protoLocales.zh.feedbackRetryOriginal)
+  ;(retry.element as HTMLElement).focus()
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(
+    new ApiError('expired', 403, 'PROTOTYPE_HUB_REVIEW_SESSION_REQUIRED'),
+  )
+  await retry.trigger('click')
+  await flushPromises()
+  expect(state.unknown.value).toBe(true)
+  expect(state.authenticationRequired.value).toBe(true)
+  expect(wrapper.get('.feedback-task-heading').element).toBe(document.activeElement)
+  expect(
+    feedbackButton(wrapper, protoLocales.zh.feedbackRetryOriginal).attributes('disabled'),
+  ).toBeDefined()
+})
+
+it('clears the actual dispatched draft after a same-semantic normal retry with different surrounding whitespace', async () => {
+  const { state } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  state.text.value = 'Same semantic reply'
+  vi.mocked(publicReviewThreadsApi.reply).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.reply).mock.calls[0]![2]
+  state.text.value = '  Same semantic reply  '
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.reply).mock.calls[1]![2]).toEqual(first)
+  expect(state.text.value).toBe('')
+  expect(state.unknown.value).toBe(false)
+  await state.send()
+  expect(publicReviewThreadsApi.reply).toHaveBeenCalledTimes(2)
+})
+
+it('clears and selects a same-semantic normal create retry after the same anchor is captured as a new object', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.text.value = 'Same position question'
+  state.selectAnchor(anchorDraft)
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1]
+  state.selectAnchor({ ...anchorDraft })
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1]).toEqual(first)
+  expect(state.text.value).toBe('')
+  expect(state.anchor.value).toBeUndefined()
+  expect(state.selectedId.value).toBe('t1')
+})

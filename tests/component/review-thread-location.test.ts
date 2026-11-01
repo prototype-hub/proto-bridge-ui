@@ -85,7 +85,7 @@ afterEach(() => {
   window.history.replaceState({}, '', originalUrl)
 })
 
-it('waits for the authorized shell, preserves the target through an identity handoff and only clears it on explicit close', async () => {
+it('waits for the authorized shell and preserves the target through an identity handoff and visual close', async () => {
   const { location, router, open, available } = await setup(
     `/share/open?revisionId=r1&pageId=home&threadId=${id}`,
     '/tools/',
@@ -106,7 +106,8 @@ it('waits for the authorized shell, preserves the target through an identity han
   location.close()
   await flushPromises()
   expect(router.currentRoute.value.query).toMatchObject({ revisionId: 'r1', pageId: 'home' })
-  expect(router.currentRoute.value.query.threadId).toBeUndefined()
+  expect(router.currentRoute.value.query.threadId).toBe(id)
+  expect(open.value).toBe(false)
 })
 
 it('clears the target on explicit page selection and restores it through Back/Forward without inventing another page', async () => {

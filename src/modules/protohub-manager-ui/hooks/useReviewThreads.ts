@@ -45,7 +45,7 @@ export function useReviewThreads(
     if (busy.value || selectedId.value || !isPublic.value) return
     if (value && !isReviewAnchor(value)) return
     anchor.value = value ? { ...value } : undefined
-    pending.value = undefined
+    if (!unknown.value) pending.value = undefined
     anchorEpoch.value++
   }
   const imageFile = shallowRef<File>(),
@@ -62,7 +62,7 @@ export function useReviewThreads(
   const loading = ref(false),
     busy = ref(false),
     error = ref(''),
-    notice = ref(''),
+    currentNotice = ref(''),
     needsIdentity = ref(false)
   let generation = 0,
     controller: AbortController | undefined,
@@ -73,8 +73,21 @@ export function useReviewThreads(
     semantic: string
     clientRequestId: string
     expectedVersion?: number
+    outcome?: 'sending' | 'unknown'
+    state?: ReviewThreadState
+    threadId?: string
+    draft: {
+      text: string
+      file?: File
+      visibility: ReviewMessage['visibility']
+      anchor?: ReviewAnchor
+    }
   }>()
   const hasPendingRequest = computed(() => !!pending.value)
+  const unknown = computed(() => pending.value?.outcome === 'unknown')
+  const notice = computed(
+    () => currentNotice.value || (unknown.value ? t('proto.feedbackResultUnknown') : ''),
+  )
   const selected = computed(() => detail.value)
   const targeted = computed(() => location?.threadId.value !== undefined)
   const isPublic = computed(() => scope.value?.kind === 'public')
@@ -138,6 +151,9 @@ export function useReviewThreads(
   )
   const assignment = useReviewAssignment(scope, open, selectedId, readable)
   function abort() {
+    // Cancelling a dispatched write cannot prove that the server did not commit it.
+    if (pending.value?.outcome === 'sending')
+      pending.value = { ...pending.value, outcome: 'unknown' }
     generation++
     controller?.abort()
     loading.value = busy.value = false
@@ -152,7 +168,7 @@ export function useReviewThreads(
   function selectImage(file?: File) {
     if (busy.value) return
     if (file && !selectedId.value && !isPublic.value) {
-      notice.value = t('proto.feedbackImageThreadRequired')
+      currentNotice.value = t('proto.feedbackImageThreadRequired')
       return
     }
     if (
@@ -161,12 +177,12 @@ export function useReviewThreads(
         !file.size ||
         file.size > 5 * 1024 * 1024)
     ) {
-      notice.value = t('proto.feedbackImageInvalid')
+      currentNotice.value = t('proto.feedbackImageInvalid')
       return
     }
     imageSequence++
     imageFile.value = file
-    notice.value = ''
+    currentNotice.value = ''
   }
   watch(
     [imageFile, open, messages],
@@ -290,7 +306,7 @@ export function useReviewThreads(
         return
       }
       if (cause.status === 429) {
-        notice.value = t('proto.reviewRateLimited')
+        currentNotice.value = t('proto.reviewRateLimited')
         return
       }
     }
@@ -300,7 +316,7 @@ export function useReviewThreads(
     abort()
     clearData()
     error.value = ''
-    notice.value = ''
+    currentNotice.value = ''
     if (location?.threadId.value === null) {
       error.value = t('proto.feedbackInvalidTarget')
       return
@@ -433,7 +449,10 @@ export function useReviewThreads(
     pageIndex.value = 0
     void load()
   }
-  async function mutate(state?: ReviewThreadState) {
+  async function mutate(state?: ReviewThreadState, original = false) {
+    const retry = original ? pending.value : undefined
+    if (original && (!unknown.value || !retry || retry.threadId !== selectedId.value)) return
+    if (retry) state = retry.state
     const target = scope.value,
       thread = selected.value
     if (!target || !open.value || !authorized() || !writable.value || busy.value || loading.value)
@@ -442,40 +461,58 @@ export function useReviewThreads(
     if (selectedId.value && !thread) return
     if (
       state &&
-      (!thread || (target.kind === 'public' && (state !== 'open' || thread.canReopen !== true)))
+      (!thread ||
+        (target.kind === 'public' && (state !== 'open' || (!retry && thread.canReopen !== true))))
     )
       return
     if (!state && target.kind === 'member' && !thread) return
-    const file = !state ? imageFile.value : undefined
-    const body = text.value.trim()
+    const draft = retry?.draft || {
+      text: text.value,
+      file: imageFile.value,
+      visibility: visibility.value,
+      anchor: anchor.value,
+    }
+    const file = !state ? draft.file : undefined
+    const body = draft.text.trim()
     if (!state && (!body || body.length > 4000)) {
-      notice.value = t('proto.feedbackTextRequired')
+      currentNotice.value = t('proto.feedbackTextRequired')
       return
     }
     const page = { revisionId: target.page.revisionId, pageId: target.page.pageId }
-    const semantic = JSON.stringify([
-      scopeKey.value,
-      actor.value,
-      thread?.id || '',
-      state ? 'status' : file ? 'image' : 'text',
-      state || body,
-      state ? '' : target.kind === 'member' ? visibility.value : 'public',
-      ...(file ? [imageSequence] : []),
-      ...(!thread && !state && anchor.value ? [anchor.value] : []),
-    ])
+    const semantic =
+      retry?.semantic ||
+      JSON.stringify([
+        scopeKey.value,
+        actor.value,
+        thread?.id || '',
+        state ? 'status' : file ? 'image' : 'text',
+        state || body,
+        state ? '' : target.kind === 'member' ? draft.visibility : 'public',
+        ...(file ? [imageSequence] : []),
+        ...(!thread && !state && draft.anchor ? [draft.anchor] : []),
+      ])
     if (pending.value?.semantic !== semantic)
       pending.value = {
         semantic,
         clientRequestId: secureId(),
+        state,
+        threadId: thread?.id,
+        draft,
         ...(state ? { expectedVersion: thread!.configVersion } : {}),
       }
     const receipt = pending.value,
       epoch = generation,
       request = new AbortController()
+    const unchangedDraft = () =>
+      text.value === draft.text &&
+      imageFile.value === draft.file &&
+      visibility.value === draft.visibility &&
+      anchor.value === draft.anchor
     controller?.abort()
     controller = request
     busy.value = true
-    error.value = notice.value = ''
+    pending.value = { ...receipt, outcome: 'sending' }
+    error.value = currentNotice.value = ''
     try {
       if (state) {
         const input = {
@@ -502,8 +539,8 @@ export function useReviewThreads(
           ...page,
           text: body,
           clientRequestId: receipt.clientRequestId,
-          ...(!thread && target.kind === 'public' && anchor.value
-            ? { anchor: { ...anchor.value } }
+          ...(!thread && target.kind === 'public' && draft.anchor
+            ? { anchor: { ...draft.anchor } }
             : {}),
         }
         if (target.kind === 'public' && !thread) {
@@ -525,8 +562,11 @@ export function useReviewThreads(
           if (epoch !== generation || request.signal.aborted) return
           if (created.revisionId !== page.revisionId || created.pageId !== page.pageId)
             throw new ApiError('Invalid feedback scope', 404)
-          selectedId.value = created.id
-          location?.select(created)
+          // An original retry may finish after the user edited a new draft; do not move or erase it.
+          if (unchangedDraft()) {
+            selectedId.value = created.id
+            location?.select(created)
+          }
           pageIndex.value = 0
           filter.value = ''
         } else if (file && target.kind === 'public')
@@ -542,7 +582,7 @@ export function useReviewThreads(
           await reviewThreadsApi.replyImage(
             target.versionId,
             thread!.id,
-            { ...input, visibility: visibility.value },
+            { ...input, visibility: draft.visibility },
             file,
             { signal: request.signal, silent: true },
           )
@@ -558,32 +598,38 @@ export function useReviewThreads(
           await reviewThreadsApi.reply(
             target.versionId,
             thread!.id,
-            { ...input, visibility: visibility.value },
+            { ...input, visibility: draft.visibility },
             { signal: request.signal, silent: true },
           )
       }
       if (epoch !== generation || request.signal.aborted) return
       pending.value = undefined
-      if (!state) clearDraft()
+      if (!state && unchangedDraft()) clearDraft()
       filter.value = ''
       messagesPageIndex.value = 0
       await load()
     } catch (cause) {
       if (epoch !== generation || request.signal.aborted) return
+      // Rejecting a retry does not resolve an earlier write whose result was never received.
+      pending.value = { ...receipt, outcome: receipt.outcome === 'unknown' ? 'unknown' : undefined }
       if (cause instanceof ApiError && cause.status === 409) {
         pending.value = undefined
         await load()
-        if (generation === epoch + 1) notice.value = t('proto.feedbackConflict')
+        if (generation === epoch + 1) currentNotice.value = t('proto.feedbackConflict')
       } else if (cause instanceof ApiError && [403, 404, 429].includes(cause.status)) failed(cause)
-      else if (file && cause instanceof ApiError && [400, 413].includes(cause.status))
-        notice.value = t('proto.feedbackImageInvalid')
-      else notice.value = t('proto.feedbackResultUnknown')
+      else if (cause instanceof ApiError && [400, 413].includes(cause.status)) {
+        if (file) currentNotice.value = t('proto.feedbackImageInvalid')
+        else failed(cause)
+      } else {
+        pending.value = { ...receipt, outcome: 'unknown' }
+      }
     } finally {
       if (epoch === generation) busy.value = false
     }
   }
   const send = () => mutate()
   const status = (state: ReviewThreadState) => mutate(state)
+  const retry = () => mutate(undefined, true)
   function copyDraft(event?: MouseEvent) {
     return copyText(
       text.value,
@@ -674,6 +720,7 @@ export function useReviewThreads(
     loading,
     busy,
     hasPendingRequest,
+    unknown,
     error,
     notice,
     isPublic,
@@ -688,6 +735,7 @@ export function useReviewThreads(
     changeFilter,
     send,
     status,
+    retry,
     copyDraft,
   }
 }

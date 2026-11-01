@@ -157,6 +157,21 @@ const canSend = computed(
     state.writable.value &&
     (!state.selectedId.value ? state.isPublic.value : !!state.selected.value),
 )
+async function retryOriginal() {
+  const target = [props.page?.revisionId, props.page?.pageId, state.selectedId.value].join(':')
+  await state.retry()
+  await nextTick()
+  if (
+    !props.open ||
+    target !== [props.page?.revisionId, props.page?.pageId, state.selectedId.value].join(':')
+  )
+    return
+  // The recovery action disappears on success; return keyboard users to the remaining draft.
+  const next = state.unknown.value
+    ? content.value?.querySelector<HTMLElement>('[data-feedback-retry]:not(:disabled)')
+    : content.value?.querySelector<HTMLElement>('textarea:not(:disabled)')
+  ;(next || taskHeading.value)?.focus()
+}
 function selectImage(event: Event) {
   const input = event.target as HTMLInputElement
   state.selectImage(input.files?.[0])
@@ -232,12 +247,25 @@ function selectImage(event: Event) {
           </div>
         </div>
         <a-alert
-          v-if="state.notice.value && !showComposer"
+          v-if="(state.unknown.value || state.notice.value) && !showComposer"
           type="warning"
           show-icon
           role="status"
-          :message="state.notice.value"
-        />
+          :message="state.unknown.value ? t('proto.feedbackResultUnknown') : state.notice.value"
+        >
+          <template v-if="state.unknown.value" #description>
+            <p v-if="state.notice.value !== t('proto.feedbackResultUnknown')">
+              {{ state.notice.value }}
+            </p>
+            <p>{{ t('proto.feedbackRetryOriginalHint') }}</p>
+            <a-button
+              :disabled="!state.writable.value || state.loading.value || state.busy.value"
+              data-feedback-retry
+              @click="retryOriginal"
+              >{{ t('proto.feedbackRetryOriginal') }}</a-button
+            >
+          </template>
+        </a-alert>
         <template v-if="mode === 'detail'">
           <nav class="feedback-navigation" :aria-label="t('proto.feedbackPageList')">
             <a-button type="text" @click="show('list')"
@@ -691,13 +719,26 @@ function selectImage(event: Event) {
         </div>
         <div class="feedback-composer-tools">
           <a-alert
-            v-if="state.notice.value"
+            v-if="state.unknown.value || state.notice.value"
             class="feedback-composer-notice"
             type="warning"
             show-icon
             role="status"
-            :message="state.notice.value"
-          />
+            :message="state.unknown.value ? t('proto.feedbackResultUnknown') : state.notice.value"
+          >
+            <template v-if="state.unknown.value" #description>
+              <p v-if="state.notice.value !== t('proto.feedbackResultUnknown')">
+                {{ state.notice.value }}
+              </p>
+              <p>{{ t('proto.feedbackRetryOriginalHint') }}</p>
+              <a-button
+                :disabled="!state.writable.value || state.loading.value || state.busy.value"
+                data-feedback-retry
+                @click="retryOriginal"
+                >{{ t('proto.feedbackRetryOriginal') }}</a-button
+              >
+            </template>
+          </a-alert>
           <label
             for="review-feedback-image"
             class="feedback-upload"

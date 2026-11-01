@@ -286,6 +286,9 @@ export const protoLocales = {
     feedbackConflict: '反馈状态已变化，已刷新当前记录。草稿仍保留，请核对后再操作，不会自动重试。',
     feedbackResultUnknown:
       '提交结果尚未确认。请先刷新核对；相同内容的手动重试会沿用原请求标识，不会自动提交。',
+    feedbackRetryOriginal: '重试原操作',
+    feedbackRetryOriginalHint: '仅重试最初提交的内容，不会发送后来修改的草稿。',
+    feedbackCheckResult: '反馈结果待确认',
     feedbackThreadMissing: '当前反馈不在此页列表中。草稿已保留，请复制或重新选择反馈后操作。',
     feedbackReturn: '返回页面反馈（保留草稿）',
     feedbackCopyDraft: '复制当前草稿',
@@ -1047,6 +1050,10 @@ export const protoLocales = {
       'The feedback state changed and was refreshed. Your draft is kept. Check the latest record before acting again; nothing is retried automatically.',
     feedbackResultUnknown:
       'The submission result is unknown. Refresh to check first. A manual retry with the same content reuses its original request key; nothing is submitted automatically.',
+    feedbackRetryOriginal: 'Retry original operation',
+    feedbackRetryOriginalHint:
+      'Retries only the original submission. Later draft edits are not sent.',
+    feedbackCheckResult: 'Check feedback result',
     feedbackThreadMissing:
       'This feedback is not on the current list page. Your draft is kept. Copy it or select the feedback again before proceeding.',
     feedbackReturn: 'Return to page feedback (keep draft)',
