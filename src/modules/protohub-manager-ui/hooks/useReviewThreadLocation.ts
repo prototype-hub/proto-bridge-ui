@@ -53,12 +53,8 @@ export function useReviewThreadLocation(
     void router.push({ path: route.path, query: query(thread), hash: '' })
   }
   function close() {
+    // Hiding the drawer is not a target change; its route also owns the in-memory draft scope.
     open.value = false
-    if (route.query.threadId !== undefined) {
-      const next = { ...route.query }
-      delete next.threadId
-      void router.replace({ path: route.path, query: next, hash: route.hash })
-    }
   }
   /** Overview rows only locate an existing shell page; the scoped detail API still grants access. */
   async function view(thread: ReviewThread, context: WorkspaceContext) {

@@ -426,3 +426,65 @@ for (const locale of ['zh', 'en'] as const)
     })
     await expect(area.getByRole('button', { name: text.feedbackSubmit, exact: true })).toBeVisible()
   })
+
+for (const locale of ['zh', 'en'] as const)
+  for (const width of [1440, 390])
+    test(`F04D ${locale} ${width}: close/reopen preserves the complete draft and original unknown retry`, async ({
+      page,
+      request,
+    }, info) => {
+      const fixture = await prepare(page, request, locale)
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(fixture.link('share/open'))
+      const area = drawer(page, locale),
+        text = protoLocales[locale],
+        original = 'Original reply before drawer close',
+        newer = 'Later unsent draft',
+        payloads: Awaited<ReturnType<typeof multipart>>[] = []
+      await area.locator('textarea').fill(original)
+      await area.getByLabel(text.feedbackImageSelect).setInputFiles(upload)
+      const target = new URL(page.url()).search
+      await page.keyboard.press('Escape')
+      await expect(area).not.toBeVisible()
+      expect(new URL(page.url()).search).toBe(target)
+      const reopen = page.getByRole('button', { name: text.feedback, exact: true })
+      await reopen.focus()
+      await page.keyboard.press('Enter')
+      await expect(area.locator('textarea')).toHaveValue(original)
+      await expect(area.getByAltText(text.feedbackImageDraftAlt)).toBeVisible()
+      await page.route('**/review/threads/*/messages-with-image', async (route) => {
+        payloads.push(await multipart(route.request()))
+        const response = await route.fetch()
+        if (payloads.length === 1) await route.abort('failed')
+        else await route.fulfill({ response })
+      })
+      await action(area, 'feedbackSubmit', locale).click()
+      await expect(area.getByText(text.feedbackResultUnknown, { exact: true })).toBeVisible()
+      await area.locator('textarea').fill(newer)
+      await page.keyboard.press('Escape')
+      await expect(area).not.toBeVisible()
+      const recovery = page.getByRole('button', { name: text.feedbackCheckResult, exact: true })
+      await expect(recovery).toBeVisible()
+      await recovery.focus()
+      await page.keyboard.press('Enter')
+      await expect(area.locator('textarea')).toHaveValue(newer)
+      const retry = area.getByRole('button', { name: text.feedbackRetryOriginal, exact: true })
+      await retry.focus()
+      await expect(retry).toBeFocused()
+      await page.screenshot({
+        path: info.outputPath(`f04d-recovery-${locale}-${width}.png`),
+        animations: 'disabled',
+      })
+      await page.keyboard.press('Enter')
+      await expect(area.getByText(text.feedbackResultUnknown, { exact: true })).toHaveCount(0)
+      await expect(area.locator('textarea')).toHaveValue(newer)
+      await expect(area.locator('textarea')).toBeFocused()
+      await expect(area.getByAltText(text.feedbackImageDraftAlt)).toBeVisible()
+      expect(payloads).toHaveLength(2)
+      expect(payloads[1]).toEqual(payloads[0])
+      await expect(area.locator('.feedback-text').filter({ hasText: original })).toHaveCount(1)
+      expect(new URL(page.url()).search).toBe(target)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      )
+    })

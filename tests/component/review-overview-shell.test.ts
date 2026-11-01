@@ -101,7 +101,7 @@ const identityContext = (): ReviewContext => ({
 const pager = <T>(data: T[]) => ({ data, total: data.length, pageIndex: 0, pageSize: 20 })
 const ThreadDrawer = defineComponent({
   props: ['state', 'open'],
-  emits: ['overview'],
+  emits: ['overview', 'close'],
   setup:
     (_, { slots }) =>
     () =>
@@ -336,3 +336,37 @@ it('blocks navigation during a mutation, validates overview rows, then navigates
   })
   expect(wrapper.findComponent(OverviewDrawer).props('open')).toBe(false)
 })
+
+it.each(['share', 'preview'] as const)(
+  'keeps the real %s shell route and complete draft on explicit drawer close and toolbar reopen',
+  async (kind) => {
+    const { wrapper, router, current } = await setup(kind)
+    const state = current(),
+      image = new File(['png'], 'draft.png', { type: 'image/png' })
+    state.text.value = 'Same-thread unsent draft'
+    state.selectImage(image)
+    if (kind === 'preview') state.visibility.value = 'internal'
+    const query = { ...router.currentRoute.value.query }
+    wrapper.findComponent(ThreadDrawer).vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.findComponent(ThreadDrawer).props('open')).toBe(false)
+    expect(router.currentRoute.value.query).toEqual(query)
+    expect(state.selectedId.value).toBe(id)
+    expect(state.text.value).toBe('Same-thread unsent draft')
+    expect(state.imageFile.value).toBe(image)
+    expect(state.imagePreview.value).toBe('')
+    const feedback = wrapper
+      .findAll('button')
+      .find((button) => button.text() === protoLocales.zh.feedback)!
+    await feedback.trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(ThreadDrawer).props('open')).toBe(true)
+    expect(state.selected.value?.id).toBe(id)
+    expect(state.text.value).toBe('Same-thread unsent draft')
+    expect(state.imageFile.value).toBe(image)
+    expect(state.imagePreview.value).toMatch(/^blob:/)
+    expect(state.visibility.value).toBe(kind === 'preview' ? 'internal' : 'public')
+    expect(publicReviewThreadsApi.replyImage).not.toHaveBeenCalled()
+    expect(reviewThreadsApi.replyImage).not.toHaveBeenCalled()
+  },
+)

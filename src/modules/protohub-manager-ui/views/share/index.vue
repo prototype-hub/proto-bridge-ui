@@ -191,7 +191,9 @@ watch(
             type="primary"
             :disabled="!selectedPage"
             @click="feedbackOpen = true"
-            >{{ t('proto.feedback') }}</a-button
+            >{{
+              t(feedback.unknown.value ? 'proto.feedbackCheckResult' : 'proto.feedback')
+            }}</a-button
           >
           <a-button
             v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
