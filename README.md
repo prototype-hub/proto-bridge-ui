@@ -145,14 +145,14 @@ flowchart LR
 ### 环境要求
 
 - Node.js `>= 22.12.0`
-- pnpm `9.0.6`
+- pnpm `9.15.9`
 - 可用的现代 Chromium 浏览器
 
 获取源码并进入项目根目录后，优先使用 Mock 模式体验完整前端流程：
 
 ```bash
 corepack enable
-corepack prepare pnpm@9.0.6 --activate
+corepack prepare pnpm@9.15.9 --activate
 pnpm install --frozen-lockfile
 pnpm dev:mock
 ```
@@ -478,7 +478,7 @@ server {
 | 环境                         | 当前支持边界                                                           |
 | ---------------------------- | ---------------------------------------------------------------------- |
 | Node.js                      | `>= 22.12.0`                                                           |
-| pnpm                         | `9.0.6`                                                                |
+| pnpm                         | `9.15.9`                                                               |
 | TypeScript 编译目标          | ES2022                                                                 |
 | 自动化浏览器                 | Playwright 使用桌面 Chrome；这是当前有明确自动化证据的浏览器           |
 | 其他 Chromium 浏览器         | 通常可运行，但应在目标版本上验收                                       |

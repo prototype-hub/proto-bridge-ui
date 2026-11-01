@@ -32,14 +32,6 @@
     "reviewRequired": false
   },
   {
-    "package": "dom-scroll-into-view@2.0.1",
-    "license": "MIT",
-    "file": "dom-scroll-into-view-MIT.txt",
-    "source": "https://github.com/yiminghe/dom-scroll-into-view/blob/e702b895e2eebeae44d844a8aa26bb02e48f0091/README.md#license",
-    "sha256": "0e46af5c6a65daf8a04eb33f802ba413f1ba7752de9f9394a24896a15d96b793",
-    "reviewRequired": true
-  },
-  {
     "package": "agent-base@6.0.2",
     "license": "MIT",
     "file": "node-proxy-agents-MIT.txt",

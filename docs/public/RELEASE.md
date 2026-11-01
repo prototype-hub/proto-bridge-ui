@@ -38,7 +38,7 @@ pnpm licenses:release
 
 `agent-base@6.0.2` 与 `https-proxy-agent@5.0.1` 将完整 MIT 文本放在 README 的 License 段，已按 npm `gitHead` 对应的官方提交核对原文，并在 `third-party/supplements.json` 记录精确版本、来源和 SHA256；新增版本缺少许可文本仍会失败，不自动套用旧版本例外。
 
-`dom-scroll-into-view@2.0.1` 的上游包和对应源码树只声明 MIT、未提供独立 LICENSE 或作者版权原文；生成清单保留 `declaration-only` 待审标签，`pnpm licenses:release` 会因此失败。开发构建可以生成带此标签的审查产物，但不能据此批准二进制发行。维护者应取得可核验的上游声明，或完成有依据的依赖替换后再解除门禁；不得臆造版权人。公开项目源码的审查与包含第三方代码的构建产物分发分别确认，项目的 Apache-2.0 不覆盖该缺口。
+安装须使用 `packageManager` 固定的 pnpm 9.15.9；旧版 9.0.6 不支持依赖移除覆盖。当前仅移除 `ant-design-vue@4.2.6>dom-scroll-into-view` 这条未使用的声明依赖边：该版本发布包的代码无此引用，全新冻结安装、生产构建及实际控件流程仍须验证。许可清单和 SBOM 的生产闭包只接受根配置中精确“父包名@版本>子包名”的显式移除，其他缺失的必要依赖继续报错；升级父包后不得自动沿用该例外。
 
 `pnpm sbom` 是当前安装环境清单，不能证明所有目标平台可选包、实际bundle或许可证义务均已核对；发布时结合 lock、实际产物与完整文本审查。默认素材来源见 [素材说明](../ASSET_PROVENANCE.md)，外部品牌/上传内容由其提供者确认权利。
 
@@ -60,9 +60,14 @@ pnpm audit:dependencies
 
 `eslint-plugin-vue` 已按[官方 10.11.1 依赖及 peer 声明](https://github.com/vuejs/eslint-plugin-vue/blob/v10.11.1/package.json)兼容升级，移除旧 `postcss-selector-parser@6.1.4`，由调用方正常解析到已修复的 7.1.7，不使用跨主版本强制覆盖。该变更只涉及开发工具，生产依赖与页面行为不变。
 
+2026-11-01 在各自原主版本内将 Vue I18n 升至 11.4.14、Vite 升至 6.4.5、Vitest 升至 4.1.12，并固定传递依赖 `follow-redirects@1.16.2`、`fast-uri@3.1.9`。当前锁文件的官方审计为生产范围无命中、全部依赖仍有 3 项 Moderate；后者使审计命令继续返回 1，不视为全部通过。
+
 开发依赖仍有以下未清项，后续扫描可能变化：
 
-- `stylelint` 经 `micromatch`/`fast-glob` 引入的 `braces@3.0.3`：High，[上游问题](https://github.com/micromatch/braces/issues/70)描述深度嵌套的外部 glob 模式可耗尽 Node 调用栈，当前无已发布修复版本。它不在生产依赖闭包；本项目的 lint 使用仓库维护的固定模式，仍应在隔离环境中处理不可信源码或配置，不能据此宣称漏洞已修复。自动审计门禁继续保留该命中并返回非零状态。
+- `minimatch@3.1.5` 和 `9.0.9`：[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)，glob 分段放大可导致拒绝服务；公告修复版本从 11.0.1 开始，不能直接将当前调用方的不同主版本依赖强制覆盖为 11。
+- `glob@10.5.0`：[GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)，取消信号可能未及时停止文件遍历；公告修复版本从 14.0.2 开始，须由调用方兼容升级，不能用忽略项或跨主版本强制覆盖使审计变绿。
+
+这些包不在当前生产依赖闭包。项目工具使用仓库维护的模式，但处理不可信源码或配置时仍须隔离；这项范围说明不是漏洞修复或运行时不可利用的证明。
 
 这些结果是检查时点的依赖记录，不涵盖镜像、部署代理或未来新增依赖，也不能代替维护者对正式发行风险的判断。
 
