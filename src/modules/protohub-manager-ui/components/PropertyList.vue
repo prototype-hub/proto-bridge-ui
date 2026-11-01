@@ -10,7 +10,7 @@ const { t, te } = useI18n()
 </script>
 <template>
   <section>
-    <h3>{{ title }}</h3>
+    <h3 v-if="title">{{ title }}</h3>
     <dl class="properties">
       <template v-for="(value, key) in values" :key="key"
         ><dt>{{ te(`proto.${String(key)}`) ? t(`proto.${String(key)}`) : key }}</dt>

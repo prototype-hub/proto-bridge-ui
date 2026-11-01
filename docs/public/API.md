@@ -298,6 +298,18 @@ Thread为 `{id,revisionId,pageId,pageName,pagePath,summary,authorName,authorComp
 
 维护几何协议时，真实运行脚本验证使用独立入口：`PROTOTYPE_HUB_TEST_INSPECTOR_PATH=/absolute/path/to/inspector.js pnpm exec playwright test --config tests/playwright.anchors.config.ts`。显式指定当前后端的原始inspector.js，专项直接使用该资源，不复制协议实现；缺少变量时明确失败，不静默跳过。默认 `pnpm test:e2e` 仍运行原mock目录，不需要本机后端路径，此测试变量不是产品运行配置。
 
+### 运行时 Inspect 工具
+
+成员预览和分享查看沿现有 Inspect 授权提供“元素 / 测距 / 页面样式”工作区，不新增邮箱验证门槛或访问权。原元素属性、CSS、HTML、资产及递归子框架检查保持；新的测距和样式工具只作用于当前根文档。窄屏选取 A/B 时先关闭工具抽屉，完成或取消后重开并归还焦点；鼠标点击、方向键、Enter 和 Escape 均有对应选择/取消路径。
+
+A/B 返回根文档中两个渲染元素的外接矩形，数值为运行时 CSS px，保留两位小数。每轴以较大的起点减去较小的终点：大于零是间隔，否则显示重叠量，零为相接。允许选择同一元素、替换 A/B 或清空结果；不把子框架坐标转换成根文档测距，也不从 HTML 反推设计源。
+
+页面样式由用户显式读取或重新读取。扫描最多访问 2000 个根文档元素、100 毫秒，每种最多 100 个颜色/字体组合，字符串最多 256 字符；遇任一上限明确标记部分结果，隐藏元素仍消耗扫描预算。只统计非零渲染矩形且 display/visibility 可见的元素，不遍历框架或 Shadow DOM。颜色计数是计算属性出现次数：有直接非空白文本时的 color、非透明 background-color，以及非零且非 none/hidden 边框各侧的颜色；同色四边框计四次，所有完全透明颜色均排除。它不是像素/最终合成统计，不追溯祖先透明度、遮挡或伪元素。字体按有直接文字的元素计数，组合为计算出的 font-family/font-size/font-weight/line-height；family 字符串不证明实际加载字形或设计 token。按计数降序、稳定字符串次序排列，可单项复制。
+
+新工具使用独立 `PROTOTYPE_INSPECT_TOOL_COMMAND` / `PROTOTYPE_INSPECT_TOOL_EVENT` 通道，校验当前根窗口、opaque null origin、随机 channel、当前 generation、页面/runtime 身份及严格有界字段。命令只带相对编码路径和前缀长度，不带平台或 guest 凭据、身份、草稿、HTML 或表单值。ready/summary 等待上限 3 秒；pick 收到 ready 后人的选择无完成时限，超时、切页/修订/runtime、模式退出和授权替换会清理或拒绝旧结果，迟到响应不能恢复旧数据。旧脚本不支持新工具时明确不可用，原元素 Inspect 仍可独立使用，不开启 allow-same-origin。
+
+结果是运行时快照；DOM/样式相关事件、resize、字体或样式表加载及已选元素矩形变化使旧工具结果失效，用户须重选/重读。直接 CSSOM 修改若不触发事件，不在持续跟踪保证内，应手动重新读取；不循环扫描整页计算样式。独立实际脚本测试入口为 `PROTOTYPE_HUB_TEST_INSPECTOR_PATH=/absolute/path/to/inspector.js pnpm exec playwright test --config tests/playwright.inspect-tools.config.ts`，使用 5194 专项端口及真实后端资源；该夹具验证不等于真实 Axure、目标部署或其他浏览器验收。
+
 ### 成员线程负责人
 
 仅成员预览的已有选定线程展示负责人，公开分享不调用分派接口。base为 `/prototype-hub/versions/{versionId}/review-threads/{threadId}`，每次带 `{revisionId,pageId}`；详情与候选要求版本query，修改要求版本save，均同时检查当前项目edit或既有有效管理员例外。

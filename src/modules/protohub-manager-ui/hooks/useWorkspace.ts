@@ -11,6 +11,7 @@ import { isFrameSource, isInspectElement } from '@/modules/protohub-manager-ui/u
 import { secureId } from '@/shared/utils/secure-id'
 import { isAnchorEvent, isReviewAnchor, type AnchorStatus } from '../utils/review-anchor'
 import { t } from '@/shared/i18n'
+import { useInspectTools } from './useInspectTools'
 
 export function useWorkspace(
   context: Ref<WorkspaceContext>,
@@ -28,6 +29,15 @@ export function useWorkspace(
   const loading = ref(true)
   const error = ref('')
   const element = ref<InspectElement | null>(null)
+  const inspectTools = useInspectTools(
+    context,
+    currentPage,
+    frame,
+    mode,
+    loading,
+    isNarrow,
+    inspectorOpen,
+  )
   const anchorStatus = ref<AnchorStatus | 'capturing' | 'locating'>(),
     anchorCapture = ref<{ anchor?: ReviewAnchor }>()
   let anchorChannel = secureId(),
@@ -108,6 +118,7 @@ export function useWorkspace(
   }
   const toggleTitle = computed(() => t(navVisible.value ? 'proto.hidePages' : 'proto.showPages'))
   function load() {
+    inspectTools.reset()
     clearTimeout(anchorTimer)
     anchorGeneration++
     anchorStatus.value = undefined
@@ -144,17 +155,20 @@ export function useWorkspace(
     clearTimeout(timer)
     loading.value = false
     sendMode()
+    inspectTools.documentLoaded()
     anchorChannel = secureId()
     anchorGeneration = 0
     anchorCommand('ready')
   }
   function failed() {
+    inspectTools.reset()
     clearTimeout(timer)
     loading.value = false
     error.value = t('proto.runtimeError')
   }
   // Opaque origin alone is not identity: accept messages only from this prototype frame tree.
   function receive(event: MessageEvent<unknown>) {
+    inspectTools.receive(event)
     // Geometry is root-only; recursive inspect messages retain their separate established policy.
     if (
       mode.value === 'preview' &&
@@ -199,11 +213,18 @@ export function useWorkspace(
   watch([currentPage, () => context.value.runtimeBaseUrl, location.error], load, {
     immediate: true,
   })
+  // Reauthorization can replace a same-URL context; invalidate tools without inventing an iframe load.
+  watch(context, () => {
+    inspectTools.reset()
+    if (mode.value === 'inspect' && !loading.value) inspectTools.ready()
+  })
   watch(mode, () => {
+    inspectTools.reset()
     if (mode.value === 'inspect') clearAnchor()
     element.value = null
     inspectorOpen.value = false
     sendMode()
+    if (mode.value === 'inspect' && !loading.value) inspectTools.ready()
   })
   onMounted(() => {
     resize()
@@ -233,6 +254,7 @@ export function useWorkspace(
     loading,
     error,
     element,
+    inspectTools,
     toggleTitle,
     load,
     loaded,

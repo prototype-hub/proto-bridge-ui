@@ -329,6 +329,40 @@ export interface InspectElement {
   html: string
   assets: InspectAsset[]
 }
+export type InspectToolTab = 'element' | 'measure' | 'styles'
+export type InspectToolSlot = 'A' | 'B'
+export type InspectToolAction = 'ready' | 'pick' | 'summary' | 'clear'
+export interface InspectToolSelection {
+  slot: InspectToolSlot
+  tagName: string
+  id: string
+  rect: { x: number; y: number; width: number; height: number }
+}
+export interface InspectToolSummary {
+  visited: number
+  truncated: boolean
+  colors: { value: string; count: number }[]
+  fonts: { family: string; size: string; weight: string; lineHeight: string; count: number }[]
+}
+/** Root-document tool snapshots never carry prototype HTML, form values or shell credentials. */
+export type InspectToolEvent = {
+  type: 'PROTOTYPE_INSPECT_TOOL_EVENT'
+  channel: string
+  generation: number
+} & (
+  | { status: 'ready' | 'stale' | 'cancelled' | 'unavailable' }
+  | { status: 'selected'; selection: InspectToolSelection }
+  | { status: 'summary'; summary: InspectToolSummary }
+)
+export interface InspectToolState {
+  tab: InspectToolTab
+  status: 'idle' | 'connecting' | 'ready' | 'picking' | 'loading' | 'stale' | 'unavailable'
+  selections: Partial<Record<InspectToolSlot, InspectToolSelection>>
+  summary?: InspectToolSummary
+  picking?: InspectToolSlot
+  focusSlot?: InspectToolSlot
+  pickCompletion: number
+}
 export interface WorkspaceContext {
   /** Immutable identity authorized for this workspace; legacy standalone contexts may omit it. */
   revisionId?: string

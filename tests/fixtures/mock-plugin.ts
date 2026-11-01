@@ -13,10 +13,12 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { runtimeHtml, anchorRuntimeHtml, anchorNestedHtml } from './runtime'
+import { runtimeHtml, anchorRuntimeHtml, anchorNestedHtml, inspectRuntimeHtml } from './runtime'
 // Geometry acceptance explicitly supplies the real backend resource; ordinary FE fixtures stay standalone.
 function runtimeDocument(path: string) {
   if (!process.env.PROTOTYPE_HUB_TEST_INSPECTOR_PATH) return runtimeHtml
+  if (process.env.PROTOTYPE_HUB_TEST_INSPECT_TOOLS === '1')
+    return path.endsWith('/nested.html') ? anchorNestedHtml : inspectRuntimeHtml
   return path.endsWith('/nested.html') ? anchorNestedHtml : anchorRuntimeHtml
 }
 
