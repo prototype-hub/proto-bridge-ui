@@ -16,7 +16,8 @@ async function openHistory(page: Page) {
 }
 async function openAssets(page: Page) {
   const history = await openHistory(page)
-  await history.getByRole('button', { name: '原始资产', exact: true }).click()
+  await history.getByRole('button', { name: '页面资料', exact: true }).click()
+  await page.getByRole('menuitem', { name: '原始资产', exact: true }).click()
   const panel = page.getByRole('dialog', { name: '原始资产', exact: true })
   await expect(panel.getByRole('heading', { name: 'Contract project V1' })).toBeVisible()
   return panel
@@ -27,9 +28,10 @@ test('fixed-revision selections survive server paging/search, ZIP and JSON match
   const history = await openHistory(page)
   const revision = history.getByRole('checkbox')
   await revision.check()
-  const trigger = history.getByRole('button', { name: '原始资产', exact: true })
+  const trigger = history.getByRole('button', { name: '页面资料', exact: true })
   await trigger.focus()
   await page.keyboard.press('Enter')
+  await page.getByRole('menuitem', { name: '原始资产', exact: true }).click()
   const panel = page.getByRole('dialog', { name: '原始资产', exact: true })
   await expect(panel.locator('h2')).toBeFocused()
   await panel.getByRole('checkbox', { name: '选择 images/icon-01.svg', exact: true }).check()
@@ -122,8 +124,9 @@ test('denied list clears results, refresh shows an empty revision, and mismatche
   await panel.getByRole('button', { name: '返回历史修订', exact: true }).click()
   await page
     .getByRole('dialog', { name: '历史修订', exact: true })
-    .getByRole('button', { name: '原始资产', exact: true })
+    .getByRole('button', { name: '页面资料', exact: true })
     .click()
+  await page.getByRole('menuitem', { name: '原始资产', exact: true }).click()
   await expect(panel.getByText(protoLocales.zh.assetsUnavailable, { exact: true })).toBeVisible()
   await expect(panel.locator('.asset-row')).toHaveCount(0)
 })
@@ -178,8 +181,9 @@ test('closing during preparation aborts and prevents a late binary from being sa
   await expect(page.getByRole('dialog', { name: '历史修订', exact: true })).toBeVisible()
   await page
     .getByRole('dialog', { name: '历史修订', exact: true })
-    .getByRole('button', { name: '原始资产', exact: true })
+    .getByRole('button', { name: '页面资料', exact: true })
     .click()
+  await page.getByRole('menuitem', { name: '原始资产', exact: true }).click()
   await expect(panel.locator('.assets-selected')).toContainText('已选择 0 项')
   expect(downloads).toEqual([])
 })
@@ -202,9 +206,10 @@ for (const language of ['zh', 'en'] as const)
         animations: 'disabled',
         fullPage: true,
       })
-      const trigger = history.getByRole('button', { name: copy.originalAssets, exact: true })
+      const trigger = history.getByRole('button', { name: copy.pageResources, exact: true })
       await trigger.focus()
       await page.keyboard.press('Enter')
+      await page.getByRole('menuitem', { name: copy.originalAssets, exact: true }).click()
       const panel = page.getByRole('dialog', { name: copy.originalAssets, exact: true })
       await expect(panel.locator('h2')).toBeFocused()
       await expect(panel.locator('.asset-row')).toHaveCount(50)
@@ -266,9 +271,10 @@ for (const language of ['zh', 'en'] as const)
         animations: 'disabled',
         fullPage: true,
       })
-      const previewTrigger = page.getByRole('button', { name: copy.originalAssets, exact: true })
+      const previewTrigger = page.getByRole('button', { name: copy.pageResources, exact: true })
       await previewTrigger.focus()
       await page.keyboard.press('Enter')
+      await page.getByRole('menuitem', { name: copy.originalAssets, exact: true }).click()
       await expect(panel.locator('.asset-row')).toHaveCount(50)
       await expect(panel.locator('.assets-revision')).toContainText('r-v1')
       await page.keyboard.press('Escape')
