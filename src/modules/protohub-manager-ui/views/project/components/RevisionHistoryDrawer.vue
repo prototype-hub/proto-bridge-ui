@@ -6,7 +6,11 @@ import {
   Button as AButton,
   Tag as ATag,
   Checkbox as ACheckbox,
+  Dropdown as ADropdown,
+  Menu as AMenu,
+  MenuItem as AMenuItem,
 } from 'ant-design-vue'
+import { DownOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePermissions } from '@/shared/auth/provider'
 import type { Project, Revision, Version } from '@/modules/protohub-manager-ui/types'
@@ -28,6 +32,7 @@ const emit = defineEmits<{
   close: []
   preview: [version: Version, revisionId: string]
   workItems: [version: Version, revision: Revision]
+  copyInventory: [revision: Revision]
 }>()
 const { t } = useI18n()
 const permissions = usePermissions()
@@ -44,9 +49,11 @@ const selected = ref<string[]>([])
 const qualityRevision = shallowRef<Revision>()
 const assetsRevision = shallowRef<Revision>()
 let assetsTrigger: HTMLElement | undefined
-function openAssets(revision: Revision, event: MouseEvent) {
-  if (!open.value) return
+function rememberResourceTrigger(event: MouseEvent) {
   assetsTrigger = event.currentTarget as HTMLElement
+}
+function openAssets(revision: Revision) {
+  if (!open.value) return
   assetsRevision.value = revision
 }
 function closeAssets() {
@@ -167,10 +174,19 @@ const columns = computed(() => [
                 @click="version && emit('preview', version, record.id)"
                 >{{ t('proto.preview') }}</permission-button
               >
-              <permission-button
-                :permission="p.version.query"
-                @click="openAssets(record, $event)"
-                >{{ t('proto.originalAssets') }}</permission-button
+              <a-dropdown :trigger="['click']"
+                ><a-button @click="rememberResourceTrigger"
+                  >{{ t('proto.pageResources') }} <down-outlined aria-hidden="true" /></a-button
+                ><template #overlay
+                  ><a-menu
+                    ><a-menu-item key="copy" @click="emit('copyInventory', record)">{{
+                      t('proto.copyInventory')
+                    }}</a-menu-item
+                    ><a-menu-item key="assets" @click="openAssets(record)">{{
+                      t('proto.originalAssets')
+                    }}</a-menu-item></a-menu
+                  ></template
+                ></a-dropdown
               >
               <permission-button
                 :permission="p.version.query"

@@ -1,3 +1,4 @@
+import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
 import { resetWorkItems, workItemResponse } from './work-item'
 import { fixtureStatistics } from './statistics'
 import { fixtureLicense, fixtureAcceptedLicense, fixtureLicenseDocument } from './license'
@@ -245,6 +246,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
 function reset() {
   licenseStatus = fixtureLicense()
   resetWorkItems()
+  resetCopyInventories()
   resetReview()
   resetSystem()
   menus = structuredClone(initialMenus)
@@ -930,6 +932,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, 404, null, 'Resource unavailable')
     return true
   }
+  if (
+    copyInventoryResponse(
+      path,
+      method,
+      data,
+      member,
+      String(req.headers['x-access-token'] || ''),
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
   if (workItemResponse(path, method, data, member, revisions, revisionPages, res, send, now()))
     return true
   if (

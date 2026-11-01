@@ -1,7 +1,9 @@
+import { copyInventoryLocales } from './copy-inventory'
 import { reviewAssociationLocales } from './review-associations'
 export const protoLocales = {
   zh: {
     ...reviewAssociationLocales.zh,
+    ...copyInventoryLocales.zh,
     originalAssets: '原始资产',
     assetsSearch: '搜索原始文件路径',
     assetsClearSearch: '清除搜索',
@@ -725,6 +727,7 @@ export const protoLocales = {
   },
   en: {
     ...reviewAssociationLocales.en,
+    ...copyInventoryLocales.en,
     originalAssets: 'Original assets',
     assetsSearch: 'Search original file paths',
     assetsClearSearch: 'Clear search',

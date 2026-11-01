@@ -32,6 +32,22 @@ const RevisionHistoryDrawer = defineAsyncComponent(
 const ReviewGuestsDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/ReviewGuestsDrawer.vue'),
 )
+const CopyInventoryDrawer = defineAsyncComponent(
+  () => import('@/modules/protohub-manager-ui/components/CopyInventoryDrawer.vue'),
+)
+const copyRevision = ref<Revision>()
+function openCopyInventory(revision: Revision) {
+  historyVersion.value = undefined
+  copyRevision.value = revision
+}
+async function closeCopyInventory() {
+  const versionId = copyRevision.value?.versionId
+  copyRevision.value = undefined
+  await nextTick()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[data-version-history]'))
+    .find((button) => button.dataset.versionHistory === versionId)
+    ?.focus()
+}
 const WorkItemsDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/WorkItemsDrawer.vue'),
 )
@@ -320,7 +336,11 @@ watch(
             </div>
           </template>
         </data-table></div></load-state
-    ><upload-dialog
+    ><copy-inventory-drawer
+      v-if="copyRevision"
+      :project="resource.data.value.project"
+      :revision="copyRevision"
+      @close="closeCopyInventory" /><upload-dialog
       :open="uploadOpen"
       :context="uploadContext"
       @close="uploadOpen = false"
@@ -340,6 +360,7 @@ watch(
       :project="resource.data.value.project"
       :version="historyVersion"
       @close="historyVersion = undefined"
+      @copy-inventory="openCopyInventory"
       @work-items="openWorkItems"
       @preview="preview" /><work-items-drawer
       v-if="workItems"

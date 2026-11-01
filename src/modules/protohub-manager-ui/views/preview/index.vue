@@ -12,6 +12,8 @@ import {
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
 import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
+import CopyInventoryDrawer from '@/modules/protohub-manager-ui/components/CopyInventoryDrawer.vue'
+import { DownOutlined } from '@ant-design/icons-vue'
 import ReviewAssociationsDrawer from '@/modules/protohub-manager-ui/components/ReviewAssociationsDrawer.vue'
 import { useReviewAssociations } from '@/modules/protohub-manager-ui/hooks/useReviewAssociations'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
@@ -20,7 +22,14 @@ import {
   useReviewThreadsOverview,
   type ReviewOverviewScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreadsOverview'
-import { Alert as AAlert, Button as AButton, Drawer as ADrawer } from 'ant-design-vue'
+import {
+  Alert as AAlert,
+  Button as AButton,
+  Drawer as ADrawer,
+  Dropdown as ADropdown,
+  Menu as AMenu,
+  MenuItem as AMenuItem,
+} from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/usePreview'
@@ -36,7 +45,18 @@ const route = useRoute(),
 const feedbackOpen = ref(false),
   overviewOpen = ref(false),
   selectedPage = ref<ReviewPage>()
-const assetsOpen = ref(false)
+const assetsOpen = ref(false),
+  copyOpen = ref(false)
+const copyPage = ref<ReviewPage>()
+function openCopy() {
+  if (!assetsAllowed.value || !selectedPage.value) return
+  copyPage.value = selectedPage.value
+  copyOpen.value = true
+}
+function closeCopy() {
+  copyOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const assetsTrigger = ref<{ $el: HTMLElement }>()
 const assetsAllowed = computed(
   () =>
@@ -46,7 +66,7 @@ const assetsAllowed = computed(
     permissions.can(p.version.query),
 )
 watch(assetsAllowed, (allowed) => {
-  if (!allowed) assetsOpen.value = false
+  if (!allowed) assetsOpen.value = copyOpen.value = false
 })
 function closeAssets() {
   assetsOpen.value = false
@@ -171,9 +191,20 @@ function locateAnchor(anchor: ReviewAnchor) {
         @page-change="selectedPage = $event"
       >
         <template #actions
-          ><a-button v-if="assetsAllowed" ref="assetsTrigger" @click="assetsOpen = true">{{
-            t('proto.originalAssets')
-          }}</a-button
+          ><a-dropdown v-if="assetsAllowed" :trigger="['click']"
+            ><a-button ref="assetsTrigger" class="page-resource-trigger"
+              ><span class="page-resource-label">{{ t('proto.pageResources') }}</span
+              ><down-outlined aria-hidden="true" /></a-button
+            ><template #overlay
+              ><a-menu
+                ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
+                  t('proto.copyInventory')
+                }}</a-menu-item
+                ><a-menu-item key="assets" @click="assetsOpen = true">{{
+                  t('proto.originalAssets')
+                }}</a-menu-item></a-menu
+              ></template
+            ></a-dropdown
           ><a-button
             v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
             type="primary"
@@ -189,6 +220,13 @@ function locateAnchor(anchor: ReviewAnchor) {
       </prototype-workspace></load-state
     >
   </div>
+  <copy-inventory-drawer
+    v-if="copyOpen && assetsAllowed"
+    :project="project"
+    :revision="revision"
+    :initial-page="copyPage"
+    @close="closeCopy"
+  />
   <a-drawer
     :open="assetsOpen && assetsAllowed"
     :title="t('proto.originalAssets')"
@@ -243,3 +281,18 @@ function locateAnchor(anchor: ReviewAnchor) {
     @view="viewOverview"
   />
 </template>
+<style scoped>
+.page-resource-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.page-resource-label {
+  min-width: 0;
+}
+.page-resource-trigger > .anticon {
+  flex: none;
+  margin-inline-start: 0;
+}
+</style>
