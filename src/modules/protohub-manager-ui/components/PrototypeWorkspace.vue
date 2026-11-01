@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRef, watch, type PropType } from 'vue'
+import { toRef, watch, ref, nextTick, type PropType } from 'vue'
 import {
   Button as AButton,
   RadioGroup as ARadioGroup,
@@ -17,6 +17,7 @@ import type {
   WorkspacePane,
   ReviewPage,
   ReviewAnchor,
+  InspectToolTab,
 } from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
@@ -53,11 +54,29 @@ const {
   loading,
   error,
   element,
+  inspectTools,
   toggleTitle,
   load,
   loaded,
   failed,
 } = useWorkspace(toRef(props, 'context'), props.pane, props.compact)
+const desktopInspector = ref<InstanceType<typeof InspectorPanel>>()
+const narrowInspector = ref<InstanceType<typeof InspectorPanel>>()
+function selectToolTab(tab: InspectToolTab) {
+  inspectTools.state.tab = tab
+  if (inspectTools.state.picking) inspectTools.ready()
+}
+function inspectorTransition(open: boolean) {
+  inspectTools.drawerChanged(open)
+  if (open) nextTick(() => narrowInspector.value?.focusSelection())
+}
+watch(
+  () => inspectTools.state.pickCompletion,
+  async () => {
+    await nextTick()
+    if (!isNarrow.value) desktopInspector.value?.focusSelection()
+  },
+)
 defineExpose({ captureAnchor, locateAnchor, clearAnchor })
 watch(anchorCapture, (result) => {
   if (result) emit('anchorCapture', result.anchor)
@@ -129,7 +148,7 @@ function select(path: string, id?: string, page?: PrototypePage) {
           <a-radio-button value="inspect">{{ t('proto.inspect') }}</a-radio-button>
         </a-radio-group>
         <a-button v-if="isNarrow && mode === 'inspect'" @click="inspectorOpen = true">{{
-          t('proto.details')
+          t('proto.inspectWorkspace')
         }}</a-button>
         <a-button
           type="text"
@@ -197,7 +216,17 @@ function select(path: string, id?: string, page?: PrototypePage) {
           @error="failed"
         />
       </main>
-      <inspector-panel v-if="mode === 'inspect' && !isNarrow" :element="element" />
+      <inspector-panel
+        v-if="mode === 'inspect' && !isNarrow"
+        ref="desktopInspector"
+        :element="element"
+        :tools="inspectTools.state"
+        @tab="selectToolTab"
+        @pick="inspectTools.pick"
+        @summary="inspectTools.summary"
+        @clear="inspectTools.clear"
+        @reconnect="inspectTools.ready"
+      />
     </div>
     <a-drawer
       :open="isNarrow && navVisible"
@@ -214,10 +243,19 @@ function select(path: string, id?: string, page?: PrototypePage) {
         /></section></a-drawer
     ><a-drawer
       :open="isNarrow && inspectorOpen && mode === 'inspect'"
-      :title="t('proto.details')"
+      :title="t('proto.inspectWorkspace')"
       :width="'90vw'"
+      @after-open-change="inspectorTransition"
       @close="inspectorOpen = false"
-      ><inspector-panel :element="element"
+      ><inspector-panel
+        ref="narrowInspector"
+        :element="element"
+        :tools="inspectTools.state"
+        @tab="selectToolTab"
+        @pick="inspectTools.pick"
+        @summary="inspectTools.summary"
+        @clear="inspectTools.clear"
+        @reconnect="inspectTools.ready"
     /></a-drawer>
   </div>
 </template>

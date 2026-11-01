@@ -10,3 +10,14 @@ window.addEventListener('keydown',event=>{if(event.key==='Escape'){overlay.style
 // Served over real HTTP: intercepted documents lose Chrome address-space metadata for sandbox scripts.
 export const anchorRuntimeHtml = `<!doctype html><html><head><style>body{display:flow-root;margin:0;width:1600px;height:2200px;font-family:Arial}iframe{position:absolute;left:100px;top:200px;width:300px;height:160px}button,a{display:block;margin:16px}</style></head><body><button id="root-action">Browse action</button><a href="child.html" id="navigate">Internal navigation</a><iframe title="Nested frame" src="nested.html"></iframe><script data-prototype-hub-inspector src="/api/prototype-hub/public/inspector.js"></script></body></html>`
 export const anchorNestedHtml = `<button onclick="document.body.dataset.clicked='true'">Nested action</button>`
+
+// A separate explicit harness uses the real backend script without changing ordinary UI fixtures.
+export const inspectRuntimeHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;width:1600px;height:2200px;font:400 16px/24px Arial}
+div{transition:all .15s}
+#measure-a,#measure-b{position:absolute;box-sizing:border-box;font:400 16px/24px Arial;color:rgb(1,2,3);background:rgb(10,20,30)}
+#measure-a{left:40px;top:80px;width:100px;height:60px;border:2px solid rgb(4,5,6)}
+#measure-b{left:180px;top:110px;width:80px;height:80px;border:0}
+#hidden{display:none;color:rgb(90,91,92)}
+iframe{position:absolute;left:400px;top:100px;width:200px;height:100px;border:0}
+</style></head><body><div id="measure-a">Element A</div><div id="measure-b">Element B</div><div id="hidden">Hidden text</div><iframe title="Nested frame" src="nested.html"></iframe><script data-prototype-hub-inspector src="/api/prototype-hub/public/inspector.js"></script></body></html>`

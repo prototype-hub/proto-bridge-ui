@@ -1,7 +1,9 @@
 import { copyInventoryLocales } from './copy-inventory'
 import { reviewAssociationLocales } from './review-associations'
+import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...inspectToolLocales.zh,
     ...reviewAssociationLocales.zh,
     ...copyInventoryLocales.zh,
     originalAssets: '原始资产',
@@ -729,6 +731,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...inspectToolLocales.en,
     ...reviewAssociationLocales.en,
     ...copyInventoryLocales.en,
     originalAssets: 'Original assets',
