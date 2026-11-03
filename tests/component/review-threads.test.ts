@@ -813,6 +813,68 @@ it('does not refocus the task heading on refresh or typing, and hides the list w
   expect(wrapper.get('textarea').element.value).toBe('Still typing')
 })
 
+it.each(['public', 'member'] as const)(
+  'restores reply composer focus after a %s send reload removes the focused button',
+  async (kind) => {
+    const { state } = setup(kind === 'public' ? publicScope() : memberScope(), true, 't1')
+    await flushPromises()
+    const wrapper = feedbackDrawer(state)
+    await flushPromises()
+    await wrapper.get('textarea').setValue('Keyboard reply')
+    const send = feedbackButton(wrapper, protoLocales.zh.feedbackSubmit)
+    ;(send.element as HTMLElement).focus()
+    await send.trigger('click')
+    await flushPromises()
+    expect(state.text.value).toBe('')
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+  },
+)
+
+it.each(['closed', 'page'] as const)(
+  'does not restore reply composer focus when its drawer target is %s before send completes',
+  async (change) => {
+    const result = deferred<ReviewMessage>()
+    vi.mocked(publicReviewThreadsApi.reply).mockReturnValueOnce(result.promise)
+    const { state } = setup(publicScope(), true, 't1')
+    await flushPromises()
+    const wrapper = feedbackDrawer(state)
+    await flushPromises()
+    await wrapper.get('textarea').setValue('Delayed reply')
+    const send = feedbackButton(wrapper, protoLocales.zh.feedbackSubmit)
+    ;(send.element as HTMLElement).focus()
+    await send.trigger('click')
+    await wrapper.setProps(
+      change === 'closed' ? { open: false } : { page: { ...page, pageId: 'another-page' } },
+    )
+    result.resolve(message())
+    await flushPromises()
+    expect(document.activeElement).toBe(document.body)
+  },
+)
+
+it('does not restore reply composer focus over a control the user focused while sending', async () => {
+  const result = deferred<ReviewMessage>()
+  vi.mocked(publicReviewThreadsApi.reply).mockReturnValueOnce(result.promise)
+  const { state } = setup(publicScope(), true, 't1')
+  await flushPromises()
+  const wrapper = feedbackDrawer(state)
+  await flushPromises()
+  await wrapper.get('textarea').setValue('Delayed reply')
+  const send = feedbackButton(wrapper, protoLocales.zh.feedbackSubmit)
+  ;(send.element as HTMLElement).focus()
+  await send.trigger('click')
+  const other = document.createElement('button')
+  document.body.appendChild(other)
+  try {
+    other.focus()
+    result.resolve(message())
+    await flushPromises()
+    expect(document.activeElement).toBe(other)
+  } finally {
+    other.remove()
+  }
+})
+
 it('uses the existing cryptographic fallback on LAN HTTP and retains its key on an explicit unknown-result retry', async () => {
   const getRandomValues = crypto.getRandomValues.bind(crypto)
   vi.stubGlobal('crypto', { randomUUID: undefined, getRandomValues })
