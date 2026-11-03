@@ -157,6 +157,26 @@ const canSend = computed(
     state.writable.value &&
     (!state.selectedId.value ? state.isPublic.value : !!state.selected.value),
 )
+async function send() {
+  const focused = document.activeElement
+  const restore =
+    focused instanceof HTMLElement &&
+    content.value?.querySelector('.feedback-composer')?.contains(focused)
+  const target = [props.page?.revisionId, props.page?.pageId, state.selectedId.value].join(':')
+  await state.send()
+  await nextTick()
+  // A reply reload unmounts its composer; recover only focus that the removed control lost.
+  if (
+    !restore ||
+    !props.open ||
+    target !== [props.page?.revisionId, props.page?.pageId, state.selectedId.value].join(':') ||
+    focused?.isConnected ||
+    document.activeElement !== document.body
+  )
+    return
+  const next = content.value?.querySelector<HTMLElement>('textarea:not(:disabled)')
+  ;(next || taskHeading.value)?.focus()
+}
 async function retryOriginal() {
   const target = [props.page?.revisionId, props.page?.pageId, state.selectedId.value].join(':')
   await state.retry()
@@ -772,7 +792,7 @@ function selectImage(event: Event) {
             type="primary"
             :loading="state.busy.value"
             :disabled="!canSend || state.loading.value"
-            @click="state.send"
+            @click="send"
             >{{ t('proto.feedbackSubmit') }}</a-button
           >
         </div>

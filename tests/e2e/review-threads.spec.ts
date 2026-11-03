@@ -260,8 +260,13 @@ test('a visitor can reopen or reply to resolved feedback; a CAS conflict refresh
   await expect(drawer.locator('.feedback-thread')).toHaveCount(0)
 })
 
-for (const locale of ['zh', 'en'] as const)
-  test(`390px ${locale} feedback keeps text and keyboard operations in the trusted viewport`, async ({
+for (const [locale, width] of [
+  ['zh', 390],
+  ['en', 390],
+  ['zh', 1440],
+  ['en', 1440],
+] as const)
+  test(`${width}px ${locale} feedback keeps text and keyboard operations in the trusted viewport`, async ({
     page,
     request,
   }, testInfo) => {
@@ -270,7 +275,7 @@ for (const locale of ['zh', 'en'] as const)
       (language) => localStorage.setItem('proto-bridge-ui:language', language),
       locale,
     )
-    await page.setViewportSize({ width: 390, height: 844 })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto('share/open')
     const drawer = await feedback(page, locale)
     await authenticate(page, drawer, locale)
@@ -297,13 +302,14 @@ for (const locale of ['zh', 'en'] as const)
     await expect(
       drawer.locator('.feedback-text').filter({ hasText: 'Keyboard reply' }),
     ).toBeVisible()
+    await expect(input).toBeFocused()
     await expect
       .poll(async () => {
         const box = await send.boundingBox()
         return (
           !!box &&
           box.x >= 0 &&
-          box.x + box.width <= 390 &&
+          box.x + box.width <= width &&
           (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
         )
       })
@@ -313,8 +319,10 @@ for (const locale of ['zh', 'en'] as const)
         'flex-end',
       )
     await page.screenshot({
-      path: testInfo.outputPath(`feedback-${locale}-390.png`),
+      path: testInfo.outputPath(`feedback-${locale}-${width}.png`),
       fullPage: true,
       animations: 'disabled',
     })
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
   })
