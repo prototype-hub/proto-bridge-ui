@@ -179,7 +179,9 @@ export async function auditDependencies({ root = process.cwd(), run = runCommand
         )
       } catch (error) {
         if (signal?.aborted)
-          throw new Error('Dependency audit interrupted; no receipt was published')
+          throw new Error('Dependency audit interrupted; no receipt was published', {
+            cause: error,
+          })
         errors.push(`${scope}: ${error.message}`)
       }
     }

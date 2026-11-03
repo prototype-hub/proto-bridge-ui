@@ -838,7 +838,7 @@ liveTest(
       const memberPage = await page.context().newPage()
       let phase = 'policy'
       let verificationFailure: Error | undefined
-      let cleanupFailed = false
+      let cleanupFailed: boolean
       const observePhase = (next: string) => {
         phase = next
         // Only fixed stage names and elapsed time may enter the sensitive live report.

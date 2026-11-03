@@ -252,7 +252,7 @@ it('combines responsibility and state in one bounded member request, resets page
   expect(state.error.value).toBeTruthy()
   expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
   await state.load()
-  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(++calls)
+  expect(reviewThreadsApi.overview).toHaveBeenCalledTimes(calls + 1)
   expect(vi.mocked(reviewThreadsApi.overview).mock.calls.at(-1)![1]).toEqual(query)
   open.value = false
   await flushPromises()
