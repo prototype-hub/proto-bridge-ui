@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.13.0 || >=24.0.0"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -40,19 +40,19 @@
     "vue-router": "4.5.1"
   },
   "devDependencies": {
-    "@eslint/js": "9.36.0",
+    "@eslint/js": "10.0.1",
     "@playwright/test": "1.55.1",
     "@types/node": "22.13.9",
     "@vitejs/plugin-vue": "5.2.4",
     "@vue/test-utils": "2.4.6",
-    "eslint": "9.36.0",
+    "eslint": "10.14.0",
     "eslint-plugin-vue": "10.11.1",
     "jsdom": "26.1.0",
     "prettier": "3.6.2",
     "stylelint": "16.24.0",
     "stylelint-config-standard": "39.0.0",
     "typescript": "5.8.3",
-    "typescript-eslint": "8.44.1",
+    "typescript-eslint": "8.72.1",
     "vite": "6.4.5",
     "vitest": "4.1.12",
     "vue-tsc": "3.0.8"
@@ -60,6 +60,10 @@
   "pnpm": {
     "overrides": {
       "ant-design-vue@4.2.6>dom-scroll-into-view": "-",
+      "@vue/test-utils@2.4.6>js-beautify": "-",
+      "eslint@10.14.0>minimatch": "11.0.1",
+      "@eslint/config-array@0.23.5>minimatch": "11.0.1",
+      "@typescript-eslint/typescript-estree@8.72.1>minimatch": "11.0.1",
       "follow-redirects": "1.16.2",
       "fast-uri": "3.1.9"
     }

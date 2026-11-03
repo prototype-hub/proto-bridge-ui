@@ -144,10 +144,10 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
         if (cause instanceof ApiError && cause.status === 409) {
           editTarget.value = undefined
           await resource.load()
-          throw new Error(t('proto.shareConflict'))
+          throw new Error(t('proto.shareConflict'), { cause })
         }
         if (cause instanceof ApiError && !cause.status && !cause.cancelled)
-          throw new Error(t('proto.shareMutationUnknown'))
+          throw new Error(t('proto.shareMutationUnknown'), { cause })
         throw cause
       }
     })
