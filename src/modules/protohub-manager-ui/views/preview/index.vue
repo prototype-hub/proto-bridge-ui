@@ -13,6 +13,7 @@ import {
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
 import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
 import CopyInventoryDrawer from '@/modules/protohub-manager-ui/components/CopyInventoryDrawer.vue'
+import ViewportChecksDrawer from '@/modules/protohub-manager-ui/components/ViewportChecksDrawer.vue'
 import { DownOutlined } from '@ant-design/icons-vue'
 import ReviewAssociationsDrawer from '@/modules/protohub-manager-ui/components/ReviewAssociationsDrawer.vue'
 import { useReviewAssociations } from '@/modules/protohub-manager-ui/hooks/useReviewAssociations'
@@ -47,6 +48,17 @@ const feedbackOpen = ref(false),
   selectedPage = ref<ReviewPage>()
 const assetsOpen = ref(false),
   copyOpen = ref(false)
+const viewportOpen = ref(false)
+const viewportPage = ref<ReviewPage>()
+function openViewport() {
+  if (!assetsAllowed.value || !selectedPage.value) return
+  viewportPage.value = selectedPage.value
+  viewportOpen.value = true
+}
+function closeViewport() {
+  viewportOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const copyPage = ref<ReviewPage>()
 function openCopy() {
   if (!assetsAllowed.value || !selectedPage.value) return
@@ -66,7 +78,7 @@ const assetsAllowed = computed(
     permissions.can(p.version.query),
 )
 watch(assetsAllowed, (allowed) => {
-  if (!allowed) assetsOpen.value = copyOpen.value = false
+  if (!allowed) assetsOpen.value = copyOpen.value = viewportOpen.value = false
 })
 function closeAssets() {
   assetsOpen.value = false
@@ -200,6 +212,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                 ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
                   t('proto.copyInventory')
                 }}</a-menu-item
+                ><a-menu-item key="viewport" :disabled="!selectedPage" @click="openViewport">{{
+                  t('proto.viewportChecks')
+                }}</a-menu-item
                 ><a-menu-item key="assets" @click="assetsOpen = true">{{
                   t('proto.originalAssets')
                 }}</a-menu-item></a-menu
@@ -222,6 +237,14 @@ function locateAnchor(anchor: ReviewAnchor) {
       </prototype-workspace></load-state
     >
   </div>
+  <viewport-checks-drawer
+    v-if="viewportOpen && assetsAllowed && project && revision && data"
+    :project="project"
+    :revision="revision"
+    :context="data"
+    :initial-page="viewportPage"
+    @close="closeViewport"
+  />
   <copy-inventory-drawer
     v-if="copyOpen && assetsAllowed"
     :project="project"

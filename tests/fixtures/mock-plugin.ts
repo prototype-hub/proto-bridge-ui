@@ -1,4 +1,5 @@
 import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
+import { resetViewportChecks, viewportCheckResponse } from './viewport-check'
 import { resetWorkItems, workItemResponse } from './work-item'
 import { fixtureStatistics } from './statistics'
 import { fixtureLicense, fixtureAcceptedLicense, fixtureLicenseDocument } from './license'
@@ -249,6 +250,7 @@ function reset() {
   licenseStatus = fixtureLicense()
   resetWorkItems()
   resetCopyInventories()
+  resetViewportChecks()
   resetReview()
   resetSystem()
   menus = structuredClone(initialMenus)
@@ -936,6 +938,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   }
   if (
     copyInventoryResponse(
+      path,
+      method,
+      data,
+      member,
+      String(req.headers['x-access-token'] || ''),
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
+  if (
+    viewportCheckResponse(
       path,
       method,
       data,

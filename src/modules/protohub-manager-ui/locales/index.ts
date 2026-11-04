@@ -1,8 +1,10 @@
 import { copyInventoryLocales } from './copy-inventory'
+import { viewportCheckLocales } from './viewport-check'
 import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...viewportCheckLocales.zh,
     ...inspectToolLocales.zh,
     ...reviewAssociationLocales.zh,
     ...copyInventoryLocales.zh,
@@ -731,6 +733,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...viewportCheckLocales.en,
     ...inspectToolLocales.en,
     ...reviewAssociationLocales.en,
     ...copyInventoryLocales.en,
