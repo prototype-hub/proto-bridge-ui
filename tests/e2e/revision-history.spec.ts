@@ -3,7 +3,7 @@ import { login } from './system-helpers'
 import type { PrototypePage } from '../../src/modules/protohub-manager-ui/types'
 
 test.beforeEach(async ({ request }) => {
-  await request.post('http://127.0.0.1:5187/__test/reset')
+  await request.post('/__test/reset')
 })
 
 test('uploading a revision keeps old shares and short grants, and history opens its own revision', async ({
@@ -32,7 +32,9 @@ test('uploading a revision keeps old shares and short grants, and history opens 
   const updating = page.waitForResponse(
     (response) => response.request().method() === 'PUT' && response.url().endsWith('/versions/v1'),
   )
-  await upload.getByRole('button', { name: '保存', exact: true }).click()
+  await upload
+    .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+    .click()
   const updated = (await (await updating).json()).result as {
     currentRevisionId: string
     revisionCount: number
@@ -132,7 +134,9 @@ test('a concurrent upload shows refresh guidance and sends no automatic retry', 
     mimeType: 'application/zip',
     buffer: Buffer.from('new revision'),
   })
-  await upload.getByRole('button', { name: '保存', exact: true }).click()
+  await upload
+    .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+    .click()
   await expect(
     upload.getByText('此版本已产生新的修订，请关闭窗口并刷新版本列表，确认内容后重新上传。', {
       exact: true,

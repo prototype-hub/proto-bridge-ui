@@ -1,4 +1,6 @@
 import { request } from '@/shared/api/client'
+import { appendSource } from './revision-material'
+import type { MaterialSource } from '../types/revision-material'
 import type { PageResult, RequestOptions } from '@/shared/api/types'
 import type {
   PrototypeListQuery,
@@ -12,13 +14,19 @@ import type {
   RevisionQuality,
 } from '../types'
 const segment = encodeURIComponent
-function uploadData(name: string, description: string, file: File, expectedRevisionId?: string) {
+function uploadData(
+  name: string,
+  description: string,
+  file: File,
+  expectedRevisionId?: string,
+  source?: MaterialSource,
+) {
   const data = new FormData()
   data.append('versionName', name)
   data.append('description', description)
   data.append('file', file)
   if (expectedRevisionId) data.append('expectedRevisionId', expectedRevisionId)
-  return data
+  return appendSource(data, source)
 }
 export const versionsApi = {
   /** Check only the selected immutable revision; pagination and download reuse this report. */
@@ -121,11 +129,12 @@ export const versionsApi = {
     description: string,
     file: File,
     options?: RequestOptions,
+    source?: MaterialSource,
   ) =>
     (
       await request.post<Version>(
         `/prototype-hub/projects/${segment(projectId)}/versions`,
-        uploadData(name, description, file),
+        uploadData(name, description, file, undefined, source),
         { ...options, timeout: 1800000 },
       )
     ).result,
@@ -136,11 +145,12 @@ export const versionsApi = {
     file: File,
     expectedRevisionId?: string,
     options?: RequestOptions,
+    source?: MaterialSource,
   ) =>
     (
       await request.put<Version>(
         `/prototype-hub/versions/${segment(id)}`,
-        uploadData(name, description, file, expectedRevisionId),
+        uploadData(name, description, file, expectedRevisionId, source),
         { ...options, timeout: 1800000 },
       )
     ).result,
