@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRef, type PropType } from 'vue'
+import { ref, toRef, watch, type PropType } from 'vue'
 import {
   Modal as AModal,
   Form as AForm,
@@ -13,6 +13,7 @@ import {
   Upload,
 } from 'ant-design-vue'
 import { InboxOutlined } from '@ant-design/icons-vue'
+import MaterialSourceFields from '@/modules/protohub-manager-ui/components/MaterialSourceFields.vue'
 import { useI18n } from 'vue-i18n'
 import { useUpload } from '@/modules/protohub-manager-ui/views/project/hooks/useUpload'
 import { FOLDER_LIMITS } from '@/modules/protohub-manager-ui/utils/folder-archive'
@@ -45,6 +46,13 @@ const {
   () => emit('uploaded'),
   () => emit('close'),
 )
+const importMode = ref<'zip' | 'folder'>('zip')
+watch(
+  () => props.open,
+  (value) => {
+    if (value) importMode.value = 'zip'
+  },
+)
 const folderSupported =
   'webkitdirectory' in document.createElement('input') && typeof Worker !== 'undefined'
 
@@ -66,27 +74,36 @@ const beforeUpload = (selected: File) => {
 </script>
 <template>
   <a-modal
+    root-class-name="prototype-import-dialog"
     :destroy-on-close="true"
     :open="open"
     :title="t(context.version ? 'proto.update' : 'proto.upload')"
-    :footer="null"
+    :width="600"
     :mask-closable="false"
+    :styles="{
+      body: { maxHeight: 'calc(100dvh - 220px)', overflowY: 'auto', paddingInlineEnd: '4px' },
+    }"
     @cancel="cancel"
-    ><a-alert
-      type="info"
-      :message="
+  >
+    <p class="import-context">
+      {{
         t(context.version ? 'proto.updateTarget' : 'proto.createTarget', {
           name: context.version?.versionName || '',
         })
-      "
+      }}
+    </p>
+    <a-alert
+      v-if="outcomeUnknown"
+      role="alert"
+      type="warning"
+      :message="t('proto.uploadUnknown')"
     />
-    <a-alert v-if="outcomeUnknown" type="warning" :message="t('proto.uploadUnknown')" />
-    <a-alert v-if="task.error.value" type="error" :message="task.error.value">
+    <a-alert v-if="task.error.value" role="alert" type="error" :message="task.error.value">
       <template v-if="folderPathIssues.length" #description>
         <ul class="folder-path-issues">
           <li v-for="(issue, index) in folderPathIssues" :key="index">
-            <code class="folder-path">{{ issue.path }}</code>
-            <span>{{ t(`proto.folderPathReasons.${issue.reason}`) }}</span>
+            <code class="folder-path">{{ issue.path }}</code
+            ><span>{{ t(`proto.folderPathReasons.${issue.reason}`) }}</span>
             <span v-if="issue.conflictingPath" class="folder-path">{{
               t('proto.folderPathConflictWith', { path: issue.conflictingPath })
             }}</span>
@@ -95,37 +112,106 @@ const beforeUpload = (selected: File) => {
         <p v-if="folderPathIssueCount > folderPathIssues.length">
           {{ t('proto.folderPathIssuesTruncated', { count: folderPathIssues.length }) }}
         </p>
-      </template> </a-alert
-    ><a-form layout="vertical" :model="form" @finish="submit"
-      ><a-form-item
+      </template>
+    </a-alert>
+    <a-form id="prototype-import-form" layout="vertical" :model="form" @finish="submit">
+      <a-form-item
         name="versionName"
         :label="t('proto.versionName')"
         :rules="[{ required: true, whitespace: true, message: t('common.required') }]"
-        ><a-input
+      >
+        <a-input
           v-model:value="form.versionName"
+          name="versionName"
           :maxlength="128"
-          :disabled="task.busy.value" /></a-form-item
-      ><a-form-item :label="t('common.description')"
-        ><a-textarea
-          v-model:value="form.description"
-          :rows="3"
-          :maxlength="2000"
-          :disabled="task.busy.value" /></a-form-item
-      ><a-form-item :label="t('proto.zip')"
-        ><a-upload-dragger
+          :disabled="task.busy.value || outcomeUnknown"
+          autocomplete="off"
+        />
+      </a-form-item>
+      <fieldset class="import-method" :disabled="task.busy.value || outcomeUnknown">
+        <legend>{{ t('proto.importMode') }}</legend>
+        <div class="import-method-options">
+          <label
+            ><input v-model="importMode" type="radio" name="importMode" value="zip" />{{
+              t('proto.importZip')
+            }}</label
+          >
+          <label
+            ><input v-model="importMode" type="radio" name="importMode" value="folder" />{{
+              t('proto.importFolder')
+            }}</label
+          >
+        </div>
+      </fieldset>
+      <div v-if="importMode === 'zip'" class="import-picker">
+        <a-upload-dragger
           accept=".zip,application/zip"
           :show-upload-list="false"
           :before-upload="beforeUpload"
-          :disabled="task.busy.value"
-          ><p class="ant-upload-drag-icon"><inbox-outlined /></p>
-          <p>{{ file?.name || t('proto.zip') }}</p>
-          <p class="muted">{{ t('proto.zipHint') }}</p></a-upload-dragger
-        ></a-form-item
-      >
-      <a-form-item :label="t('proto.folder')">
-        <a-button :disabled="task.busy.value || !folderSupported" @click="selectFolder">{{
-          t('proto.selectFolder')
-        }}</a-button>
+          :disabled="task.busy.value || outcomeUnknown"
+        >
+          <p class="import-upload-icon"><inbox-outlined aria-hidden="true" /></p>
+          <p>{{ t('proto.importSelect') }}</p>
+          <p class="muted">{{ t('proto.zipHint') }}</p>
+        </a-upload-dragger>
+      </div>
+      <div v-else class="import-folder-picker">
+        <a-button
+          :disabled="task.busy.value || outcomeUnknown || !folderSupported"
+          @click="selectFolder"
+          >{{ t('proto.selectFolder') }}</a-button
+        >
+        <p v-if="!folderSupported" role="status">{{ t('proto.folderErrors.unsupported') }}</p>
+      </div>
+      <div v-if="file" class="import-selected" role="status">
+        <span class="muted">{{ t('proto.importSelected') }}</span
+        ><strong>{{ folder?.rootName || file.name }}</strong>
+        <span class="muted">{{
+          folder
+            ? t('proto.folderReady', {
+                name: folder.rootName,
+                files: folder.fileCount,
+                size: (folder.totalBytes / 1048576).toFixed(2),
+              })
+            : `${(file.size / 1048576).toLocaleString(undefined, { maximumFractionDigits: 2 })} MiB`
+        }}</span>
+      </div>
+      <template v-if="phase === 'packing'">
+        <a-progress :percent="packingProgress.percent" status="active" />
+        <p role="status">
+          {{
+            t(packingProgress.phase === 'reading' ? 'proto.folderReading' : 'proto.folderPacking')
+          }}
+        </p>
+        <a-button @click="cancelPacking">{{ t('proto.cancelPacking') }}</a-button>
+      </template>
+      <details class="import-details">
+        <summary>{{ t('common.description') }}</summary>
+        <a-textarea
+          v-model:value="form.description"
+          name="description"
+          :aria-label="t('common.description')"
+          :rows="3"
+          :maxlength="2000"
+          :disabled="task.busy.value || outcomeUnknown"
+        />
+      </details>
+      <details class="import-details">
+        <summary>{{ t('proto.materialOptionalSource') }}</summary>
+        <material-source-fields
+          :model="form"
+          prefix="import-source"
+          :disabled="task.busy.value || outcomeUnknown"
+          @change="
+            (key, value) => {
+              form[key] = value
+            }
+          "
+        />
+        <p class="muted">{{ t('proto.materialSourceDeclared') }}</p>
+      </details>
+      <details class="import-details import-help">
+        <summary>{{ t('proto.importGuide') }}</summary>
         <p class="muted">
           {{
             t('proto.folderHint', {
@@ -135,45 +221,92 @@ const beforeUpload = (selected: File) => {
             })
           }}
         </p>
-        <p v-if="!folderSupported" role="status">{{ t('proto.folderErrors.unsupported') }}</p>
-        <p v-if="folder" role="status">
-          {{
-            t('proto.folderReady', {
-              name: folder.rootName,
-              files: folder.fileCount,
-              size: (folder.totalBytes / 1048576).toFixed(2),
-            })
-          }}
-        </p>
-        <template v-if="phase === 'packing'">
-          <a-progress :percent="packingProgress.percent" status="active" />
-          <p role="status">
-            {{
-              t(packingProgress.phase === 'reading' ? 'proto.folderReading' : 'proto.folderPacking')
-            }}
-          </p>
-          <a-button @click="cancelPacking">{{ t('proto.cancelPacking') }}</a-button>
-        </template>
-      </a-form-item>
-      <a-progress v-if="phase === 'uploading'" :percent="progress" status="active" />
-      <p v-if="phase === 'uploading'">
-        {{ t(progress === 100 ? 'proto.processing' : 'proto.uploading') }}
-      </p>
-      <p v-if="phase === 'uploading'" class="muted">{{ t('proto.uploadCancelHint') }}</p>
+      </details>
+      <template v-if="phase === 'uploading'">
+        <a-progress :percent="progress" status="active" />
+        <p role="status">{{ t(progress === 100 ? 'proto.processing' : 'proto.uploading') }}</p>
+        <p class="muted">{{ t('proto.uploadCancelHint') }}</p>
+      </template>
+    </a-form>
+    <template #footer>
       <div class="upload-actions">
-        <a-button @click="cancel">{{ t('common.cancel') }}</a-button
-        ><a-button
+        <a-button :disabled="outcomeUnknown" @click="cancel">{{ t('common.cancel') }}</a-button>
+        <a-button
           type="primary"
           html-type="submit"
+          form="prototype-import-form"
           :loading="task.busy.value"
           :disabled="!file || task.busy.value"
-          >{{ t('common.save') }}</a-button
+          >{{
+            t(
+              outcomeUnknown
+                ? 'proto.materialRetry'
+                : context.version
+                  ? 'proto.importUpdate'
+                  : 'proto.importSave',
+            )
+          }}</a-button
         >
-      </div></a-form
-    ></a-modal
-  >
+      </div>
+    </template>
+  </a-modal>
 </template>
 <style scoped>
+.import-context {
+  color: var(--color-muted);
+  margin-block: 0 var(--space-4);
+  line-height: 1.5;
+}
+.import-method {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  min-width: 0;
+}
+.import-method legend {
+  font-size: inherit;
+  margin-bottom: var(--space-2);
+}
+.import-method-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.import-method-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  cursor: pointer;
+}
+.import-upload-icon {
+  color: var(--color-primary);
+  font-size: 28px;
+  margin-bottom: var(--space-2);
+}
+.import-picker :deep(.ant-upload-drag) {
+  padding-block: var(--space-2);
+}
+.import-selected {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-background);
+  overflow-wrap: anywhere;
+}
+.import-details {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+}
+.import-details summary {
+  cursor: pointer;
+  padding-block: var(--space-1);
+}
+.import-details[open] summary {
+  margin-bottom: var(--space-3);
+}
 .folder-path-issues {
   max-height: 16rem;
   overflow: auto;
@@ -191,8 +324,15 @@ const beforeUpload = (selected: File) => {
 }
 .upload-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+}
+@media (max-width: 600px) {
+  .upload-actions :deep(.ant-btn) {
+    min-height: 40px;
+    height: auto;
+    white-space: normal;
+  }
 }
 </style>

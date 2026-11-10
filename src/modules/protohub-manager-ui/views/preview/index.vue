@@ -39,6 +39,16 @@ const { data, project, revision, loading, error, expired, load } = usePreview()
 const RevisionAssetsPanel = defineAsyncComponent(
   () => import('../../components/RevisionAssetsPanel.vue'),
 )
+const RevisionMaterialsPanel = defineAsyncComponent(
+  () => import('../../components/RevisionMaterialsPanel.vue'),
+)
+const materialsOpen = ref(false)
+const materialsPanel = ref<InstanceType<typeof RevisionMaterialsPanel>>()
+async function closeMaterials() {
+  if (materialsPanel.value && !(await materialsPanel.value.canLeave())) return
+  materialsOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const { t } = useI18n()
 const route = useRoute(),
   session = useSession(),
@@ -78,7 +88,7 @@ const assetsAllowed = computed(
     permissions.can(p.version.query),
 )
 watch(assetsAllowed, (allowed) => {
-  if (!allowed) assetsOpen.value = copyOpen.value = viewportOpen.value = false
+  if (!allowed) assetsOpen.value = copyOpen.value = viewportOpen.value = materialsOpen.value = false
 })
 function closeAssets() {
   assetsOpen.value = false
@@ -209,6 +219,9 @@ function locateAnchor(anchor: ReviewAnchor) {
               ><down-outlined aria-hidden="true" /></a-button
             ><template #overlay
               ><a-menu
+                ><a-menu-item key="materials" @click="materialsOpen = true">{{
+                  t('proto.materials')
+                }}</a-menu-item
                 ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
                   t('proto.copyInventory')
                 }}</a-menu-item
@@ -237,6 +250,23 @@ function locateAnchor(anchor: ReviewAnchor) {
       </prototype-workspace></load-state
     >
   </div>
+  <a-drawer
+    :open="materialsOpen && assetsAllowed"
+    :title="t('proto.materials')"
+    width="min(1100px, 100vw)"
+    :mask-closable="false"
+    root-class-name="revision-materials-drawer"
+    @close="closeMaterials"
+  >
+    <revision-materials-panel
+      v-if="materialsOpen && assetsAllowed && revision"
+      ref="materialsPanel"
+      :revision="revision"
+      :project="project"
+      :allowed="assetsAllowed"
+      @close="closeMaterials"
+    />
+  </a-drawer>
   <viewport-checks-drawer
     v-if="viewportOpen && assetsAllowed && project && revision && data"
     :project="project"

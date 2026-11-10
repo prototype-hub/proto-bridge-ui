@@ -12,6 +12,11 @@ import {
 import { t } from '@/shared/i18n'
 import { ApiError } from '@/shared/api/errors'
 import type { UploadContext } from '@/modules/protohub-manager-ui/types'
+import {
+  emptySource,
+  normalizedSource,
+  validSourceUrl,
+} from '@/modules/protohub-manager-ui/utils/material-source'
 
 export function validZip(file: File): boolean {
   return /\.zip$/i.test(file.name) && file.size > 0 && file.size <= 500 * 1024 * 1024
@@ -26,7 +31,7 @@ export function useUpload(
 ) {
   const phase = ref<'idle' | 'packing' | 'uploading'>('idle')
   const task = { busy: computed(() => phase.value !== 'idle'), error: ref('') }
-  const form = reactive({ versionName: '', description: '' })
+  const form = reactive({ versionName: '', description: '', ...emptySource() })
   const file = ref<File>()
   const folder = ref<Omit<FolderArchiveResult, 'file'>>()
   const folderPathIssues = ref<readonly FolderPathIssue[]>([])
@@ -69,6 +74,7 @@ export function useUpload(
     if (value) {
       form.versionName = context.value.version?.versionName || ''
       form.description = context.value.version?.description || ''
+      Object.assign(form, emptySource())
       file.value = undefined
       folder.value = undefined
       progress.value = 0
@@ -90,7 +96,7 @@ export function useUpload(
   }
 
   function choose(selected: File) {
-    if (task.busy.value || !open.value || disposed) return
+    if (task.busy.value || outcomeUnknown.value || !open.value || disposed) return
     clearSelection()
     if (!validZip(selected)) {
       task.error.value = t('proto.zipInvalid')
@@ -102,7 +108,8 @@ export function useUpload(
   /** Selecting a directory only prepares a ZIP. Saving remains an explicit create/update action. */
   async function chooseFolder(selected: readonly File[]) {
     // An empty FileList is the picker cancel event, not a request to clear a valid selection.
-    if (selected.length === 0 || task.busy.value || !open.value || disposed) return
+    if (selected.length === 0 || task.busy.value || outcomeUnknown.value || !open.value || disposed)
+      return
     clearSelection()
     const current = ++generation
     const abort = new AbortController()
@@ -150,6 +157,11 @@ export function useUpload(
 
   async function submit() {
     if (task.busy.value || !open.value || disposed) return
+    const source = normalizedSource(form)
+    if (!validSourceUrl(source.sourceUrl)) {
+      task.error.value = t('proto.materialUrlInvalid')
+      return
+    }
     if (!file.value) {
       task.error.value = t('proto.zipInvalid')
       return
@@ -189,11 +201,23 @@ export function useUpload(
             ...args,
             target.version.currentRevisionId || undefined,
             options,
+            source,
           )
-        : versionsApi.upload(target.projectId, ...args, {
-            ...options,
-            headers: { 'Idempotency-Key': intent.key([target.projectId, ...args]) },
-          }))
+        : versionsApi.upload(
+            target.projectId,
+            ...args,
+            {
+              ...options,
+              headers: {
+                'Idempotency-Key': intent.key([
+                  target.projectId,
+                  ...args,
+                  ...Object.values(source),
+                ]),
+              },
+            },
+            source,
+          ))
       if (generation !== current || disposed || !open.value) return
       intent.reset()
       void message.success(t('proto.uploadSuccess'))
@@ -218,6 +242,7 @@ export function useUpload(
   }
 
   function cancel() {
+    if (outcomeUnknown.value) return
     stop()
     close()
   }

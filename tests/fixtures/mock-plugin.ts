@@ -1,5 +1,6 @@
 import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
 import { resetViewportChecks, viewportCheckResponse } from './viewport-check'
+import { materialsResponse, recordImportSource, resetMaterials } from './revision-material'
 import { resetWorkItems, workItemResponse } from './work-item'
 import { fixtureStatistics } from './statistics'
 import { fixtureLicense, fixtureAcceptedLicense, fixtureLicenseDocument } from './license'
@@ -251,6 +252,7 @@ function reset() {
   resetWorkItems()
   resetCopyInventories()
   resetViewportChecks()
+  resetMaterials()
   resetReview()
   resetSystem()
   menus = structuredClone(initialMenus)
@@ -936,6 +938,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, 404, null, 'Resource unavailable')
     return true
   }
+  if (materialsResponse(req, res, path, method, data, bytes, revisions, member, now(), send))
+    return true
   if (
     copyInventoryResponse(
       path,
@@ -1150,6 +1154,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         const value = { ...version(String(++counter), projectId, name), description }
         versions.push(value)
         saveRevision(value, fields.get('file') || Buffer.alloc(0))
+        recordImportSource(value, fields, now())
         return value
       },
     )
@@ -1308,6 +1313,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         value.revisionId = value.currentRevisionId
         value.revisionCount++
         saveRevision(value, fields.get('file') || Buffer.alloc(0))
+        recordImportSource(value, fields, now())
       }
       if (method === 'DELETE') {
         deletedVersions.set(id, now())

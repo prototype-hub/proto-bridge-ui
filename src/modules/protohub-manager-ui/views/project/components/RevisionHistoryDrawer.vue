@@ -28,6 +28,9 @@ const RevisionQualityDrawer = defineAsyncComponent(() => import('./RevisionQuali
 const RevisionAssetsPanel = defineAsyncComponent(
   () => import('../../../components/RevisionAssetsPanel.vue'),
 )
+const RevisionMaterialsPanel = defineAsyncComponent(
+  () => import('../../../components/RevisionMaterialsPanel.vue'),
+)
 const emit = defineEmits<{
   close: []
   preview: [version: Version, revisionId: string]
@@ -48,6 +51,18 @@ const router = useRouter()
 const selected = ref<string[]>([])
 const qualityRevision = shallowRef<Revision>()
 const assetsRevision = shallowRef<Revision>()
+const materialsRevision = shallowRef<Revision>()
+const materialsPanel = ref<InstanceType<typeof RevisionMaterialsPanel>>()
+async function closeMaterials() {
+  if (materialsPanel.value && !(await materialsPanel.value.canLeave())) return
+  materialsRevision.value = undefined
+  void nextTick(() => assetsTrigger?.focus())
+}
+function closeDrawer() {
+  if (materialsRevision.value) void closeMaterials()
+  else if (assetsRevision.value) closeAssets()
+  else emit('close')
+}
 let assetsTrigger: HTMLElement | undefined
 function rememberResourceTrigger(event: MouseEvent) {
   assetsTrigger = event.currentTarget as HTMLElement
@@ -67,6 +82,7 @@ watch(
     selected.value = []
     qualityRevision.value = undefined
     assetsRevision.value = undefined
+    materialsRevision.value = undefined
     assetsTrigger = undefined
   },
 )
@@ -100,10 +116,27 @@ const columns = computed(() => [
   <a-drawer
     root-class-name="revision-history-drawer"
     :open="open"
-    :title="t(assetsRevision ? 'proto.originalAssets' : 'proto.revisionHistory')"
-    :width="assetsRevision ? 'min(960px, 100vw)' : 'min(800px, 100vw)'"
-    @close="assetsRevision ? closeAssets() : emit('close')"
+    :title="
+      t(
+        materialsRevision
+          ? 'proto.materials'
+          : assetsRevision
+            ? 'proto.originalAssets'
+            : 'proto.revisionHistory',
+      )
+    "
+    :width="assetsRevision || materialsRevision ? 'min(1100px, 100vw)' : 'min(800px, 100vw)'"
+    :mask-closable="!materialsRevision"
+    @close="closeDrawer"
   >
+    <revision-materials-panel
+      v-if="materialsRevision"
+      ref="materialsPanel"
+      :revision="materialsRevision"
+      :project="project"
+      :allowed="open"
+      @close="closeMaterials"
+    />
     <revision-assets-panel
       v-if="assetsRevision"
       :revision="assetsRevision"
@@ -113,7 +146,7 @@ const columns = computed(() => [
       @close="closeAssets"
     />
     <section
-      v-show="!assetsRevision"
+      v-show="!assetsRevision && !materialsRevision"
       role="dialog"
       aria-modal="true"
       :aria-label="t('proto.revisionHistory')"
@@ -179,6 +212,9 @@ const columns = computed(() => [
                   >{{ t('proto.pageResources') }} <down-outlined aria-hidden="true" /></a-button
                 ><template #overlay
                   ><a-menu
+                    ><a-menu-item key="materials" @click="materialsRevision = record">{{
+                      t('proto.materials')
+                    }}</a-menu-item
                     ><a-menu-item key="copy" @click="emit('copyInventory', record)">{{
                       t('proto.copyInventory')
                     }}</a-menu-item

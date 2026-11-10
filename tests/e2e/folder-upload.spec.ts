@@ -35,6 +35,7 @@ async function login(page: Page) {
   await page.goto('prototype-hub/projects/p1')
 }
 async function selectFolder(page: Page, root: string) {
+  await page.getByRole('radio', { name: 'HTML 文件夹', exact: true }).check()
   const choosing = page.waitForEvent('filechooser')
   await page.getByRole('dialog').getByRole('button', { name: '选择 HTML 文件夹' }).click()
   const chooser = await choosing
@@ -100,10 +101,16 @@ test('real directory Worker preserves every nested resource for explicit create 
     const selected = await selectFolder(page, fixture.root)
     await expect(dialog.getByText(/已打包「中文原型 导出」：7 个文件/)).toBeVisible()
     expect(requests).toHaveLength(0)
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeEnabled()
     await page.screenshot({ path: testInfo.outputPath('folder-ready.png'), animations: 'disabled' })
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByRole('cell', { name: 'Folder V2', exact: true })).toBeVisible()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
+    await expect(
+      page.locator('.version-name').getByText('Folder V2', { exact: true }),
+    ).toBeVisible()
     expect(requests).toHaveLength(1)
     const creation = requests[0]!
     expect(creation.name).toBe('Folder V2')
@@ -112,14 +119,19 @@ test('real directory Worker preserves every nested resource for explicit create 
 
     const original = page
       .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'V1', exact: true }) })
+      .filter({ has: page.locator('.version-name').getByText('V1', { exact: true }) })
+    await original.locator('.version-management summary').click()
     await original.getByRole('button', { name: '上传新修订', exact: true }).click()
     await expect(dialog.getByText('为版本「V1」上传新修订', { exact: false })).toBeVisible()
     await selectFolder(page, fixture.root)
     await expect(dialog.getByText(/已打包「中文原型 导出」：7 个文件/)).toBeVisible()
     await dialog.getByLabel('版本名称').fill('Folder replacement')
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByRole('cell', { name: 'Folder replacement', exact: true })).toBeVisible()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
+    await expect(
+      page.locator('.version-name').getByText('Folder replacement', { exact: true }),
+    ).toBeVisible()
     expect(requests).toHaveLength(2)
     expect(requests[1]!.method).toBe('PUT')
     const replacement = requests[1]!
@@ -185,12 +197,20 @@ test('an unknown POST waits for a manual retry with the same generated file and 
     await dialog.getByLabel('版本名称').fill('Retry folder')
     await selectFolder(page, fixture.root)
     await expect(dialog.getByText(/已打包「中文原型 导出」/)).toBeVisible()
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
     await expect(dialog.getByText('未收到服务器的处理结果', { exact: false })).toBeVisible()
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeEnabled()
     expect(attempts).toHaveLength(1)
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByRole('cell', { name: 'Retry folder', exact: true })).toBeVisible()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
+    await expect(
+      page.locator('.version-name').getByText('Retry folder', { exact: true }),
+    ).toBeVisible()
     expect(attempts).toHaveLength(2)
     expect(attempts[1]!.key).toBe(attempts[0]!.key)
     expect(attempts[1]!.bytes).toEqual(attempts[0]!.bytes)
@@ -223,8 +243,11 @@ test('a sparse oversized directory is rejected before upload and ZIP fallback re
     await expect(
       dialog.getByText('文件夹或单文件超过浏览器打包上限', { exact: false }),
     ).toBeVisible()
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeDisabled()
     expect(uploads).toBe(0)
+    await dialog.getByRole('radio', { name: 'ZIP 文件', exact: true }).check()
     await dialog.locator('input[type=file]').setInputFiles({
       name: 'fallback.zip',
       mimeType: 'application/zip',
@@ -232,8 +255,12 @@ test('a sparse oversized directory is rejected before upload and ZIP fallback re
         zipSync({ 'index.html': strToU8('<html><body>ZIP fallback</body></html>') }),
       ),
     })
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByRole('cell', { name: 'ZIP fallback', exact: true })).toBeVisible()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
+    await expect(
+      page.locator('.version-name').getByText('ZIP fallback', { exact: true }),
+    ).toBeVisible()
     expect(uploads).toBe(1)
   } finally {
     await rm(fixture.parent, { recursive: true, force: true })
@@ -262,12 +289,16 @@ test('cancelling real Worker compression leaves no upload and no stale prepared 
     await selectFolder(page, fixture.root)
     await dialog.getByRole('button', { name: '停止打包', exact: true }).click()
     await expect(dialog.getByRole('button', { name: '选择 HTML 文件夹' })).toBeEnabled()
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeDisabled()
     await expect(dialog.getByText(/已打包「/)).toHaveCount(0)
     expect(uploads).toBe(0)
     await dialog.getByRole('button', { name: '取消', exact: true }).click()
     await page.getByRole('button', { name: '上传版本', exact: true }).click()
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeDisabled()
     expect(uploads).toBe(0)
   } finally {
     await rm(fixture.parent, { recursive: true, force: true })
@@ -310,7 +341,9 @@ test('native directory paths identify hidden files on mobile and allow a strippe
     await expect(alert).toContainText('中文原型 导出/.DS_Store')
     await expect(alert).toContainText('中文原型 导出/.cache/old.js')
     await expect(alert).toContainText('不支持以点开头的隐藏文件或目录')
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeDisabled()
     expect(uploads).toBe(0)
     expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.screenshot({
@@ -325,10 +358,16 @@ test('native directory paths identify hidden files on mobile and allow a strippe
     const repaired = await selectFolder(page, dotRoot)
     await expect(dialog.getByText(/已打包「.中文原型 导出」：9 个文件/)).toBeVisible()
     await expect(alert).toHaveCount(0)
-    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    await expect(
+      dialog.getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true }),
+    ).toBeEnabled()
     expect(uploads).toBe(0)
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByRole('cell', { name: 'Repaired folder', exact: true })).toBeVisible()
+    await dialog
+      .getByRole('button', { name: /^(导入版本|保存新修订|核查并重试原请求)$/, exact: true })
+      .click()
+    await expect(
+      page.locator('.version-name').getByText('Repaired folder', { exact: true }),
+    ).toBeVisible()
     expect(uploads).toBe(1)
     // Native filesystem normalization is retained exactly as Chromium reports it, including NFD.
     expect(Object.keys(unzipSync(archive!.bytes)).sort()).toEqual(
