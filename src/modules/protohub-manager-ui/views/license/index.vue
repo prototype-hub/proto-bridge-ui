@@ -164,6 +164,14 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
         ></a-alert
       >
       <template v-if="data">
+        <a-alert
+          v-if="data.status === 'unsupported' && $slots.overview"
+          type="warning"
+          show-icon
+          :message="t('proto.licenseStatus_unsupported')"
+          :description="t('proto.licenseHint_unsupported')"
+          class="license-unsupported"
+        />
         <slot
           name="overview"
           :status="data"
@@ -172,7 +180,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
           :reload-status="state.load"
         >
           <section class="license-overview" aria-labelledby="license-status-title">
-            <div class="license-status">
+            <div
+              class="license-status"
+              :class="{ 'license-unsupported': data.status === 'unsupported' }"
+            >
               <h2 id="license-status-title">{{ statusTitle }}</h2>
               <p>{{ statusHint }}</p>
             </div>
@@ -374,7 +385,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
                 </div>
                 <div>
                   <dt>{{ t('proto.licenseClaimedVersions') }}</dt>
-                  <dd>{{ number(claims.baseVersionsPerProject) }}</dd>
+                  <dd>{{ number(claims.maxVersionsPerProject) }}</dd>
                 </div>
                 <div>
                   <dt>{{ t('proto.licenseFeatures') }}</dt>
@@ -396,13 +407,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
                   <dt>{{ t('proto.licenseMaintenanceUntil') }}</dt>
                   <dd>{{ date(claims.maintenanceUntil) }}</dd>
                 </div>
-                <div v-for="grant in claims.projectVersionGrants" :key="grant.projectId">
-                  <dt>{{ t('proto.licenseProjectGrant', { project: grant.projectId }) }}</dt>
-                  <dd>
-                    {{ t('proto.licenseGrantBlocks', { count: number(grant.extraVersionBlocks) }) }}
-                  </dd>
-                </div></template
-              >
+              </template>
             </dl>
           </details>
         </section>

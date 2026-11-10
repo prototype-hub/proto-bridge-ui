@@ -200,7 +200,7 @@ test('plain HTTP without WebCrypto still submits to the server and keeps draft o
   await expect(page.getByText('凭证已验证并保存', { exact: true })).toBeVisible()
 })
 
-test('zero epoch declarations and maximum-length project identifiers remain readable at 390px', async ({
+test('zero epoch declarations and uniform limits remain readable at 390px', async ({
   page,
 }, info) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -211,7 +211,6 @@ test('zero epoch declarations and maximum-length project identifiers remain read
     ...fixtureLicenseDocument.payload,
     trialEndsAt: 0,
     maintenanceUntil: 0,
-    projectVersionGrants: [{ projectId: 'p'.repeat(64), extraVersionBlocks: 1 }],
   }
   await page.route('**/api/prototype-hub/license', (route) =>
     route.fulfill({ json: { success: true, result: accepted } }),
@@ -224,11 +223,11 @@ test('zero epoch declarations and maximum-length project identifiers remain read
       .filter({ has: page.getByText(label, { exact: true }) })
     await expect(row).toContainText('1970')
   }
-  await expect(page.locator('.license-claims')).toContainText('p'.repeat(64))
+  await expect(page.locator('.license-claims')).toContainText('20')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
   await page.screenshot({
-    path: info.outputPath('license-zero-dates-long-project-en-390.png'),
+    path: info.outputPath('license-zero-dates-uniform-en-390.png'),
     fullPage: true,
   })
 })

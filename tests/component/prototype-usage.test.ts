@@ -347,7 +347,7 @@ it('refreshes version usage after deleting an existing version', async () => {
 })
 
 it.each(['projects', 'detail'] as const)(
-  'releases %s usage after deletion while retaining the server limit',
+  'refreshes authoritative %s usage after deletion without inferring quota release',
   async (kind) => {
     let removed = false
     const original = vi.mocked(request.get).getMockImplementation()!
@@ -356,7 +356,7 @@ it.each(['projects', 'detail'] as const)(
         ? Promise.resolve(
             response(
               kind === 'projects'
-                ? { installationId: 'private-installation', projects: capacity(removed ? 4 : 5) }
+                ? { installationId: 'private-installation', projects: capacity(5) }
                 : { projectId: 'p1', versions: capacity(removed ? 4 : 5) },
             ),
           )
@@ -372,7 +372,36 @@ it.each(['projects', 'detail'] as const)(
       kind === 'projects' ? projects.usage.data.value?.projects : detail.usage.data.value?.versions
     expect(current()).toMatchObject({ used: 5, limit: 5, canCreate: false })
     await state.remove(kind === 'projects' ? 'p1' : 'v1')
-    expect(current()).toMatchObject({ used: 4, limit: 5, remaining: 1, canCreate: true })
+    expect(current()).toMatchObject(
+      kind === 'projects'
+        ? { used: 5, limit: 5, remaining: 0, canCreate: false }
+        : { used: 4, limit: 5, remaining: 1, canCreate: true },
+    )
+  },
+)
+
+it.each(['full', 'overfull', 'unavailable'] as const)(
+  'keeps counted project restoration available when project quota is %s',
+  async (usageState) => {
+    const original = vi.mocked(request.get).getMockImplementation()!
+    vi.mocked(request.get).mockImplementation((path, ...args) => {
+      if (path === '/prototype-hub/projects/_usage') {
+        if (usageState === 'unavailable') return Promise.reject(new ApiError('Unavailable', 503))
+        return Promise.resolve(
+          response({
+            installationId: 'private-installation',
+            projects: capacity(usageState === 'full' ? 5 : 7),
+          }),
+        )
+      }
+      return original(path, ...args)
+    })
+    vi.mocked(request.post).mockResolvedValue(
+      response({ data: [{ ...project, deletedTime: 1 }], total: 1, pageIndex: 0, pageSize: 20 }),
+    )
+    const { wrapper } = await render('projects', true, () => true, true)
+    expect(wrapper.find('button[aria-label="恢复"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('恢复不重复占用')
   },
 )
 

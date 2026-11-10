@@ -2,7 +2,7 @@
 export interface PrototypeLicenseStatus {
   schemaVersion: 1
   installationId: string
-  status: 'missing' | 'valid' | 'untrusted' | 'invalid' | 'not_yet_valid'
+  status: 'missing' | 'valid' | 'untrusted' | 'invalid' | 'not_yet_valid' | 'unsupported'
   trustConfigured: boolean
   acceptedCredential: {
     licenseId: string
@@ -12,12 +12,12 @@ export interface PrototypeLicenseStatus {
     keyId: string
   } | null
   verifiedEntitlements: {
+    schemaVersion: 2
     customer: string
     edition: string
     features: string[]
     maxProjects: number
-    baseVersionsPerProject: number
-    projectVersionGrants: { projectId: string; extraVersionBlocks: number }[]
+    maxVersionsPerProject: number
     issuedAt: number
     notBefore: number
     trialEndsAt: number | null

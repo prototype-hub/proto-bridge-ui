@@ -49,6 +49,9 @@ export const protoLocales = {
     licenseHint_valid: '签名、安装绑定与生效时间已验证。',
     licenseStatus_untrusted: '凭证暂无法验证',
     licenseHint_untrusted: '签发公钥已移除或不可用，请核对服务端受信任公钥配置。',
+    licenseStatus_unsupported: '不支持旧版凭证',
+    licenseHint_unsupported:
+      '请管理员按运维说明停服备份后切换，或使用新测试安装。重新签发不能绕过旧接受谱系；系统不会自动清除接受记录、安装身份或业务数据。',
     licenseStatus_invalid: '已保存的凭证无效',
     licenseHint_invalid: '请核对凭证与当前安装的绑定，导入正确凭证。原有基础数据仍保留。',
     licenseStatus_not_yet_valid: '凭证尚未生效',
@@ -92,15 +95,13 @@ export const protoLocales = {
     licenseCustomer: '客户',
     licenseEdition: '版本声明',
     licenseClaimedProjects: '声明项目上限',
-    licenseClaimedVersions: '声明基础版本上限',
+    licenseClaimedVersions: '声明每项目版本上限（全部项目）',
     licenseFeatures: '功能声明',
     licenseNone: '无',
     licenseIssuedAt: '签发时间',
     licenseNotBefore: '生效时间',
     licenseTrialEndsAt: '试用截止声明',
     licenseMaintenanceUntil: '维护截止声明',
-    licenseProjectGrant: '项目 {project} 的版本块声明',
-    licenseGrantBlocks: '{count} 块',
     licenseNoAccess: '无权访问授权管理',
     licenseNoAccessHint: '此页面仅限当前有效管理员，并需要授权管理的查询权限。请联系管理员核对。',
     licenseLoadError: '授权状态暂不可用',
@@ -544,8 +545,9 @@ export const protoLocales = {
     deletedAt: '删除时间',
     recycleHint:
       '删除后保留 30 天，到期不可恢复，并自动永久清理数据和文件。恢复会核对当前权限和额度，原分享及预览授权不恢复。',
+    projectRecycleHint: '删除后保留 30 天，到期不可恢复。恢复不重复占用，原分享及预览授权仍失效。',
     projectRestoreConfirm:
-      '确认恢复该项目？保留原项目标识并占用一个项目名额，仅恢复项目，版本需进入版本回收站单独恢复。原分享和预览授权仍失效。',
+      '确认恢复该项目？沿用已占用的项目名额，保留原项目标识，仅恢复项目。版本需进入版本回收站单独恢复，原分享和预览授权仍失效。',
     versionRestoreConfirm:
       '确认恢复该版本？保留原版本及修订，占用一个版本名额。原分享和预览授权仍失效，请重新授权预览或创建分享。',
 
@@ -570,6 +572,8 @@ export const protoLocales = {
     memberRoles: { owner: '所有者', editor: '编辑者', viewer: '查看者', admin: '管理员' },
     capacity: {
       projectsScope: '实例项目容量',
+      projectsCounting:
+        '包含项目管理和回收站中的项目；到期自动永久清理数据和文件成功后才释放额度。',
       versionsScope: '当前项目版本容量',
       used: '已用 {used} / {limit}',
       remaining: '还可新增 {count} 个',
@@ -578,11 +582,11 @@ export const protoLocales = {
       unavailable: '暂时无法获取用量，可重试获取。',
       full: '已达容量上限。',
       overLimit: '现有数据已超出容量上限。',
-      projectsRetained: '暂时无法新增项目，已有项目仍可查看、编辑和删除。',
+      projectsRetained: '已有项目保留；回收项目可按权限恢复，不重复占用额度。',
       versionsRetained: '暂时无法新增版本，已有版本仍可预览、更新、分享和删除。',
     },
     projectDeleteConfirm:
-      '确认删除该项目？请先删除全部活动版本。删除后释放额度，30 天内可恢复；到期自动永久清理数据和文件。原预览和分享失效。',
+      '确认删除该项目？请先删除全部活动版本。进入回收站后仍占项目额度，30 天内可恢复；到期自动永久清理数据和文件成功后才释放额度。原预览和分享失效。',
     versionDeleteConfirm:
       '确认删除该版本？删除后释放额度，修订和文件保留 30 天，期间可恢复；到期自动永久清理。原预览和分享失效，已下载内容无法撤回。',
     upload: '上传版本',
@@ -784,6 +788,9 @@ export const protoLocales = {
     licenseStatus_untrusted: 'Credential cannot be verified',
     licenseHint_untrusted:
       'The signing key is unavailable or no longer trusted. Check the server trust configuration.',
+    licenseStatus_unsupported: 'Legacy credential is unsupported',
+    licenseHint_unsupported:
+      'Ask an administrator to stop the service, back up and switch according to the operations guide, or use a new test installation. Reissuing cannot bypass the accepted lineage. Accepted records, installation identity and business data are never reset automatically.',
     licenseStatus_invalid: 'Saved credential is invalid',
     licenseHint_invalid:
       'Check the installation binding and import a correct credential. Existing basic data is retained.',
@@ -834,15 +841,13 @@ export const protoLocales = {
     licenseCustomer: 'Customer',
     licenseEdition: 'Declared edition',
     licenseClaimedProjects: 'Declared project limit',
-    licenseClaimedVersions: 'Declared base version limit',
+    licenseClaimedVersions: 'Declared version limit per project (all projects)',
     licenseFeatures: 'Declared features',
     licenseNone: 'None',
     licenseIssuedAt: 'Issued at',
     licenseNotBefore: 'Effective from',
     licenseTrialEndsAt: 'Declared trial end',
     licenseMaintenanceUntil: 'Declared maintenance end',
-    licenseProjectGrant: 'Version blocks declared for project {project}',
-    licenseGrantBlocks: '{count} blocks',
     licenseNoAccess: 'License management access denied',
     licenseNoAccessHint:
       'This page requires a currently active administrator role and the license query permission. Contact your administrator.',
@@ -1346,8 +1351,10 @@ export const protoLocales = {
     deletedAt: 'Deleted at',
     recycleHint:
       'Deleted data is retained for 30 days, then becomes unrestorable and is automatically purged with its files. Restore checks current permissions and limits; old grants stay invalid.',
+    projectRecycleHint:
+      'Deleted projects can be restored for 30 days. Restoration uses the existing slot; old share and preview grants stay invalid.',
     projectRestoreConfirm:
-      'Restore this project with its original identity? This uses one project slot and restores only the project. Restore its versions separately from the version recycle bin. Old share and preview grants remain invalid.',
+      'Restore this project with its original identity and existing quota slot? Only the project is restored. Restore versions separately from the version recycle bin. Old share and preview grants remain invalid.',
     versionRestoreConfirm:
       'Restore this version and its revisions with their original identities? This uses one version slot. Old share and preview grants remain invalid; authorize a new preview or create a new share.',
 
@@ -1373,6 +1380,8 @@ export const protoLocales = {
     memberRoles: { owner: 'Owner', editor: 'Editor', viewer: 'Viewer', admin: 'Administrator' },
     capacity: {
       projectsScope: 'Instance project capacity',
+      projectsCounting:
+        'Includes active and recycled projects. Quota is released only after automatic permanent cleanup of data and files succeeds.',
       versionsScope: 'Version capacity in this project',
       used: 'Used {used} / {limit}',
       remaining: '{count} more available',
@@ -1382,12 +1391,12 @@ export const protoLocales = {
       full: 'Capacity reached.',
       overLimit: 'Existing data exceeds capacity.',
       projectsRetained:
-        'New projects are paused. Existing projects can still be viewed, edited and deleted.',
+        'Existing projects are retained. Authorized project restoration uses no additional quota.',
       versionsRetained:
         'New versions are paused. Existing versions can still be previewed, replaced, shared and deleted.',
     },
     projectDeleteConfirm:
-      'Delete this project? Delete all active versions first. Usage is released; restore is available for 30 days, then data and files are permanently purged. Old preview and share links stop working.',
+      'Delete this project? Delete all active versions first. Recycled projects retain their quota and can be restored for 30 days. Quota is released only after automatic permanent cleanup of data and files succeeds. Old preview and share links stop working.',
     versionDeleteConfirm:
       'Delete this version? Usage is released. Revisions and files can be restored for 30 days, then are permanently purged. Old preview and share links stop working; downloaded content cannot be recalled.',
     upload: 'Upload version',

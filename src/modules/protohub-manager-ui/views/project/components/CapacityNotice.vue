@@ -33,6 +33,9 @@ const { t } = useI18n()
       </div>
       <div v-if="$slots.actions" class="capacity-actions"><slot name="actions" /></div>
     </div>
+    <p v-if="kind === 'projects'" class="capacity-counting muted">
+      {{ t('proto.capacity.projectsCounting') }}
+    </p>
     <a-alert v-if="!loading && (error || !capacity)" type="warning" show-icon>
       <template #message>{{ t('proto.capacity.unavailable') }}</template>
       <template #action>
@@ -81,6 +84,10 @@ const { t } = useI18n()
 }
 .capacity-actions {
   flex: 0 0 auto;
+}
+.capacity-counting {
+  margin: 0;
+  line-height: 1.65;
 }
 .capacity-notice :deep(.ant-alert-message) {
   overflow-wrap: anywhere;

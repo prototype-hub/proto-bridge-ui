@@ -274,7 +274,10 @@ for (const kind of ['projects', 'versions'] as const)
       await page.goto('prototype-hub/recycle-bin?tab=versions&projectId=p1')
     } else await page.goto('prototype-hub/recycle-bin')
     await expect(
-      page.locator('.ant-alert-info').filter({ hasText: protoLocales.zh.recycleHint }),
+      page.locator('.ant-alert-info').filter({
+        hasText:
+          kind === 'projects' ? protoLocales.zh.projectRecycleHint : protoLocales.zh.recycleHint,
+      }),
     ).toBeVisible()
     const row =
       kind === 'projects'
@@ -293,7 +296,7 @@ for (const kind of ['projects', 'versions'] as const)
     await expect(row).toHaveCount(0)
     await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
     if (kind === 'projects')
-      await expect(page.locator('.capacity-notice')).toContainText('已用 0 / 5')
+      await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
     else
       expect(
         (
@@ -306,7 +309,10 @@ for (const kind of ['projects', 'versions'] as const)
       ).toBe(0)
     await page.getByRole('button', { name: '语言', exact: true }).click()
     await expect(
-      page.locator('.ant-alert-info').filter({ hasText: protoLocales.en.recycleHint }),
+      page.locator('.ant-alert-info').filter({
+        hasText:
+          kind === 'projects' ? protoLocales.en.projectRecycleHint : protoLocales.en.recycleHint,
+      }),
     ).toBeVisible()
     await expect(page.locator('.ant-alert-error')).toHaveText('Resource unavailable')
   })

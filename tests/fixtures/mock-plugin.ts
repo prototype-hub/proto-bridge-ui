@@ -808,7 +808,10 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     else {
       try {
         const parsed = JSON.parse(String(data.document))
-        if (parsed.signature !== fixtureLicenseDocument.signature)
+        if (
+          parsed.signature !== fixtureLicenseDocument.signature ||
+          parsed.payload?.schemaVersion !== 2
+        )
           throw new Error('Invalid fixture')
         const fingerprint = await licenseFingerprint(String(data.document))
         if (!fingerprint) throw new Error('Fixture digest unavailable')
@@ -876,7 +879,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     const tombstones = isProject ? deletedProjects : deletedVersions
     const projectId = value && 'projectId' in value ? value.projectId : id
     const used = isProject
-      ? projects.filter((item) => activeProject(item.id)).length
+      ? projects.length
       : versions.filter((item) => item.projectId === projectId && activeVersion(item.id)).length
     if (!value || (!isProject && !activeProject(projectId)))
       send(res, 404, null, 'Resource unavailable')
@@ -884,7 +887,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     else if (!tombstones.has(id))
       send(res, 409, null, 'Resource already active', 'PROTOTYPE_HUB_RESOURCE_ACTIVE')
     else if (!retained(tombstones, id)) send(res, 404, null, 'Resource unavailable')
-    else if (used >= 5)
+    else if (!isProject && used >= 5)
       send(
         res,
         409,
@@ -1101,7 +1104,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
     send(res, 200, {
       installationId: 'contract-installation',
-      projects: capacity(projects.filter((item) => activeProject(item.id)).length),
+      projects: capacity(projects.length),
     })
   else if (path === '/prototype-hub/versions/_usage' && method === 'GET') {
     const projectId = url.searchParams.get('projectId')
@@ -1119,7 +1122,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       res,
       path,
       JSON.stringify([name, description, data.cover || '']),
-      capacity(projects.filter((item) => activeProject(item.id)).length),
+      capacity(projects.length),
       () => {
         const value = {
           id: String(++counter),
