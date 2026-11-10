@@ -91,7 +91,7 @@ watch(
     :is="embedded ? 'section' : PageContainer"
     :title="embedded ? undefined : t(trash ? 'proto.projectRecycleBin' : 'proto.projects')"
   >
-    <a-alert v-if="trash" type="info" show-icon :message="t('proto.recycleHint')" />
+    <a-alert v-if="trash" type="info" show-icon :message="t('proto.projectRecycleHint')" />
     <a-alert
       v-if="trash && restoredProject"
       type="success"
@@ -183,12 +183,7 @@ watch(
                   :label="t('proto.restore')"
                   :icon="UndoOutlined"
                   :permission="p.project.save"
-                  :disabled="
-                    task.busy.value ||
-                    usage.loading.value ||
-                    !!usage.error.value ||
-                    usage.data.value?.projects.canCreate !== true
-                  "
+                  :disabled="task.busy.value"
                   :confirm="t('proto.projectRestoreConfirm')"
                   @action="restore(project)"
                 />

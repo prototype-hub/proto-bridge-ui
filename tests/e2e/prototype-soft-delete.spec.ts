@@ -34,7 +34,7 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${origin}/__test/reset`)
 })
 
-test('soft deletion releases usage while replacement IDs cannot revive old member or public links', async ({
+test('version deletion releases usage while recycled projects retain quota and old links stay revoked', async ({
   page,
   request,
 }, testInfo) => {
@@ -143,7 +143,7 @@ test('soft deletion releases usage while replacement IDs cannot revive old membe
   await projectPrompt.getByRole('button', { name: '确定', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 720 })
   await expect(card).toHaveCount(0)
-  await expect(page.locator('.capacity-notice')).toContainText('已用 0 / 5')
+  await expect(page.locator('.capacity-notice')).toContainText('已用 1 / 5')
   for (const path of [
     '/api/prototype-hub/projects/p1',
     '/api/prototype-hub/projects/p1/members',

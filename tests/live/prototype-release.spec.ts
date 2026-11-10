@@ -1582,16 +1582,16 @@ liveTest(
       expect((await deletingProject).status()).toBe(200)
       owned.projects = owned.projects.filter((id) => id !== emptyProjectId)
       await expect(card).toHaveCount(0)
-      await expect(page.locator('.capacity-notice')).toContainText('已用 4 / 5')
-      await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeEnabled()
-      const replacementProject = await result<Resource>(
-        await request.post('/api/prototype-hub/projects', {
-          headers: owned.headers,
-          data: { name: `${name} 2` },
-        }),
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
+      await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeDisabled()
+      const overflow = await request.post('/api/prototype-hub/projects', {
+        headers: owned.headers,
+        data: { name: `${name} rejected after soft deletion` },
+      })
+      expect(overflow.status()).toBe(409)
+      expect(((await overflow.json()) as { code: string }).code).toBe(
+        'PROTOTYPE_HUB_PROJECT_LIMIT_REACHED',
       )
-      owned.projects.push(replacementProject.id)
-      expect(replacementProject.id).not.toBe(emptyProjectId)
       expect(
         (
           await request.get(`/api/prototype-hub/projects/${emptyProjectId}`, {
@@ -1674,6 +1674,10 @@ liveTest(
       await page.goto('/prototype-hub/recycle-bin')
       await expect(page.getByRole('heading', { name: '回收站', exact: true })).toBeVisible()
       await expect(page.locator('.prototype-list-mode')).toHaveCount(0)
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
+      await expect(
+        page.locator('.ant-alert-info').filter({ hasText: protoLocales.zh.projectRecycleHint }),
+      ).toContainText('恢复不重复占用')
       const card = page
         .locator('.project-card')
         .filter({ hasText: name })
@@ -1685,6 +1689,7 @@ liveTest(
         (response) =>
           new URL(response.url()).pathname === `/api/prototype-hub/projects/${projectId}/_restore`,
       )
+      await expect(card.getByRole('button', { name: '恢复', exact: true })).toBeEnabled()
       await card.getByRole('button', { name: '恢复', exact: true }).click()
       await page
         .locator('.ant-popconfirm')
@@ -1692,6 +1697,7 @@ liveTest(
         .click()
       expect((await result<Resource>(await restoringProject)).id).toBe(projectId)
       owned.projects.push(projectId)
+      await expect(page.locator('.capacity-notice')).toContainText('已用 5 / 5')
       expect(
         (
           await request.get(`/api/prototype-hub/versions/${versionId}`, { headers: owned.headers })

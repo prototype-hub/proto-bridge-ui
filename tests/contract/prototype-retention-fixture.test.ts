@@ -144,3 +144,32 @@ it('retains an expired parent receipt while a younger raw child still exists', a
   expect(replacement.status).toBe(200)
   expect(replacement.result.id).not.toBe(parent.id)
 })
+
+it('counts recycled and expired projects until graph cleanup and restores without another slot', async () => {
+  const projects: Project[] = []
+  for (let index = 0; index < 4; index++)
+    projects.push(
+      (await call<Project>('/api/prototype-hub/projects', 'POST', { name: `Quota ${index}` }))
+        .result,
+    )
+  const id = projects[0]!.id
+  const usage = async () =>
+    (
+      await call<{ projects: { used: number; canCreate: boolean } }>(
+        '/api/prototype-hub/projects/_usage',
+        'GET',
+      )
+    ).result.projects
+  expect(await usage()).toMatchObject({ used: 5, canCreate: false })
+  await call(`/api/prototype-hub/projects/${id}`, 'DELETE')
+  expect(await usage()).toMatchObject({ used: 5, canCreate: false })
+  expect((await call('/api/prototype-hub/projects', 'POST', { name: 'Blocked' })).status).toBe(409)
+  expect((await call(`/api/prototype-hub/projects/${id}/_restore`)).status).toBe(200)
+  expect(await usage()).toMatchObject({ used: 5, canCreate: false })
+  await call(`/api/prototype-hub/projects/${id}`, 'DELETE')
+  await clock(epoch + retentionMs)
+  expect((await deleted('projects')).result.total).toBe(0)
+  expect(await usage()).toMatchObject({ used: 5, canCreate: false })
+  await call('/__test/purge-expired')
+  expect(await usage()).toMatchObject({ used: 4, canCreate: true })
+})

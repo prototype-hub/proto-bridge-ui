@@ -17,7 +17,7 @@ export function fixtureLicense(): PrototypeLicenseStatus {
 export const fixtureLicenseDocument = {
   keyId: 'fixture-key',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2 as const,
     licenseId: 'fixture-license',
     sequence: 1,
     orderId: 'fixture-order',
@@ -26,8 +26,7 @@ export const fixtureLicenseDocument = {
     edition: 'example',
     features: ['example-feature'],
     maxProjects: 10,
-    baseVersionsPerProject: 5,
-    projectVersionGrants: [{ projectId: 'p1', extraVersionBlocks: 1 }],
+    maxVersionsPerProject: 20,
     issuedAt: 1793404800000,
     notBefore: 1793404800000,
     trialEndsAt: null,

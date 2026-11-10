@@ -1,4 +1,4 @@
-/** Match the v1 server fingerprint for result reconciliation; this is not signature verification. */
+/** Match the server fingerprint for result reconciliation; this is not signature verification. */
 export async function licenseFingerprint(document: string): Promise<string | undefined> {
   const sort = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(sort)
