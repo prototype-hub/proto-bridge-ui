@@ -1,3 +1,4 @@
+import { searchLocales } from './search'
 import { copyInventoryLocales } from './copy-inventory'
 import { viewportCheckLocales } from './viewport-check'
 import { revisionMaterialLocales } from './revision-material'
@@ -5,6 +6,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...searchLocales.zh,
     ...revisionMaterialLocales.zh,
     ...viewportCheckLocales.zh,
     ...inspectToolLocales.zh,
@@ -739,6 +741,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...searchLocales.en,
     ...revisionMaterialLocales.en,
     ...viewportCheckLocales.en,
     ...inspectToolLocales.en,

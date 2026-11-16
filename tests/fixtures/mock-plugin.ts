@@ -1,3 +1,4 @@
+import { searchResponse } from './search'
 import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
 import { resetViewportChecks, viewportCheckResponse } from './viewport-check'
 import { materialsResponse, recordImportSource, resetMaterials } from './revision-material'
@@ -112,6 +113,19 @@ const initialMenus: ServerMenu[] = [
             actions: ['query', 'save', 'delete'],
           }),
         ),
+      },
+      {
+        ...menu(
+          'prototype-search',
+          'prototype-hub/Search',
+          '内容搜索',
+          '/prototype-hub/search',
+          [],
+        ),
+        i18nMessages: {
+          name: { zh_CN: '内容搜索', en_US: 'Content search', en: 'Content search' },
+        },
+        permissions: [{ permission: 'prototype-hub-version', actions: ['query'] }],
       },
       {
         ...menu(
@@ -939,6 +953,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     (shareScope && (!scopedShare || !activeVersion(scopedShare.versionId)))
   ) {
     send(res, 404, null, 'Resource unavailable')
+    return true
+  }
+  if (path === '/prototype-hub/search/_query' && method === 'POST') {
+    const result = searchResponse(data, revisions, activeProject, activeVersion, member)
+    send(res, result ? 200 : 400, result, result ? undefined : 'Invalid search request')
     return true
   }
   if (materialsResponse(req, res, path, method, data, bytes, revisions, member, now(), send))

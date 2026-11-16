@@ -1933,3 +1933,17 @@ it('clears and selects a same-semantic normal create retry after the same anchor
   expect(state.anchor.value).toBeUndefined()
   expect(state.selectedId.value).toBe('t1')
 })
+
+it('emits afterClose only when the drawer exit completes in its closed state', async () => {
+  const { state } = setup(memberScope(), true, 't1')
+  await flushPromises()
+  const wrapper = feedbackDrawer(state)
+  const drawer = wrapper.findComponent({ name: 'FeedbackDrawerStub' })
+  drawer.vm.$emit('afterOpenChange', true)
+  expect(wrapper.emitted('afterClose')).toBeUndefined()
+  drawer.vm.$emit('afterOpenChange', false)
+  expect(wrapper.emitted('afterClose')).toBeUndefined()
+  await wrapper.setProps({ open: false })
+  drawer.vm.$emit('afterOpenChange', false)
+  expect(wrapper.emitted('afterClose')).toHaveLength(1)
+})

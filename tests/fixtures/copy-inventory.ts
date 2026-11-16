@@ -12,6 +12,11 @@ const inventories = new Map<
   { snapshot: CopyInventorySnapshot; entries: CopyInventoryEntry[] }
 >()
 const receipts = new Map<string, { fingerprint: string; result: unknown }>()
+export function searchableCopy() {
+  return [...inventories.values()].flatMap(({ snapshot, entries }) =>
+    entries.map((entry) => ({ ...snapshot, ...entry })),
+  )
+}
 export function resetCopyInventories() {
   inventories.clear()
   receipts.clear()
