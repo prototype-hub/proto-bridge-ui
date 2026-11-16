@@ -2,6 +2,12 @@ import type { RouteRecordRaw } from 'vue-router'
 import { protoPermissions } from './permissions'
 export const protectedRoutes: RouteRecordRaw[] = [
   {
+    path: '/prototype-hub/search',
+    name: 'PrototypeHub-search',
+    component: () => import('../views/search/index.vue'),
+    meta: { permission: protoPermissions.version.query },
+  },
+  {
     path: '/prototype-hub/projects/:id',
     alias: ['/protohub/projects/:id', '/PrototypeHub/projects/:id'],
     name: 'project-detail',

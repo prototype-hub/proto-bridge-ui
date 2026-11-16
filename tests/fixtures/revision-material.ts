@@ -9,6 +9,9 @@ const rows = new Map<string, RevisionMaterial>()
 const files = new Map<string, Buffer>()
 const receipts = new Map<string, { fingerprint: string; value: unknown }>()
 let serial = 0
+export function searchableMaterials() {
+  return [...rows.values()]
+}
 export function resetMaterials() {
   rows.clear()
   files.clear()

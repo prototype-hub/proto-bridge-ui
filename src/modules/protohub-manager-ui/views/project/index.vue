@@ -91,6 +91,11 @@ watch(
     :is="embedded ? 'section' : PageContainer"
     :title="embedded ? undefined : t(trash ? 'proto.projectRecycleBin' : 'proto.projects')"
   >
+    <template v-if="!embedded && !trash && session.can(p.version.query)" #actions
+      ><router-link :to="{ name: 'PrototypeHub-search' }">{{
+        t('proto.searchEntry')
+      }}</router-link></template
+    >
     <a-alert v-if="trash" type="info" show-icon :message="t('proto.projectRecycleHint')" />
     <a-alert
       v-if="trash && restoredProject"

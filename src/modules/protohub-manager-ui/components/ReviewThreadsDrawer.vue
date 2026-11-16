@@ -28,6 +28,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   close: []
+  afterClose: []
   authenticate: []
   copyThread: [event: MouseEvent]
   captureAnchor: [shape: ReviewAnchor['shape']]
@@ -69,6 +70,7 @@ async function show(next: 'list' | 'detail') {
   }
 }
 function afterOpen(visible: boolean) {
+  if (!visible && !props.open) emit('afterClose')
   // The drawer's entrance may finish after the user has already started editing.
   if (visible && !pendingSelection.value && !content.value?.contains(document.activeElement))
     void show(mode.value)

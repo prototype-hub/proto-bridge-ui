@@ -31,6 +31,11 @@ export interface ThreadImage {
 export function associationSource(id: string) {
   return threads.get(id)
 }
+export function searchableFeedback() {
+  return [...threads.values()].flatMap(({ thread, versionId }) =>
+    (messages.get(thread.id) || []).map((message) => ({ ...message, thread, versionId })),
+  )
+}
 export function resetThreads() {
   threads.clear()
   messages.clear()

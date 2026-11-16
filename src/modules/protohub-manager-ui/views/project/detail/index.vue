@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectDetailView' })
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { Space as ASpace, Tag as ATag, Alert as AAlert } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -159,6 +159,13 @@ watch(
     @back="router.push(projectListLocation(router, session.menus, route.query))"
     ><template #actions
       ><a-space wrap
+        ><router-link
+          v-if="session.can(p.version.query) && resource.data.value.project"
+          :to="{
+            name: 'PrototypeHub-search',
+            query: { projectId: resource.data.value.project.id },
+          }"
+          >{{ t('proto.searchThisProject') }}</router-link
         ><permission-button
           v-if="projectAllows(resource.data.value.project, 'manageShares')"
           :permission="p.share.query"

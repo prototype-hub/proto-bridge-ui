@@ -2,7 +2,8 @@
 defineOptions({ name: 'PreviewView' })
 import LoadState from '@/shared/components/LoadState.vue'
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
+import { searchTool } from '../../utils/search'
 import { useSession } from '@/app/stores/session'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
@@ -90,6 +91,30 @@ const assetsAllowed = computed(
 watch(assetsAllowed, (allowed) => {
   if (!allowed) assetsOpen.value = copyOpen.value = viewportOpen.value = materialsOpen.value = false
 })
+const requestedTool = computed(() => searchTool(route.query))
+const initialTool = requestedTool.value,
+  initialRevision = route.query.revisionId,
+  initialPage = route.query.pageId
+const invalidSearchSource = computed(() => initialTool === null || requestedTool.value === null)
+let openedSearchSource = false
+watch([() => route.fullPath, data, selectedPage, assetsAllowed], () => {
+  const tool = requestedTool.value
+  if (
+    !tool ||
+    tool !== initialTool ||
+    !assetsAllowed.value ||
+    openedSearchSource ||
+    route.query.revisionId !== initialRevision ||
+    (tool === 'copy' && route.query.pageId !== initialPage)
+  )
+    return
+  if (data.value?.revisionId !== route.query.revisionId) return
+  if (tool === 'copy') {
+    if (selectedPage.value?.pageId !== route.query.pageId) return
+    openCopy()
+  } else materialsOpen.value = true
+  openedSearchSource = true
+})
 function closeAssets() {
   assetsOpen.value = false
   void nextTick(() => assetsTrigger.value?.$el.focus())
@@ -116,6 +141,17 @@ const threadLocation = useReviewThreadLocation(
   ),
 )
 const feedback = useReviewThreads(feedbackScope, feedbackOpen, undefined, threadLocation)
+const feedbackTrigger = ref<{ $el: HTMLElement }>()
+let restoreFeedbackTrigger = false
+function closeFeedback() {
+  restoreFeedbackTrigger = true
+  threadLocation.close()
+}
+function afterFeedbackClose() {
+  if (!restoreFeedbackTrigger || feedbackOpen.value) return
+  restoreFeedbackTrigger = false
+  feedbackTrigger.value?.$el.focus()
+}
 const associationOpen = ref(false),
   restoreAssociationFocus = ref(false)
 const association = useReviewAssociations(
@@ -188,6 +224,12 @@ function locateAnchor(anchor: ReviewAnchor) {
 <template>
   <div class="fullscreen">
     <a-alert
+      v-if="invalidSearchSource"
+      type="error"
+      show-icon
+      :message="t('proto.searchInvalidTarget')"
+    />
+    <a-alert
       v-if="threadLocation.invalid.value"
       type="error"
       show-icon
@@ -219,6 +261,21 @@ function locateAnchor(anchor: ReviewAnchor) {
               ><down-outlined aria-hidden="true" /></a-button
             ><template #overlay
               ><a-menu
+                ><a-menu-item key="search"
+                  ><router-link
+                    :to="{
+                      name: 'PrototypeHub-search',
+                      query: {
+                        projectId: project?.id,
+                        versionId: String(route.params.versionId),
+                        revisionId: data.revisionId,
+                      },
+                    }"
+                    target="_blank"
+                    rel="noopener"
+                    :title="t('proto.searchNewWindow')"
+                    >{{ t('proto.searchThisRevision') }}</router-link
+                  ></a-menu-item
                 ><a-menu-item key="materials" @click="materialsOpen = true">{{
                   t('proto.materials')
                 }}</a-menu-item
@@ -235,6 +292,7 @@ function locateAnchor(anchor: ReviewAnchor) {
             ></a-dropdown
           ><a-button
             v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
+            ref="feedbackTrigger"
             type="primary"
             :disabled="!selectedPage"
             @click="feedbackOpen = true"
@@ -312,7 +370,8 @@ function locateAnchor(anchor: ReviewAnchor) {
     :restore-association-focus="restoreAssociationFocus"
     @associate="openAssociation"
     @association-focus-restored="restoreAssociationFocus = false"
-    @close="threadLocation.close"
+    @close="closeFeedback"
+    @after-close="afterFeedbackClose"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
     @overview="overviewOpen = true"
