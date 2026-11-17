@@ -8,6 +8,7 @@ it('keeps the basic edition registry empty without locally assembled modules', (
     menuPathMap: {},
     locales: { zh: {}, en: {} },
     versionTools: [],
+    comparisonTools: [],
   })
 })
 
@@ -20,6 +21,9 @@ it('merges only build-time modules in stable path order', () => {
         componentMap: { 'example/Page': second },
         locales: { zh: { example: { title: '后' } }, en: { example: { title: 'Last' } } },
         versionTools: [{ name: 'LastTool' }],
+        comparisonTools: [
+          { key: 'example', labelKey: 'example.title', component: { name: 'CompareTool' } },
+        ],
       },
     },
     '/src/extensions/a/index.ts': {
@@ -30,6 +34,7 @@ it('merges only build-time modules in stable path order', () => {
       },
     },
   })
+  expect(result.comparisonTools.map((tool) => tool.key)).toEqual(['example'])
   expect(result.componentMap['example/Page']).toBe(second)
   expect(result.menuPathMap['/example']?.component).toBe(first)
   expect(result.locales.en).toEqual({ example: { title: 'Last' } })

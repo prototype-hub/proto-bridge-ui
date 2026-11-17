@@ -286,6 +286,7 @@ export function useRevisionComparison() {
     clearPanes()
   })
   return {
+    pair,
     data,
     loading,
     error,

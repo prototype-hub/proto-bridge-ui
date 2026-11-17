@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { login } from './system-helpers'
 import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
-const origin = 'http://127.0.0.1:5187'
+const origin = process.env.PROTOTYPE_HUB_TEST_URL || 'http://127.0.0.1:5187'
 const comparePath =
   'prototype-hub/compare/p1/v1?leftRevisionId=compare-left&rightRevisionId=compare-right'
 async function choose(page: Page, id: string) {
@@ -103,6 +103,14 @@ test('diff rows preserve absent and legacy sides and paginate both complete filt
   await login(page)
   await page.goto(comparePath)
   await frames(page)
+  expect(
+    await page
+      .locator('.comparison-differences')
+      .evaluate((node) => node.getBoundingClientRect().top),
+  ).toBeLessThan(
+    await page.locator('.comparison-evidence').evaluate((node) => node.getBoundingClientRect().top),
+  )
+  await expect(page.locator('.comparison-guide')).not.toHaveAttribute('open')
   const pages = page.getByRole('region', { name: '页面差异', exact: true })
   await expect(pages.locator('.comparison-summary')).toHaveText(
     '新增 1 · 删除 1 · 变化 1 · 未变化 56',
