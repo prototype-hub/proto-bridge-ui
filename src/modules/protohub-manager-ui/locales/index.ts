@@ -6,6 +6,13 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    compareOpenPageShort: '选择页面',
+    compareSelectScope: '页面与文件差异 · 切换比较页面',
+    compareMethod: '比较方式与范围',
+    comparePair: '当前比较范围',
+    compareRevisionDetails: '修订详情',
+    compareEvidence: '比较结果',
+    compareLivePreview: '并排预览',
     ...searchLocales.zh,
     ...revisionMaterialLocales.zh,
     ...viewportCheckLocales.zh,
@@ -771,6 +778,13 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    compareOpenPageShort: 'Compare',
+    compareSelectScope: 'Page & file differences · choose pages',
+    compareMethod: 'Comparison method & scope',
+    comparePair: 'Current comparison scope',
+    compareRevisionDetails: 'Revision details',
+    compareEvidence: 'Comparison evidence',
+    compareLivePreview: 'Side-by-side preview',
     ...searchLocales.en,
     ...revisionMaterialLocales.en,
     ...viewportCheckLocales.en,

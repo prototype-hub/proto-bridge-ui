@@ -1,7 +1,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'RevisionCompareView' })
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { extensions, type ComparisonToolContext } from '@/app/modules/extensions'
 import { useI18n } from 'vue-i18n'
+import { useSettings } from '@/app/stores/settings'
 import {
   Alert as AAlert,
   Button as AButton,
@@ -16,8 +18,37 @@ import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/Prototy
 import LoadState from '@/shared/components/LoadState.vue'
 import DataTable from '@/shared/components/DataTable.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
+// Standalone comparison tabs restore the same saved language as the admin shell.
+useSettings()
 const { t } = useI18n()
 const state = useRevisionComparison()
+const evidenceTab = ref('preview')
+const differencesOpen = ref(true)
+watch(evidenceTab, (value) => {
+  if (value !== 'preview') differencesOpen.value = false
+})
+const toolContext = computed<ComparisonToolContext | undefined>(() => {
+  const pair = state.pair.value
+  const pages = state.selection.value.pages
+  if (
+    state.pageError.value ||
+    !pair.projectId ||
+    !pair.versionId ||
+    !pair.leftRevisionId ||
+    !pair.rightRevisionId ||
+    !pages.left?.pageId ||
+    !pages.right?.pageId
+  )
+    return undefined
+  return {
+    projectId: pair.projectId,
+    versionId: pair.versionId,
+    leftRevisionId: pair.leftRevisionId,
+    rightRevisionId: pair.rightRevisionId,
+    leftPageId: pages.left.pageId,
+    rightPageId: pages.right.pageId,
+  }
+})
 const sides: WorkspacePane[] = ['left', 'right']
 const statuses: Record<ComparisonStatus, string> = {
   added: 'compareAdded',
@@ -45,7 +76,7 @@ const commonColumns = computed(() => [
 ])
 const pageColumns = computed(() => [
   ...commonColumns.value,
-  { title: t('common.actions'), key: 'actions', width: 130 },
+  { title: t('common.actions'), key: 'actions', width: 130, fixed: 'right' as const },
 ])
 const pagination = (kind: 'pages' | 'files') => ({
   current: state.paging[`${kind}PageIndex`] + 1,
@@ -63,7 +94,10 @@ const pagination = (kind: 'pages' | 'files') => ({
         t('proto.compareCopyLink')
       }}</a-button>
     </header>
-    <a-alert type="info" :message="t('proto.compareHint')" show-icon />
+    <details class="comparison-guide">
+      <summary>{{ t('proto.compareMethod') }}</summary>
+      <p>{{ t('proto.compareHint') }}</p>
+    </details>
     <load-state
       :loading="state.loading.value && !state.data.value"
       :error="state.error.value"
@@ -76,121 +110,167 @@ const pagination = (kind: 'pages' | 'files') => ({
           :message="state.pageError.value"
           show-icon
         />
-        <div class="comparison-panes">
-          <section
-            v-for="side in sides"
-            :key="side"
-            class="comparison-pane panel"
-            :data-pane="side"
-            :aria-label="t(side === 'left' ? 'proto.compareLeft' : 'proto.compareRight')"
-          >
-            <header class="comparison-meta">
-              <h2>{{ t(side === 'left' ? 'proto.compareLeft' : 'proto.compareRight') }}</h2>
-              <strong>{{ state.data.value[side].versionName }}</strong>
+        <section class="comparison-context panel" :aria-label="t('proto.comparePair')">
+          <div v-for="side in sides" :key="side" class="comparison-context-side">
+            <span class="muted">{{
+              t(side === 'left' ? 'proto.compareLeft' : 'proto.compareRight')
+            }}</span>
+            <strong>{{ state.data.value[side].versionName }}</strong>
+            <span>{{
+              state.selection.value.pages[side]?.path || t('proto.compareMissingPage')
+            }}</span>
+            <details>
+              <summary>{{ t('proto.compareRevisionDetails') }}</summary>
               <code class="comparison-rid">{{ state.data.value[side].id }}</code>
               <time>{{ new Date(state.data.value[side].createdAt).toLocaleString() }}</time>
-            </header>
-            <a-alert v-if="state.pageError.value" type="error" :message="state.pageError.value" />
-            <a-alert
-              v-else-if="!state.selection.value.pages[side]"
-              type="info"
-              :message="t('proto.compareMissingPage')"
-            />
-            <a-alert
-              v-else-if="!state.selection.value.pages[side]?.pageId"
-              type="warning"
-              :message="t('proto.compareLegacyPage')"
-            />
-            <a-alert
-              v-else-if="state.panes[side].error"
-              :type="state.panes[side].expired ? 'warning' : 'error'"
-              :message="state.panes[side].error"
-              show-icon
-            >
-              <template #action
-                ><a-button @click="state.authorize(side)">{{
-                  t('proto.reauthorizePreview')
-                }}</a-button></template
-              >
-            </a-alert>
-            <load-state v-else :loading="state.panes[side].loading">
-              <div v-if="state.contexts.value[side]" class="comparison-workspace">
-                <prototype-workspace :context="state.contexts.value[side]!" :pane="side" compact />
-              </div>
-            </load-state>
-          </section>
-        </div>
-        <a-checkbox
-          :checked="state.includeUnchanged.value"
-          :disabled="state.loading.value"
-          @change="(event) => state.toggleUnchanged(event.target.checked)"
-          >{{ t('proto.compareIncludeUnchanged') }}</a-checkbox
+            </details>
+          </div>
+        </section>
+        <details
+          class="comparison-differences"
+          :open="differencesOpen"
+          @toggle="(event) => (differencesOpen = (event.target as HTMLDetailsElement).open)"
         >
-        <a-tabs>
-          <a-tab-pane key="pages" :tab="t('proto.comparePages')">
-            <section :aria-label="t('proto.comparePages')">
-              <p class="comparison-summary">
-                {{ t('proto.compareSummary', state.data.value.summary.pages) }}
-              </p>
-              <data-table
-                :rows="pageRows"
-                :columns="pageColumns"
-                :pagination="pagination('pages')"
-                :loading="state.loading.value"
-                @page="(page, size) => state.changePage('pages', page, size)"
-              >
-                <template #cell="{ record, column }">
-                  <text-ellipsis v-if="column.dataIndex === 'path'" :text="record.path" />
-                  <a-tag v-else-if="column.dataIndex === 'status'" :color="colors[record.status]">{{
-                    t(`proto.${statuses[record.status]}`)
-                  }}</a-tag>
-                  <a-button
-                    v-else-if="column.key === 'actions'"
-                    @click="state.selectPage(record)"
-                    >{{ t('proto.compareOpenPage') }}</a-button
-                  >
-                  <template v-else>{{
-                    record[column.dataIndex === 'left' ? 'left' : 'right']?.name ||
-                    t('proto.compareNoSide')
-                  }}</template>
-                </template>
-              </data-table>
-            </section>
-          </a-tab-pane>
-          <a-tab-pane key="files" :tab="t('proto.compareFiles')">
-            <section :aria-label="t('proto.compareFiles')">
-              <p class="comparison-summary">
-                {{ t('proto.compareSummary', state.data.value.summary.files) }}
-              </p>
-              <data-table
-                :rows="fileRows"
-                :columns="commonColumns"
-                :pagination="pagination('files')"
-                :loading="state.loading.value"
-                @page="(page, size) => state.changePage('files', page, size)"
-              >
-                <template #cell="{ record, column }">
-                  <text-ellipsis v-if="column.dataIndex === 'path'" :text="record.path" />
-                  <a-tag v-else-if="column.dataIndex === 'status'" :color="colors[record.status]">{{
-                    t(`proto.${statuses[record.status]}`)
-                  }}</a-tag>
-                  <template v-else>
-                    <template v-if="record[column.dataIndex === 'left' ? 'left' : 'right']">
-                      <code class="comparison-hash">{{
-                        record[column.dataIndex === 'left' ? 'left' : 'right']!.sha256
-                      }}</code>
-                      <span
-                        >{{ record[column.dataIndex === 'left' ? 'left' : 'right']!.size }}
-                        {{ t('proto.compareSize') }}</span
-                      >
-                    </template>
-                    <template v-else>{{ t('proto.compareNoSide') }}</template>
+          <summary>
+            {{ t('proto.compareSelectScope') }}
+            <span class="muted">{{
+              t('proto.compareSummary', state.data.value.summary.pages)
+            }}</span>
+          </summary>
+          <a-checkbox
+            :checked="state.includeUnchanged.value"
+            :disabled="state.loading.value"
+            @change="(event) => state.toggleUnchanged(event.target.checked)"
+            >{{ t('proto.compareIncludeUnchanged') }}</a-checkbox
+          >
+          <a-tabs>
+            <a-tab-pane key="pages" :tab="t('proto.comparePages')">
+              <section :aria-label="t('proto.comparePages')">
+                <p class="comparison-summary">
+                  {{ t('proto.compareSummary', state.data.value.summary.pages) }}
+                </p>
+                <data-table
+                  :rows="pageRows"
+                  :columns="pageColumns"
+                  :pagination="pagination('pages')"
+                  :loading="state.loading.value"
+                  @page="(page, size) => state.changePage('pages', page, size)"
+                >
+                  <template #cell="{ record, column }">
+                    <text-ellipsis v-if="column.dataIndex === 'path'" :text="record.path" />
+                    <a-tag
+                      v-else-if="column.dataIndex === 'status'"
+                      :color="colors[record.status]"
+                      >{{ t(`proto.${statuses[record.status]}`) }}</a-tag
+                    >
+                    <a-button
+                      v-else-if="column.key === 'actions'"
+                      :aria-label="t('proto.compareOpenPage')"
+                      @click="state.selectPage(record)"
+                      ><span class="comparison-open-full">{{ t('proto.compareOpenPage') }}</span
+                      ><span class="comparison-open-short" aria-hidden="true">{{
+                        t('proto.compareOpenPageShort')
+                      }}</span></a-button
+                    >
+                    <template v-else>{{
+                      record[column.dataIndex === 'left' ? 'left' : 'right']?.name ||
+                      t('proto.compareNoSide')
+                    }}</template>
                   </template>
-                </template>
-              </data-table>
-            </section>
-          </a-tab-pane>
-        </a-tabs>
+                </data-table>
+              </section>
+            </a-tab-pane>
+            <a-tab-pane key="files" :tab="t('proto.compareFiles')">
+              <section :aria-label="t('proto.compareFiles')">
+                <p class="comparison-summary">
+                  {{ t('proto.compareSummary', state.data.value.summary.files) }}
+                </p>
+                <data-table
+                  :rows="fileRows"
+                  :columns="commonColumns"
+                  :pagination="pagination('files')"
+                  :loading="state.loading.value"
+                  @page="(page, size) => state.changePage('files', page, size)"
+                >
+                  <template #cell="{ record, column }">
+                    <text-ellipsis v-if="column.dataIndex === 'path'" :text="record.path" />
+                    <a-tag
+                      v-else-if="column.dataIndex === 'status'"
+                      :color="colors[record.status]"
+                      >{{ t(`proto.${statuses[record.status]}`) }}</a-tag
+                    >
+                    <template v-else>
+                      <template v-if="record[column.dataIndex === 'left' ? 'left' : 'right']">
+                        <code class="comparison-hash">{{
+                          record[column.dataIndex === 'left' ? 'left' : 'right']!.sha256
+                        }}</code>
+                        <span
+                          >{{ record[column.dataIndex === 'left' ? 'left' : 'right']!.size }}
+                          {{ t('proto.compareSize') }}</span
+                        >
+                      </template>
+                      <template v-else>{{ t('proto.compareNoSide') }}</template>
+                    </template>
+                  </template>
+                </data-table>
+              </section>
+            </a-tab-pane>
+          </a-tabs>
+        </details>
+        <section class="comparison-evidence" :aria-label="t('proto.compareEvidence')">
+          <a-tabs v-model:active-key="evidenceTab">
+            <a-tab-pane key="preview" :tab="t('proto.compareLivePreview')">
+              <div class="comparison-panes">
+                <section
+                  v-for="side in sides"
+                  :key="side"
+                  class="comparison-pane panel"
+                  :data-pane="side"
+                  :aria-label="t(side === 'left' ? 'proto.compareLeft' : 'proto.compareRight')"
+                >
+                  <a-alert
+                    v-if="!state.selection.value.pages[side]"
+                    type="info"
+                    :message="t('proto.compareMissingPage')"
+                  />
+                  <a-alert
+                    v-else-if="!state.selection.value.pages[side]?.pageId"
+                    type="warning"
+                    :message="t('proto.compareLegacyPage')"
+                  />
+                  <a-alert
+                    v-else-if="state.panes[side].error"
+                    :type="state.panes[side].expired ? 'warning' : 'error'"
+                    :message="state.panes[side].error"
+                    show-icon
+                  >
+                    <template #action
+                      ><a-button @click="state.authorize(side)">{{
+                        t('proto.reauthorizePreview')
+                      }}</a-button></template
+                    >
+                  </a-alert>
+                  <load-state v-else :loading="state.panes[side].loading">
+                    <div v-if="state.contexts.value[side]" class="comparison-workspace">
+                      <prototype-workspace
+                        :context="state.contexts.value[side]!"
+                        :pane="side"
+                        compact
+                      />
+                    </div>
+                  </load-state>
+                </section>
+              </div>
+            </a-tab-pane>
+            <a-tab-pane
+              v-for="tool in extensions.comparisonTools"
+              :key="tool.key"
+              :tab="t(tool.labelKey)"
+            >
+              <component :is="tool.component" :context="toolContext" />
+            </a-tab-pane>
+          </a-tabs>
+        </section>
       </template>
     </load-state>
   </main>
@@ -213,6 +293,43 @@ const pagination = (kind: 'pages' | 'files') => ({
 .comparison-toolbar h1,
 .comparison-meta h2 {
   margin: 0;
+}
+.comparison-context {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+.comparison-context-side {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.comparison-context-side time {
+  display: block;
+}
+.comparison-differences > summary {
+  cursor: pointer;
+  padding: var(--space-3) 0;
+}
+.comparison-differences > summary span {
+  margin-inline-start: var(--space-3);
+  font-size: var(--text-small);
+}
+.comparison-differences > .ant-checkbox-wrapper {
+  margin-top: var(--space-3);
+}
+.comparison-guide summary,
+.comparison-context summary {
+  cursor: pointer;
+  color: var(--color-muted);
+}
+.comparison-guide p {
+  max-width: 75ch;
+  margin: var(--space-2) 0 0;
+}
+.comparison-evidence {
+  min-width: 0;
 }
 .comparison-panes {
   display: grid;
@@ -245,15 +362,27 @@ const pagination = (kind: 'pages' | 'files') => ({
 .comparison-workspace :deep(.workspace-current) {
   flex-wrap: wrap;
 }
+.comparison-open-short {
+  display: none;
+}
 .comparison-summary {
   margin-bottom: var(--space-3);
 }
+@media (width <= 640px) {
+  .comparison-open-full {
+    display: none;
+  }
+  .comparison-open-short {
+    display: inline;
+  }
+}
 @media (width <= 1000px) {
-  .comparison-panes {
+  .comparison-panes,
+  .comparison-context {
     grid-template-columns: minmax(0, 1fr);
   }
   .comparison-workspace {
-    height: 500px;
+    height: 420px;
   }
 }
 </style>
