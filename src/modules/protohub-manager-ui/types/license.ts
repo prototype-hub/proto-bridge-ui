@@ -1,4 +1,4 @@
-/** Verified declarations are separate from enforced capacity and do not activate commercial modules. */
+/** Verified declarations are separate from the server-enforced capacity and advanced feature rights. */
 export interface PrototypeLicenseStatus {
   schemaVersion: 1
   installationId: string
@@ -12,7 +12,7 @@ export interface PrototypeLicenseStatus {
     keyId: string
   } | null
   verifiedEntitlements: {
-    schemaVersion: 2
+    schemaVersion: 2 | 3
     customer: string
     edition: string
     features: string[]
@@ -21,8 +21,22 @@ export interface PrototypeLicenseStatus {
     issuedAt: number
     notBefore: number
     trialEndsAt: number | null
+    trialDurationDays?: number | null
     maintenanceUntil: number | null
   } | null
+  trialActivation: { startedAt: number | null; endsAt: number | null }
+  advancedEntitlements: {
+    moduleAvailable: boolean
+    status:
+      | 'module_unavailable'
+      | 'not_licensed'
+      | 'permanent'
+      | 'trial'
+      | 'expired'
+      | 'legacy_trial'
+      | 'not_started'
+    features: string[]
+  }
   freeEntitlements: { maxProjects: number; baseVersionsPerProject: number; features: string[] }
   enforcedCapacity: {
     projectLimit: number

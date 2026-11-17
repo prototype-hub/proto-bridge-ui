@@ -9,6 +9,8 @@ export function fixtureLicense(): PrototypeLicenseStatus {
     trustConfigured: true,
     acceptedCredential: null,
     verifiedEntitlements: null,
+    trialActivation: { startedAt: null, endsAt: null },
+    advancedEntitlements: { moduleAvailable: false, status: 'module_unavailable', features: [] },
     freeEntitlements: { maxProjects: 5, baseVersionsPerProject: 5, features: [] },
     enforcedCapacity: { projectLimit: 5, versionLimit: 5, source: 'deployment' },
   }
