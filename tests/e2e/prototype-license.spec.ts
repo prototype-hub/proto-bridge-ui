@@ -22,6 +22,7 @@ for (const language of ['zh', 'en'] as const)
       await expect(
         page.getByRole('heading', { name: text('免费基础版', 'Free basic edition'), exact: true }),
       ).toBeVisible()
+      await page.locator('.license-installation > summary').click()
       const download = page.getByRole('button', {
         name: text('下载安装请求', 'Download installation request'),
         exact: true,
@@ -178,6 +179,7 @@ test('query-only permission keeps installation data readable and does not offer 
   await expect(
     page.getByText('当前仅有查看权限。导入凭证需要授权管理的保存权限。', { exact: true }),
   ).toBeVisible()
+  await page.locator('.license-installation > summary').click()
   await expect(page.getByRole('button', { name: '下载安装请求', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '验证并导入', exact: true })).toHaveCount(0)
 })
@@ -230,4 +232,85 @@ test('zero epoch declarations and uniform limits remain readable at 390px', asyn
     path: info.outputPath('license-zero-dates-uniform-en-390.png'),
     fullPage: true,
   })
+})
+
+test('advanced rights follow server enforcement and first-import receipts, without inferring from capacity or claims', async ({
+  page,
+}) => {
+  await login(page)
+  let status = fixtureAcceptedLicense('fingerprint')
+  status.verifiedEntitlements = {
+    ...fixtureLicenseDocument.payload,
+    schemaVersion: 3,
+    trialDurationDays: 30,
+  }
+  status.trialActivation = { startedAt: 1793404800000, endsAt: 1795996800000 }
+  await page.route('**/api/prototype-hub/license', (route) =>
+    route.fulfill({ json: { success: true, result: status } }),
+  )
+  await page.goto('prototype-hub/license')
+  const overview = page.locator('.license-advanced')
+  await expect(overview).toContainText('未安装高级模块')
+  await expect(overview.locator('.license-feature-list')).toHaveCount(0)
+  await expect(overview).toContainText('首次成功导入')
+  status = {
+    ...status,
+    advancedEntitlements: { moduleAvailable: true, status: 'trial', features: ['feature.review'] },
+  }
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(overview).toContainText('试用中')
+  await expect(overview.locator('.license-feature-list')).toHaveText('feature.review')
+  status = {
+    ...status,
+    advancedEntitlements: { moduleAvailable: true, status: 'expired', features: [] },
+  }
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(overview).toContainText('试用已结束')
+  await expect(overview.locator('.license-feature-list')).toHaveCount(0)
+  await expect(overview.locator('.license-trial-receipt')).toBeVisible()
+  status = {
+    ...status,
+    advancedEntitlements: { moduleAvailable: true, status: 'legacy_trial', features: [] },
+  }
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(overview).toContainText('旧试用凭证待换发')
+})
+
+test('trial import consequence is visible before submission, including a missing advanced module', async ({
+  page,
+}) => {
+  await login(page)
+  await page.goto('prototype-hub/license')
+  await page.getByLabel('凭证内容', { exact: true }).fill(
+    JSON.stringify({
+      ...fixtureLicenseDocument,
+      payload: {
+        ...fixtureLicenseDocument.payload,
+        schemaVersion: 3,
+        edition: 'trial',
+        trialDurationDays: 30,
+      },
+    }),
+  )
+  await expect(page.locator('.license-trial-warning')).toContainText('成功导入后立即开始 30 天试用')
+  await expect(page.locator('.license-trial-warning')).toContainText('尚未安装高级模块也会开始')
+  await page.getByRole('button', { name: '清空输入', exact: true }).click()
+  await expect(page.locator('.license-trial-warning')).toHaveCount(0)
+})
+
+test('a backend without the additive advanced fields stays usable without claiming rights', async ({
+  page,
+}) => {
+  await login(page)
+  const status: Partial<ReturnType<typeof fixtureAcceptedLicense>> =
+    fixtureAcceptedLicense('fingerprint')
+  delete status.advancedEntitlements
+  delete status.trialActivation
+  await page.route('**/api/prototype-hub/license', (route) =>
+    route.fulfill({ json: { success: true, result: status } }),
+  )
+  await page.goto('prototype-hub/license')
+  await expect(page.locator('.license-advanced')).toContainText('高级状态暂不可用')
+  await expect(page.locator('.license-feature-list')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '验证并导入', exact: true })).toBeEnabled()
 })

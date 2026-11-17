@@ -60,6 +60,23 @@ const limit = (value: number) => (value === -1 ? t('proto.licenseUnlimited') : n
 const date = (value: number) =>
   new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(value)
 const claims = computed(() => data.value?.verifiedEntitlements)
+const advanced = computed(
+  () =>
+    data.value?.advancedEntitlements ?? {
+      moduleAvailable: false,
+      status: 'unavailable',
+      features: [],
+    },
+)
+const trialActivation = computed(() => data.value?.trialActivation)
+const trialCandidate = computed(() => {
+  try {
+    const payload = JSON.parse(document.value)?.payload
+    return payload?.schemaVersion === 3 && payload.edition === 'trial'
+  } catch {
+    return false
+  }
+})
 
 async function submit() {
   const imported = await state.submit()
@@ -172,34 +189,82 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
           :description="t('proto.licenseHint_unsupported')"
           class="license-unsupported"
         />
-        <slot
-          name="overview"
-          :status="data"
-          :loading="loading"
-          :import-credential="focusImport"
-          :reload-status="state.load"
-        >
-          <section class="license-overview" aria-labelledby="license-status-title">
-            <div
-              class="license-status"
-              :class="{ 'license-unsupported': data.status === 'unsupported' }"
-            >
-              <h2 id="license-status-title">{{ statusTitle }}</h2>
-              <p>{{ statusHint }}</p>
-            </div>
-            <dl class="license-capacity">
-              <div>
-                <dt>{{ t('proto.licenseActualProjects') }}</dt>
-                <dd>{{ limit(data.enforcedCapacity.projectLimit) }}</dd>
+        <div class="license-entitlement-overview">
+          <slot
+            name="overview"
+            :status="data"
+            :loading="loading"
+            :import-credential="focusImport"
+            :reload-status="state.load"
+          >
+            <section class="license-overview" aria-labelledby="license-status-title">
+              <div
+                class="license-status"
+                :class="{ 'license-unsupported': data.status === 'unsupported' }"
+              >
+                <h2 id="license-status-title">{{ statusTitle }}</h2>
+                <p>{{ statusHint }}</p>
+                <p class="license-mobile-advanced">
+                  {{
+                    t('proto.licenseAdvancedTitle') +
+                    ' · ' +
+                    t(`proto.licenseAdvanced_${advanced.status}`)
+                  }}
+                </p>
+                <a-button v-if="canImport" class="license-overview-import" @click="focusImport">{{
+                  t('proto.licenseImportTitle')
+                }}</a-button>
               </div>
+              <dl class="license-capacity">
+                <div>
+                  <dt>{{ t('proto.licenseActualProjects') }}</dt>
+                  <dd>{{ limit(data.enforcedCapacity.projectLimit) }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('proto.licenseActualVersions') }}</dt>
+                  <dd>{{ limit(data.enforcedCapacity.versionLimit) }}</dd>
+                </div>
+              </dl>
+              <p class="license-boundary">{{ t('proto.licenseEnforcementHint') }}</p>
+            </section>
+          </slot>
+
+          <section class="license-advanced" aria-labelledby="license-advanced-title">
+            <div class="license-advanced-heading">
               <div>
-                <dt>{{ t('proto.licenseActualVersions') }}</dt>
-                <dd>{{ limit(data.enforcedCapacity.versionLimit) }}</dd>
+                <h2 id="license-advanced-title">{{ t('proto.licenseAdvancedTitle') }}</h2>
+                <p class="license-secondary">{{ t('proto.licenseAdvancedSeparate') }}</p>
+              </div>
+              <strong class="license-advanced-state">{{
+                t(`proto.licenseAdvanced_${advanced.status}`)
+              }}</strong>
+            </div>
+            <p class="license-advanced-hint">
+              {{ t(`proto.licenseAdvancedHint_${advanced.status}`) }}
+            </p>
+            <ul v-if="advanced.features.length" class="license-feature-list">
+              <li v-for="feature in advanced.features" :key="feature" translate="no">
+                {{ feature }}
+              </li>
+            </ul>
+            <dl v-if="trialActivation?.startedAt != null" class="license-trial-receipt">
+              <div>
+                <dt>{{ t('proto.licenseTrialStarted') }}</dt>
+                <dd>{{ date(trialActivation.startedAt) }}</dd>
+              </div>
+              <div v-if="trialActivation?.endsAt != null">
+                <dt>{{ t('proto.licenseTrialEnds') }}</dt>
+                <dd>{{ date(trialActivation.endsAt) }}</dd>
               </div>
             </dl>
-            <p class="license-boundary">{{ t('proto.licenseEnforcementHint') }}</p>
+            <p
+              v-if="trialActivation?.startedAt != null"
+              class="license-secondary license-trial-note"
+            >
+              {{ t('proto.licenseTrialReceiptHint') }}
+            </p>
           </section>
-        </slot>
+        </div>
 
         <div
           v-if="success || unknown"
@@ -232,37 +297,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
         </div>
 
         <div class="license-workspace">
-          <slot name="installation" :status="data" :download-request="downloadRequest">
-            <section class="license-installation" aria-labelledby="license-installation-title">
-              <h2 id="license-installation-title">{{ t('proto.licenseInstallation') }}</h2>
-              <p class="license-secondary">{{ t('proto.licenseInstallationHint') }}</p>
-              <dl class="license-identity">
-                <div>
-                  <dt>{{ t('proto.licenseInstallationId') }}</dt>
-                  <dd translate="no">{{ data.installationId }}</dd>
-                </div>
-              </dl>
-              <a-button @click="downloadRequest"
-                ><download-outlined aria-hidden="true" />{{
-                  t('proto.licenseDownloadRequest')
-                }}</a-button
-              >
-              <details class="license-help">
-                <summary>{{ t('proto.licenseAbout') }}</summary>
-                <p>
-                  {{
-                    t('proto.licenseFreeHint', {
-                      projects: number(data.freeEntitlements.maxProjects),
-                      versions: number(data.freeEntitlements.baseVersionsPerProject),
-                    })
-                  }}
-                </p>
-                <p>{{ t('proto.licenseOfflineHint') }}</p>
-                <p>{{ t('proto.licenseRestoreHint') }}</p>
-              </details>
-            </section>
-          </slot>
-
           <section class="license-import" aria-labelledby="license-import-title">
             <h2 id="license-import-title" ref="importHeading" tabindex="-1">
               {{ t('proto.licenseImportTitle') }}
@@ -323,6 +357,14 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
               <p id="license-document-hint" class="license-secondary license-field-hint">
                 {{ t('proto.licenseFileHint') }}
               </p>
+              <a-alert
+                v-if="trialCandidate"
+                class="license-trial-warning"
+                type="warning"
+                show-icon
+                :message="t('proto.licenseTrialImportTitle')"
+                :description="t('proto.licenseTrialImportHint')"
+              />
               <div class="license-import-actions">
                 <a-button
                   type="primary"
@@ -336,6 +378,37 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
               </div>
             </a-form>
           </section>
+
+          <slot name="installation" :status="data" :download-request="downloadRequest">
+            <details class="license-installation">
+              <summary>{{ t('proto.licenseInstallation') }}</summary>
+              <p class="license-secondary">{{ t('proto.licenseInstallationHint') }}</p>
+              <dl class="license-identity">
+                <div>
+                  <dt>{{ t('proto.licenseInstallationId') }}</dt>
+                  <dd translate="no">{{ data.installationId }}</dd>
+                </div>
+              </dl>
+              <a-button @click="downloadRequest"
+                ><download-outlined aria-hidden="true" />{{
+                  t('proto.licenseDownloadRequest')
+                }}</a-button
+              >
+              <details class="license-help">
+                <summary>{{ t('proto.licenseAbout') }}</summary>
+                <p>
+                  {{
+                    t('proto.licenseFreeHint', {
+                      projects: number(data.freeEntitlements.maxProjects),
+                      versions: number(data.freeEntitlements.baseVersionsPerProject),
+                    })
+                  }}
+                </p>
+                <p>{{ t('proto.licenseOfflineHint') }}</p>
+                <p>{{ t('proto.licenseRestoreHint') }}</p>
+              </details>
+            </details>
+          </slot>
         </div>
 
         <section
@@ -432,6 +505,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
   line-height: 1.65;
 }
 .license-overview,
+.license-advanced,
 .license-installation,
 .license-import,
 .license-record {
@@ -440,11 +514,23 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
   padding: var(--space-6);
   min-width: 0;
 }
+.license-entitlement-overview {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
 .license-overview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: var(--space-4) var(--space-6);
-  margin-bottom: var(--space-4);
+}
+.license-mobile-advanced {
+  display: none;
+}
+.license-overview-import {
+  margin-top: var(--space-3);
 }
 .license-status p {
   margin: 0;
@@ -479,12 +565,61 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
 }
 .license-workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
   gap: var(--space-4);
   align-items: start;
 }
 .license-secondary {
   color: var(--color-muted);
+}
+.license-advanced-heading {
+  flex-wrap: wrap;
+}
+.license-advanced-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.license-advanced-heading p {
+  margin: 0;
+}
+.license-advanced-state {
+  flex: 0 1 auto;
+  line-height: 1.65;
+}
+.license-advanced-hint {
+  margin: var(--space-4) 0 0;
+  max-width: 75ch;
+}
+.license-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+.license-trial-receipt {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  margin: var(--space-4) 0 0;
+}
+.license-trial-note {
+  margin: var(--space-3) 0 0;
+}
+.license-installation > summary {
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 600;
+  line-height: 1.65;
+}
+.license-trial-warning {
+  margin-bottom: var(--space-4);
 }
 .license-identity {
   margin: var(--space-6) 0;
@@ -543,11 +678,19 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
   gap: var(--space-4) var(--space-6);
 }
 @media (max-width: 900px) {
-  .license-workspace {
+  .license-workspace,
+  .license-entitlement-overview {
     grid-template-columns: 1fr;
   }
 }
 @media (max-width: 600px) {
+  .license-mobile-advanced {
+    display: block;
+    margin-top: var(--space-2);
+  }
+  .license-overview-import {
+    min-height: 44px;
+  }
   .license-result :deep(.ant-alert) {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -557,14 +700,20 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', unload))
     grid-column: 2;
     margin-inline-start: 0;
   }
-  .license-overview {
+  .license-overview,
+  .license-trial-receipt {
     grid-template-columns: 1fr;
+  }
+  .license-advanced-heading {
+    display: grid;
+    gap: var(--space-2);
   }
   .license-capacity {
     justify-content: space-between;
     gap: var(--space-4);
   }
   .license-overview,
+  .license-advanced,
   .license-installation,
   .license-import,
   .license-record {

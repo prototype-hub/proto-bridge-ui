@@ -61,7 +61,37 @@ export const protoLocales = {
     licenseActualProjects: '当前项目上限',
     licenseActualVersions: '每项目版本上限',
     licenseUnlimited: '不限',
-    licenseEnforcementHint: '当前容量以服务端实际执行结果为准；功能声明不代表高级模块已激活。',
+    licenseEnforcementHint: '容量与高级功能分别以服务端实际执行结果为准。',
+    licenseAdvancedTitle: '高级功能',
+    licenseAdvancedSeparate: '容量与高级功能分别授权，扩容不会自动解锁高级功能。',
+    licenseAdvanced_unavailable: '高级状态暂不可用',
+    licenseAdvancedHint_unavailable:
+      '服务端未返回高级权益执行状态。请刷新或核对前后端版本，勿将功能声明视为有效授权。',
+    licenseAdvanced_module_unavailable: '未安装高级模块',
+    licenseAdvanced_not_licensed: '尚未授权',
+    licenseAdvanced_permanent: '永久授权已生效',
+    licenseAdvanced_trial: '试用中',
+    licenseAdvanced_expired: '试用已结束',
+    licenseAdvanced_legacy_trial: '旧试用凭证待换发',
+    licenseAdvanced_not_started: '试用尚未起算',
+    licenseAdvancedHint_module_unavailable:
+      '当前部署仅提供基础能力。已导入的容量与功能声明仍可核对；安装对应高级模块后，以服务端执行结果为准。',
+    licenseAdvancedHint_not_licensed: '当前没有有效的高级功能授权。基础功能继续可用。',
+    licenseAdvancedHint_permanent: '以下功能标识已获得永久运行授权，维护服务截止不会使其到期。',
+    licenseAdvancedHint_trial: '以下功能标识在本次试用期内可用，到期后自动恢复基础能力。',
+    licenseAdvancedHint_expired:
+      '高级试用已到期，基础数据和已购永久容量保留。重复导入或重启不会重新试用。',
+    licenseAdvancedHint_legacy_trial:
+      '旧版试用只保留历史声明，不会激活高级功能。请联系签发方换发新版试用凭证。',
+    licenseAdvancedHint_not_started:
+      '尚无成功导入的试用起算记录。请核对凭证后重新导入；不要按签发日期推算试用期。',
+    licenseTrialStarted: '首次成功导入',
+    licenseTrialEnds: '试用结束',
+    licenseTrialReceiptHint:
+      '这是本安装的固定试用记录。重复导入、换证或重启不会重置；未安装高级模块也不会延后起算。',
+    licenseTrialImportTitle: '成功导入后立即开始 30 天试用',
+    licenseTrialImportHint:
+      '以本安装首次成功导入的服务器时间起算。即使尚未安装高级模块也会开始；重复导入和重启不会重置。文件内容仍需服务端验证。',
     licenseInstallation: '安装身份',
     licenseInstallationHint: '下载安装请求，交给签发方生成与本安装绑定的凭证。',
     licenseInstallationId: '安装标识',
@@ -804,7 +834,41 @@ export const protoLocales = {
     licenseActualVersions: 'Version limit per project',
     licenseUnlimited: 'Unlimited',
     licenseEnforcementHint:
-      'Capacity follows the server’s actual enforcement. Feature declarations do not mean advanced modules are activated.',
+      'Capacity and advanced features each follow the server’s actual enforcement.',
+    licenseAdvancedTitle: 'Advanced features',
+    licenseAdvancedSeparate:
+      'Capacity and advanced features are licensed separately. More capacity does not unlock features.',
+    licenseAdvanced_unavailable: 'Advanced status unavailable',
+    licenseAdvancedHint_unavailable:
+      'The server has not returned advanced enforcement status. Refresh or check frontend/backend versions; declarations do not grant access.',
+    licenseAdvanced_module_unavailable: 'Advanced module not installed',
+    licenseAdvanced_not_licensed: 'No advanced license',
+    licenseAdvanced_permanent: 'Permanent license active',
+    licenseAdvanced_trial: 'Trial active',
+    licenseAdvanced_expired: 'Trial ended',
+    licenseAdvanced_legacy_trial: 'Legacy trial needs reissuance',
+    licenseAdvanced_not_started: 'Trial not started',
+    licenseAdvancedHint_module_unavailable:
+      'This deployment provides basic capabilities. Imported declarations remain available to review; actual access depends on the corresponding advanced module and server enforcement.',
+    licenseAdvancedHint_not_licensed:
+      'There is no active advanced feature grant. Basic features remain available.',
+    licenseAdvancedHint_permanent:
+      'The identifiers below have permanent runtime rights. A maintenance service deadline does not expire them.',
+    licenseAdvancedHint_trial:
+      'The identifiers below are available during this trial. Basic capabilities remain after it ends.',
+    licenseAdvancedHint_expired:
+      'The advanced trial has ended. Basic data and purchased permanent capacity remain. Reimporting or restarting cannot restart the trial.',
+    licenseAdvancedHint_legacy_trial:
+      'Legacy trials retain historical declarations only and do not activate advanced features. Ask the issuer for a new trial credential.',
+    licenseAdvancedHint_not_started:
+      'No successful-import trial start is recorded. Check and reimport the credential; do not infer the trial period from its issue date.',
+    licenseTrialStarted: 'First successful import',
+    licenseTrialEnds: 'Trial ends',
+    licenseTrialReceiptHint:
+      'This installation keeps one fixed trial record. Reimporting, replacing credentials or restarting cannot reset it; a missing advanced module does not defer it.',
+    licenseTrialImportTitle: 'Successful import starts the 30-day trial',
+    licenseTrialImportHint:
+      'The server records this installation’s first successful trial import. The trial starts even without the advanced module. Reimports and restarts cannot reset it. The server still verifies this document.',
     licenseInstallation: 'Installation identity',
     licenseInstallationHint:
       'Download the installation request and give it to the issuer for an installation-bound credential.',
