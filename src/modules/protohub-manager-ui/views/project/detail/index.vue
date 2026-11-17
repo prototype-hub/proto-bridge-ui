@@ -23,6 +23,7 @@ import CapacityNotice from '@/modules/protohub-manager-ui/views/project/componen
 import ShareDialog from '@/modules/protohub-manager-ui/views/project/components/ShareDialog.vue'
 import { projectListLocation } from '@/modules/protohub-manager-ui/utils/project-navigation'
 import { useSession } from '@/app/stores/session'
+import { extensions } from '@/app/modules/extensions'
 import type { Revision, Version } from '@/modules/protohub-manager-ui/types'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
@@ -295,6 +296,15 @@ watch(
                 @click="historyVersion = record"
                 >{{ t('proto.revisionHistory') }}</permission-button
               >
+              <template v-if="resource.data.value.project">
+                <component
+                  :is="tool"
+                  v-for="(tool, index) in extensions.versionTools"
+                  :key="index"
+                  :project="resource.data.value.project"
+                  :version="record"
+                />
+              </template>
               <details
                 v-if="
                   projectAllows(resource.data.value.project, 'edit') ||
