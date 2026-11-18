@@ -90,6 +90,22 @@ it('replaces the legacy entry, pushes exact IDs for alias paths and restores Bac
   await flushPromises()
   expect(state.selectedPage.value?.pageId).toBe('alias')
 })
+it('retains a validated exact material source when adding the default page, but never copies it as a page link', async () => {
+  const { state, router } = await setup(
+    '/preview/p1/v1?revisionId=r1&tool=materials&materialId=m99&keyword=private',
+  )
+  expect(router.currentRoute.value.query).toEqual({
+    revisionId: 'r1',
+    pageId: 'home',
+    tool: 'materials',
+    materialId: 'm99',
+  })
+  await state.copyCurrentPage()
+  expect(vi.mocked(copyText).mock.calls[0]?.[0]).not.toContain('materialId')
+  state.select('nested/details.html', 'detail')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toEqual({ revisionId: 'r1', pageId: 'detail' })
+})
 
 it('keeps two comparison namespaces independent and copies their pair without runtime grants', async () => {
   const leftContext = ref({ ...context(), locationPath: '/compare/p1/v1' })

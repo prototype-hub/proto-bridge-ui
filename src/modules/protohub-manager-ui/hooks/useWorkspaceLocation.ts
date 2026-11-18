@@ -11,6 +11,7 @@ import {
 } from '../utils/preview-location'
 import { copyText } from '@/shared/utils/feedback'
 import { t } from '@/shared/i18n'
+import { searchTool } from '../utils/search'
 
 /** Keep page navigation in the app route; runtime grants and credentials never enter copied links. */
 export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: WorkspacePane) {
@@ -89,9 +90,13 @@ export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: Work
       ) {
         // Replace only the legacy entry; user page selections below create useful Back/Forward entries.
         const thread = reviewThreadTarget(route.query)
+        const material =
+          searchTool(route.query) === 'materials' && typeof route.query.materialId === 'string'
+            ? { tool: 'materials', materialId: route.query.materialId }
+            : {}
         void router.replace({
           path: route.path,
-          query: { ...query(id), ...(thread ? { threadId: thread.threadId } : {}) },
+          query: { ...query(id), ...(thread ? { threadId: thread.threadId } : {}), ...material },
         })
       }
     },

@@ -50,6 +50,7 @@ it('builds fixed source URLs without leaking source snippets or keywords', () =>
     pageId: 'home',
     threadId: 'thread',
     snippet: 'private',
+    sourceId: 'm1',
   } as PrototypeSearchResult
   expect(searchSourceLocation({ ...row, type: 'COPY' }).query).toEqual({
     revisionId: 'r1',
@@ -59,6 +60,7 @@ it('builds fixed source URLs without leaking source snippets or keywords', () =>
   expect(searchSourceLocation({ ...row, type: 'MATERIAL' }).query).toEqual({
     revisionId: 'r1',
     tool: 'materials',
+    materialId: 'm1',
   })
   expect(searchSourceLocation({ ...row, type: 'FEEDBACK' }).query).toEqual({
     revisionId: 'r1',
@@ -76,6 +78,10 @@ it('never lets a tool marker replace thread targeting or an unspecified revision
     { tool: ['copy'], revisionId: 'r1', pageId: 'home' },
     { tool: 'copy', revisionId: 'r1', pageId: 'home', threadId: 'thread' },
     { tool: 'copy', revisionId: 'r1', pageId: 'p/1' },
+    { tool: 'materials', revisionId: 'r1', materialId: ['m1'] },
+    { tool: 'materials', revisionId: 'r1', materialId: 'm/1' },
+    { tool: 'copy', revisionId: 'r1', pageId: 'home', materialId: 'm1' },
+    { materialId: 'm1' },
   ])
     expect(searchTool(query)).toBeNull()
 })

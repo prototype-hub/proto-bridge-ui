@@ -15,6 +15,9 @@ vi.mock('@/modules/protohub-manager-ui/api/revision-material', () => ({
     update: vi.fn(),
     remove: vi.fn(),
     content: vi.fn(),
+    get: vi.fn(),
+    text: vi.fn(),
+    extractText: vi.fn(),
   },
 }))
 vi.mock('ant-design-vue', () => ({ Modal: { confirm: vi.fn((options) => options.onOk()) } }))
@@ -75,10 +78,94 @@ beforeEach(() => {
   vi.mocked(api.declare).mockResolvedValue({ ...row, id: 'r1', materialType: 'prototype' })
   vi.mocked(api.update).mockResolvedValue({ ...row, configVersion: 4 })
   vi.mocked(api.remove).mockResolvedValue(true)
+  vi.mocked(api.get).mockResolvedValue({ ...row })
+  vi.mocked(api.text).mockResolvedValue({
+    id: row.id,
+    status: 'NOT_EXTRACTED',
+    content: '',
+    characterCount: 0,
+    extractedAt: null,
+    extractorVersion: null,
+  })
   URL.createObjectURL = vi.fn(() => 'blob:material')
   URL.revokeObjectURL = vi.fn()
 })
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))
+it('resolves a search material directly without scanning pages and reads body in the fixed scope', async () => {
+  const { state } = render()
+  await flushPromises()
+  vi.mocked(api.get).mockResolvedValue({ ...row, id: 'm99', materialType: 'document' })
+  vi.mocked(api.text).mockResolvedValue({
+    id: 'm99',
+    status: 'READY',
+    content: '<script>plain</script> 😀',
+    characterCount: 25,
+    extractedAt: 5,
+    extractorVersion: 'material-text-v1',
+  })
+  await state.locate('m99')
+  expect(api.get).toHaveBeenCalledWith(
+    'v1',
+    'r1',
+    'm99',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
+  expect(api.query).toHaveBeenCalledTimes(2)
+  expect(state.selected.value?.id).toBe('m99')
+  expect(state.text.value?.content).toBe('<script>plain</script> 😀')
+})
+it('fences late body reads when selecting another document and clears content on read revocation', async () => {
+  const { state, readable } = render()
+  await flushPromises()
+  let complete!: (value: Awaited<ReturnType<typeof api.text>>) => void
+  vi.mocked(api.text).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve
+      }),
+  )
+  const first = state.openEditor('view', { ...row, materialType: 'document' })
+  await flushPromises()
+  await state.openEditor('view', { ...row, id: 'm2' })
+  complete({
+    id: 'm1',
+    status: 'READY',
+    content: 'private old text',
+    characterCount: 16,
+    extractedAt: 1,
+    extractorVersion: 'material-text-v1',
+  })
+  await first
+  expect(state.text.value).toBeUndefined()
+  await state.openEditor('view', { ...row, materialType: 'document' })
+  readable.value = false
+  expect(state.text.value).toBeUndefined()
+  expect(state.selected.value).toBeUndefined()
+})
+it('requires edit access for extraction, reports failure, and accepts only READY content', async () => {
+  const { state, editable } = render()
+  await flushPromises()
+  await state.openEditor('view', { ...row, materialType: 'document' })
+  editable.value = false
+  await state.loadText(true)
+  expect(api.extractText).not.toHaveBeenCalled()
+  editable.value = true
+  vi.mocked(api.extractText).mockRejectedValueOnce(new ApiError('Unavailable', 503))
+  await state.loadText(true)
+  expect(state.textError.value).toBe('Unavailable')
+  expect(state.unknown.value).toBe(false)
+  vi.mocked(api.text).mockResolvedValueOnce({
+    id: 'm1',
+    status: 'FAILED',
+    content: 'must not render',
+    characterCount: 0,
+    extractedAt: 5,
+    extractorVersion: 'material-text-v1',
+  })
+  await state.loadText()
+  expect(state.text.value?.content).toBe('')
+  expect(state.textError.value).toBe('')
+})
 it('queries one immutable revision with bounded database paging and resets paging on a type change', async () => {
   const { state } = render()
   await flushPromises()

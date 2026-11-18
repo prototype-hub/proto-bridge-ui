@@ -1,6 +1,7 @@
 export const searchLocales = {
   zh: {
     searchField_text: '正文命中',
+    searchField_textContent: '文档正文命中',
     searchField_businessTerm: '业务词命中',
     searchField_note: '备注命中',
     searchField_pagePath: '页面路径命中',
@@ -23,7 +24,7 @@ export const searchLocales = {
     searchRevisionScope: '已限定固定修订',
     searchClearScope: '搜索全部项目',
     searchKeyword: '关键词',
-    searchPlaceholder: '输入文案、文件名或反馈内容…',
+    searchPlaceholder: '输入文案、文档正文、文件名或反馈内容…',
     searchSubmit: '搜索',
     searchInvalidKeyword: '请输入 1–100 个字符的关键词。',
     searchType: '内容类型',
@@ -31,14 +32,14 @@ export const searchLocales = {
     searchMATERIAL: '修订资料',
     searchFEEDBACK: '页面反馈',
     searchHintCOPY: '搜索已收录的静态文案、人工补充、业务词和备注，以及对应页面路径。',
-    searchHintMATERIAL: '搜索文件名和手工填写的来源工具、名称、备注；不包含文档正文。',
+    searchHintMATERIAL: '搜索已提取的文档正文，以及文件名和手工填写的来源工具、名称、备注。',
     searchHintFEEDBACK: '搜索你有编辑权限的项目中的反馈消息，包含公开回复和内部备注。',
     searchStart: '从关键词找到内容，再回到原位置',
     searchStartHint: '选择内容类型后搜索。结果始终指向原来的固定修订。',
     searchAbout: '搜索范围与说明',
     searchAboutCOPY: '尚未提取或补录的页面文案不会出现在结果中。动态文案需作者在文案清单补充。',
     searchAboutMATERIAL:
-      '图片、PDF 和 Office 文件只检索资料信息，不解析文件正文，也不访问来源链接。',
+      '文档需先在资料详情中提取正文。图片和扫描件不支持文字识别，来源链接不会被访问。',
     searchAboutFEEDBACK: '反馈沿用原有项目编辑权限；只读成员可以搜索文案和资料，不能读取反馈。',
     searchResults: '搜索结果',
     searchCount: '共 {count} 个结果',
@@ -64,6 +65,7 @@ export const searchLocales = {
   },
   en: {
     searchField_text: 'Message or copy match',
+    searchField_textContent: 'Document body match',
     searchField_businessTerm: 'Business term match',
     searchField_note: 'Note match',
     searchField_pagePath: 'Page path match',
@@ -86,7 +88,7 @@ export const searchLocales = {
     searchRevisionScope: 'Fixed revision scope',
     searchClearScope: 'Search all projects',
     searchKeyword: 'Keyword',
-    searchPlaceholder: 'Enter copy, a filename or feedback…',
+    searchPlaceholder: 'Enter copy, document text, a filename or feedback…',
     searchSubmit: 'Search',
     searchInvalidKeyword: 'Enter a keyword of 1–100 characters.',
     searchType: 'Content type',
@@ -96,7 +98,7 @@ export const searchLocales = {
     searchHintCOPY:
       'Search collected static copy, manual entries, business terms, notes and their page paths.',
     searchHintMATERIAL:
-      'Search filenames and declared source tools, names and notes. Document text is excluded.',
+      'Search extracted document text, filenames and declared source tools, names and notes.',
     searchHintFEEDBACK:
       'Search feedback messages in projects you can edit, including public replies and internal notes.',
     searchStart: 'Find content, then open its source',
@@ -106,7 +108,7 @@ export const searchLocales = {
     searchAboutCOPY:
       'Pages without collected or manually added copy are not included. Authors add dynamic copy in the copy inventory.',
     searchAboutMATERIAL:
-      'Images, PDFs and Office files are searched by their material information. File text is not parsed and source links are not fetched.',
+      'Extract document text in material details first. Images and scans have no text recognition, and source links are never fetched.',
     searchAboutFEEDBACK:
       'Feedback keeps its existing project edit permission. Read-only members can search copy and materials, but cannot read feedback.',
     searchResults: 'Search results',

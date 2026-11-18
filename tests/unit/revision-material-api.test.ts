@@ -7,12 +7,13 @@ import {
   validSourceUrl,
 } from '@/modules/protohub-manager-ui/utils/material-source'
 vi.mock('@/shared/api/client', () => ({
-  request: { post: vi.fn(), put: vi.fn(), getStream: vi.fn() },
+  request: { post: vi.fn(), put: vi.fn(), get: vi.fn(), getStream: vi.fn() },
 }))
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(request.post).mockResolvedValue({ success: true, status: 200, result: {} })
   vi.mocked(request.put).mockResolvedValue({ success: true, status: 200, result: {} })
+  vi.mocked(request.get).mockResolvedValue({ success: true, status: 200, result: {} })
 })
 it('extends existing package multipart optionally while preserving legacy call positions', async () => {
   const file = new File(['zip'], 'prototype.zip')
@@ -49,4 +50,23 @@ it('bounds accepted file categories and rejects unsafe external URL syntax', () 
   expect(validSourceUrl('javascript:alert(1)')).toBe(false)
   expect(validSourceUrl('https://user@example.com')).toBe(false)
   expect(validSourceUrl('https://example.com/\nsource')).toBe(false)
+})
+it('keeps metadata/text reads and bodyless extraction in the fixed, escaped material scope', async () => {
+  const options = { signal: new AbortController().signal, silent: true }
+  await api.get('v/', 'r/', 'm/', options)
+  await api.text('v/', 'r/', 'm/', options)
+  await api.extractText('v/', 'r/', 'm/', options)
+  const root = '/prototype-hub/versions/v%2F/revisions/r%2F/materials/m%2F'
+  expect(request.get).toHaveBeenNthCalledWith(1, root, undefined, options)
+  expect(request.get).toHaveBeenNthCalledWith(2, `${root}/text`, undefined, options)
+  expect(request.post).toHaveBeenCalledWith(`${root}/text/_extract`, undefined, {
+    ...options,
+    timeout: 120000,
+  })
+  await api.upload('v/', 'r/', new File(['txt'], 'guide.txt'), {}, 'same-key', options)
+  expect(vi.mocked(request.post).mock.calls.at(-1)?.[2]).toMatchObject({
+    ...options,
+    timeout: 120000,
+    headers: { 'Idempotency-Key': 'same-key' },
+  })
 })

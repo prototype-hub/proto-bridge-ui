@@ -6,7 +6,12 @@ import { t } from '@/shared/i18n'
 import { secureId } from '@/shared/utils/secure-id'
 import type { PageResult } from '@/shared/api/types'
 import type { Revision } from '../types'
-import type { MaterialSource, MaterialType, RevisionMaterial } from '../types/revision-material'
+import type {
+  MaterialSource,
+  MaterialText,
+  MaterialType,
+  RevisionMaterial,
+} from '../types/revision-material'
 import { revisionMaterialsApi as api } from '../api/revision-material'
 import {
   emptySource,
@@ -47,6 +52,12 @@ export function useRevisionMaterials(
   const previewUrl = ref('')
   const pending = shallowRef<Mutation>()
   const unknown = ref(false)
+  const text = shallowRef<MaterialText>()
+  const textLoading = ref(false),
+    extracting = ref(false),
+    textError = ref('')
+  let textGeneration = 0,
+    textController: AbortController | undefined
   let baseline = '',
     generation = 0,
     controller: AbortController | undefined
@@ -58,6 +69,14 @@ export function useRevisionMaterials(
       (!!file.value || JSON.stringify(normalizedSource(form)) !== baseline),
   )
   const blocked = computed(() => busy.value || unknown.value)
+  function clearText() {
+    textGeneration++
+    textController?.abort()
+    textController = undefined
+    text.value = undefined
+    textLoading.value = extracting.value = false
+    textError.value = ''
+  }
   function clearPreview() {
     binaryController?.abort()
     binaryController = undefined
@@ -66,6 +85,7 @@ export function useRevisionMaterials(
     previewUrl.value = ''
   }
   function clearEditor() {
+    clearText()
     clearPreview()
     selected.value = undefined
     mode.value = undefined
@@ -173,11 +193,104 @@ export function useRevisionMaterials(
     Object.assign(form, emptySource(), normalizedSource(row || {}))
     baseline = JSON.stringify(normalizedSource(form))
     notice.value = ''
+    if (next === 'view' && row?.materialType === 'document') await loadText()
+  }
+  /** Text requests are fenced separately so list paging cannot accept a prior document body. */
+  async function loadText(extract = false) {
+    const row = selected.value
+    if (
+      !readable.value ||
+      mode.value !== 'view' ||
+      row?.materialType !== 'document' ||
+      !matches(row) ||
+      (extract && (!editable.value || blocked.value || extracting.value))
+    )
+      return
+    const current = ++textGeneration
+    textController?.abort()
+    const abort = new AbortController()
+    textController = abort
+    textLoading.value = true
+    extracting.value = extract
+    textError.value = ''
+    // A failed refresh cannot leave previously authorized body text visible.
+    text.value = undefined
+    try {
+      const result = await (extract ? api.extractText : api.text)(
+        revision.value.versionId,
+        revision.value.id,
+        row.id,
+        { signal: abort.signal, silent: true },
+      )
+      if (
+        current !== textGeneration ||
+        abort.signal.aborted ||
+        !readable.value ||
+        selected.value?.id !== row.id ||
+        (extract && !editable.value)
+      )
+        return
+      if (result.id !== row.id) throw new Error(t('common.invalid'))
+      text.value = { ...result, content: result.status === 'READY' ? result.content : '' }
+      const summary = {
+        textStatus: result.status,
+        textCharacterCount: result.characterCount,
+        textExtractedAt: result.extractedAt,
+        textExtractorVersion: result.extractorVersion,
+      }
+      selected.value = { ...row, ...summary }
+      if (report.value)
+        report.value = {
+          ...report.value,
+          data: report.value.data.map((value) =>
+            value.id === row.id ? { ...value, ...summary } : value,
+          ),
+        }
+      return true
+    } catch (cause) {
+      if (current !== textGeneration || abort.signal.aborted) return
+      if (!authorized(cause)) return
+      textError.value = cause instanceof Error ? cause.message : t('common.unknown')
+      return true
+    } finally {
+      if (current === textGeneration) textLoading.value = extracting.value = false
+    }
   }
   async function closeEditor() {
     if (!(await canLeave())) return false
     clearEditor()
     return true
+  }
+  /** A search source is resolved directly within its fixed revision, without walking list pages. */
+  async function locate(id: string) {
+    if (
+      !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
+      !readable.value ||
+      blocked.value ||
+      !(await canLeave())
+    )
+      return
+    clearEditor()
+    const current = textGeneration
+    const abort = new AbortController()
+    textController = abort
+    textLoading.value = true
+    error.value = ''
+    try {
+      const row = await api.get(revision.value.versionId, revision.value.id, id, {
+        signal: abort.signal,
+        silent: true,
+      })
+      if (current !== textGeneration || abort.signal.aborted || !readable.value) return
+      if (row.id !== id || !matches(row)) throw new Error(t('common.invalid'))
+      await openEditor('view', row)
+    } catch (cause) {
+      if (current !== textGeneration || abort.signal.aborted) return
+      if (!authorized(cause)) return
+      error.value = cause instanceof Error ? cause.message : t('common.unknown')
+    } finally {
+      if (current === textGeneration) textLoading.value = false
+    }
   }
   function choose(value?: File) {
     if (!editable.value || blocked.value || mode.value !== 'upload' || !value) return
@@ -371,6 +484,7 @@ export function useRevisionMaterials(
     editable,
     (allowed) => {
       if (!allowed && mode.value !== 'view') invalidate()
+      else if (!allowed && extracting.value) clearText()
     },
     { flush: 'sync' },
   )
@@ -394,6 +508,12 @@ export function useRevisionMaterials(
     unknown,
     dirty,
     blocked,
+    text,
+    textLoading,
+    extracting,
+    textError,
+    loadText,
+    locate,
     load,
     refresh,
     canLeave,

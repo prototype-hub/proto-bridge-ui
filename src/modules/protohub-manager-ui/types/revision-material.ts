@@ -5,6 +5,22 @@ export interface MaterialSource {
   sourceNotes?: string | null
 }
 export type MaterialType = 'prototype' | 'image' | 'document'
+export type MaterialTextStatus =
+  | 'NOT_EXTRACTED'
+  | 'READY'
+  | 'EMPTY'
+  | 'UNSUPPORTED'
+  | 'ENCRYPTED'
+  | 'LIMIT_EXCEEDED'
+  | 'FAILED'
+export interface MaterialText {
+  id: string
+  status: MaterialTextStatus
+  content: string
+  characterCount: number
+  extractedAt: number | null
+  extractorVersion: string | null
+}
 export interface RevisionMaterial extends MaterialSource {
   id: string
   projectId: string
@@ -20,6 +36,10 @@ export interface RevisionMaterial extends MaterialSource {
   updatedBy: string
   createdAt: number
   updatedAt: number
+  textStatus?: MaterialTextStatus
+  textCharacterCount?: number
+  textExtractedAt?: number | null
+  textExtractorVersion?: string | null
 }
 export interface MaterialQuery {
   pageIndex: number

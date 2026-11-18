@@ -25,9 +25,14 @@ import { useRevisionMaterials } from '../hooks/useRevisionMaterials'
 import { validSourceUrl } from '../utils/material-source'
 import MaterialSourceFields from './MaterialSourceFields.vue'
 import LoadState from '@/shared/components/LoadState.vue'
-const props = defineProps<{ revision: Revision; project?: Project; allowed: boolean }>()
+const props = defineProps<{
+  revision: Revision
+  project?: Project
+  allowed: boolean
+  materialId?: string
+}>()
 const emit = defineEmits<{ close: [] }>()
-const { t } = useI18n(),
+const { t, locale } = useI18n(),
   permissions = usePermissions()
 const readable = computed(
   () => props.allowed && projectAllows(props.project, 'read') && permissions.can(p.version.query),
@@ -55,9 +60,19 @@ const heading = ref<HTMLElement>(),
   editorHeading = ref<HTMLElement>(),
   uploadTrigger = ref<{ $el: HTMLElement }>()
 const picker = ref<HTMLInputElement>()
+const textContent = ref<HTMLElement>()
+const textHeading = ref<HTMLElement>()
 const sourceLink = computed(() =>
   validSourceUrl(state.selected.value?.sourceUrl) ? state.selected.value?.sourceUrl || '' : '',
 )
+const textStatus = computed(
+  () => state.text.value?.status || state.selected.value?.textStatus || 'NOT_EXTRACTED',
+)
+function extractedTime(value: number) {
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    value,
+  )
+}
 function size(bytes: number) {
   return `${(bytes / (bytes >= 1048576 ? 1048576 : 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${bytes >= 1048576 ? 'MiB' : 'KiB'}`
 }
@@ -65,7 +80,8 @@ async function back() {
   if (await state.canLeave()) emit('close')
 }
 async function backToList() {
-  if (await state.closeEditor()) await nextTick(() => uploadTrigger.value?.$el.focus())
+  if (await state.closeEditor())
+    await nextTick(() => (uploadTrigger.value?.$el || heading.value)?.focus())
 }
 async function submit() {
   await state.save()
@@ -74,12 +90,20 @@ async function submit() {
     document.querySelector<HTMLElement>('.material-editor [role="alert"]')?.focus()
   else if (!state.mode.value) uploadTrigger.value?.$el.focus()
 }
+async function readText(extract = false) {
+  const id = state.selected.value?.id
+  const accepted = await state.loadText(extract)
+  await nextTick()
+  if (accepted && state.mode.value === 'view' && state.selected.value?.id === id)
+    (state.text.value?.status === 'READY' ? textContent.value : textHeading.value)?.focus()
+}
 watch(state.mode, async (value) => {
   if (value) await nextTick(() => editorHeading.value?.focus())
 })
 onMounted(async () => {
   await nextTick()
   heading.value?.focus()
+  if (props.materialId) await state.locate(props.materialId)
 })
 defineExpose({ canLeave: state.canLeave })
 </script>
@@ -168,9 +192,9 @@ defineExpose({ canLeave: state.canLeave })
           >
         </div>
         <load-state
-          :loading="state.loading.value"
+          :loading="state.loading.value || (state.textLoading.value && !state.mode.value)"
           :error="state.error.value"
-          @retry="state.refresh"
+          @retry="materialId && !state.mode.value ? state.locate(materialId) : state.refresh()"
         >
           <template v-if="state.report.value">
             <p class="muted materials-result" role="status">
@@ -207,6 +231,9 @@ defineExpose({ canLeave: state.canLeave })
                   >
                   <span v-if="row.sourceName || row.sourceTool" class="muted">{{
                     row.sourceName || row.sourceTool
+                  }}</span>
+                  <span v-if="row.materialType === 'document'" class="material-text-summary">{{
+                    t(`proto.materialTextStatus_${row.textStatus || 'NOT_EXTRACTED'}`)
                   }}</span>
                 </div>
                 <div class="material-row-actions">
@@ -277,31 +304,114 @@ defineExpose({ canLeave: state.canLeave })
             <strong>{{ state.selected.value.fileName }}</strong
             ><a-tag>{{ size(state.selected.value.fileSize) }}</a-tag>
           </div>
-          <dl class="material-source-details">
-            <template v-for="key in ['sourceTool', 'sourceName', 'sourceNotes'] as const" :key="key"
-              ><template v-if="state.selected.value[key]"
-                ><dt>
-                  {{
+          <section
+            v-if="state.selected.value.materialType === 'document'"
+            class="material-text"
+            :aria-label="t('proto.materialText')"
+            :aria-busy="state.textLoading.value"
+          >
+            <div class="material-text-heading" role="status">
+              <h4 ref="textHeading" tabindex="-1">{{ t('proto.materialText') }}</h4>
+              <a-tag :color="textStatus === 'READY' ? 'green' : undefined">{{
+                t(`proto.materialTextStatus_${textStatus}`)
+              }}</a-tag>
+            </div>
+            <p v-if="state.textLoading.value" class="muted" role="status">
+              {{ t(state.extracting.value ? 'proto.materialTextPreparing' : 'common.loading') }}
+            </p>
+            <a-alert
+              v-else-if="state.textError.value"
+              role="alert"
+              type="error"
+              :message="state.textError.value"
+            >
+              <template #action
+                ><a-button @click="readText()">{{
+                  t('proto.materialTextReload')
+                }}</a-button></template
+              >
+            </a-alert>
+            <template v-else-if="state.text.value">
+              <template v-if="textStatus === 'READY'">
+                <p class="material-text-meta muted">
+                  <span>{{
+                    t('proto.materialTextCount', {
+                      count: state.text.value.characterCount.toLocaleString(locale),
+                    })
+                  }}</span>
+                  <span v-if="state.text.value.extractedAt">{{
+                    t('proto.materialTextExtracted', {
+                      time: extractedTime(state.text.value.extractedAt),
+                    })
+                  }}</span>
+                </p>
+                <div
+                  ref="textContent"
+                  class="material-text-content"
+                  tabindex="0"
+                  role="region"
+                  :aria-label="t('proto.materialText')"
+                >
+                  {{ state.text.value.content }}
+                </div>
+              </template>
+              <template v-else>
+                <p class="material-text-hint">{{ t(`proto.materialTextHint_${textStatus}`) }}</p>
+                <a-button
+                  v-if="editable && ['NOT_EXTRACTED', 'FAILED'].includes(textStatus)"
+                  type="primary"
+                  :disabled="state.blocked.value"
+                  @click="readText(true)"
+                  >{{
                     t(
-                      `proto.${key === 'sourceTool' ? 'materialTool' : key === 'sourceName' ? 'materialName' : 'materialNotes'}`,
+                      textStatus === 'FAILED'
+                        ? 'proto.materialTextRetry'
+                        : 'proto.materialTextPrepare',
                     )
-                  }}
-                </dt>
-                <dd>{{ state.selected.value[key] }}</dd></template
-              ></template
-            >
-            <template v-if="sourceLink"
-              ><dt>{{ t('proto.materialUrl') }}</dt>
-              <dd>
-                <a :href="sourceLink" target="_blank" rel="noopener noreferrer">{{ sourceLink }}</a>
-              </dd></template
-            >
-          </dl>
-          <p v-if="!Object.values(state.form).some(Boolean)" class="muted">
-            {{ t('proto.materialSourceMissing') }}
-          </p>
-          <details class="materials-help">
+                  }}</a-button
+                >
+                <p v-else-if="!editable && textStatus === 'NOT_EXTRACTED'" class="muted">
+                  {{ t('proto.materialTextReadOnly') }}
+                </p>
+              </template>
+            </template>
+            <details class="materials-help material-text-limits">
+              <summary>{{ t('proto.materialTextGuide') }}</summary>
+              <p class="muted">{{ t('proto.materialTextLimits') }}</p>
+            </details>
+          </section>
+          <details
+            class="materials-help material-provenance"
+            :open="state.selected.value.materialType !== 'document'"
+          >
             <summary>{{ t('proto.materialSource') }}</summary>
+            <dl class="material-source-details">
+              <template
+                v-for="key in ['sourceTool', 'sourceName', 'sourceNotes'] as const"
+                :key="key"
+                ><template v-if="state.selected.value[key]"
+                  ><dt>
+                    {{
+                      t(
+                        `proto.${key === 'sourceTool' ? 'materialTool' : key === 'sourceName' ? 'materialName' : 'materialNotes'}`,
+                      )
+                    }}
+                  </dt>
+                  <dd>{{ state.selected.value[key] }}</dd></template
+                ></template
+              >
+              <template v-if="sourceLink"
+                ><dt>{{ t('proto.materialUrl') }}</dt>
+                <dd>
+                  <a :href="sourceLink" target="_blank" rel="noopener noreferrer">{{
+                    sourceLink
+                  }}</a>
+                </dd></template
+              >
+            </dl>
+            <p v-if="!Object.values(state.form).some(Boolean)" class="muted">
+              {{ t('proto.materialSourceMissing') }}
+            </p>
             <p class="muted">{{ t('proto.materialSourceDeclared') }}</p>
           </details>
           <div class="material-detail-actions">
@@ -426,7 +536,7 @@ defineExpose({ canLeave: state.canLeave })
   min-width: 0;
 }
 .has-editor .materials-body {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.4fr);
   gap: var(--space-6);
 }
 .materials-browser,
@@ -583,6 +693,53 @@ defineExpose({ canLeave: state.canLeave })
   max-width: 100%;
   max-height: 400px;
   object-fit: contain;
+  margin-top: var(--space-4);
+}
+.material-text {
+  margin-block: var(--space-6);
+}
+.material-text-heading,
+.material-text-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.material-text-heading h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.material-text-meta,
+.material-text-summary {
+  font-size: 12px;
+}
+.material-text-summary {
+  color: var(--color-muted);
+}
+.material-text-content {
+  max-height: 48vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+  padding: var(--space-4);
+  background: var(--color-background);
+  scrollbar-color: var(--color-border) var(--color-background);
+}
+.material-text-content:focus-visible,
+.materials-help summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+.material-text-content::selection {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+.material-text-hint {
+  line-height: 1.6;
+}
+.material-text-limits,
+.material-provenance {
   margin-top: var(--space-4);
 }
 .materials-footer {
