@@ -96,6 +96,7 @@ export function searchResponse(
           sourceTool: row.sourceTool,
           sourceName: row.sourceName,
           sourceNotes: row.sourceNotes,
+          textContent: row.textStatus === 'READY' ? row.textContent : undefined,
         },
         {
           sourceId: row.id,

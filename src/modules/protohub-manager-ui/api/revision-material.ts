@@ -1,6 +1,11 @@
 import { request } from '@/shared/api/client'
 import type { PageResult, RequestOptions } from '@/shared/api/types'
-import type { MaterialQuery, MaterialSource, RevisionMaterial } from '../types/revision-material'
+import type {
+  MaterialQuery,
+  MaterialSource,
+  MaterialText,
+  RevisionMaterial,
+} from '../types/revision-material'
 const segment = encodeURIComponent
 function root(versionId: string, revisionId: string) {
   return `/prototype-hub/versions/${segment(versionId)}/revisions/${segment(revisionId)}/materials`
@@ -12,6 +17,30 @@ export function appendSource(data: FormData, source?: MaterialSource) {
   return data
 }
 export const revisionMaterialsApi = {
+  get: async (version: string, revision: string, id: string, options?: RequestOptions) =>
+    (
+      await request.get<RevisionMaterial>(
+        `${root(version, revision)}/${segment(id)}`,
+        undefined,
+        options,
+      )
+    ).result,
+  text: async (version: string, revision: string, id: string, options?: RequestOptions) =>
+    (
+      await request.get<MaterialText>(
+        `${root(version, revision)}/${segment(id)}/text`,
+        undefined,
+        options,
+      )
+    ).result,
+  extractText: async (version: string, revision: string, id: string, options?: RequestOptions) =>
+    (
+      await request.post<MaterialText>(
+        `${root(version, revision)}/${segment(id)}/text/_extract`,
+        undefined,
+        { ...options, timeout: 120000 },
+      )
+    ).result,
   query: async (
     version: string,
     revision: string,
@@ -38,6 +67,7 @@ export const revisionMaterialsApi = {
     return (
       await request.post<RevisionMaterial>(root(version, revision), data, {
         ...options,
+        timeout: 120000,
         headers: { ...options?.headers, 'Idempotency-Key': key },
       })
     ).result

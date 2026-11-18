@@ -4,17 +4,20 @@ import type { Revision, Version } from '../../src/modules/protohub-manager-ui/ty
 import type {
   RevisionMaterial,
   MaterialSource,
+  MaterialText,
 } from '../../src/modules/protohub-manager-ui/types/revision-material'
 const rows = new Map<string, RevisionMaterial>()
 const files = new Map<string, Buffer>()
+const texts = new Map<string, MaterialText>()
 const receipts = new Map<string, { fingerprint: string; value: unknown }>()
 let serial = 0
 export function searchableMaterials() {
-  return [...rows.values()]
+  return [...rows.values()].map((row) => ({ ...row, textContent: texts.get(row.id)?.content }))
 }
 export function resetMaterials() {
   rows.clear()
   files.clear()
+  texts.clear()
   receipts.clear()
   serial = 0
 }
@@ -84,7 +87,11 @@ export function materialsResponse(
     send(res, 404, null, 'Revision unavailable')
     return true
   }
-  if (member && action !== '_query' && !action.endsWith('/content')) {
+  if (
+    member &&
+    action !== '_query' &&
+    !(method === 'GET' && /^[^/]+(?:\/(?:content|text))?$/.test(action))
+  ) {
     send(res, 403, null, 'Access denied')
     return true
   }
@@ -105,8 +112,50 @@ export function materialsResponse(
     })
     return true
   }
-  const [id, suffix] = action.split('/'),
+  const [id, suffix, operation] = action.split('/'),
     existing = rows.get(id || '')
+  if (existing && scope.includes(existing) && method === 'GET' && !suffix) {
+    send(res, 200, existing)
+    return true
+  }
+  if (suffix === 'text' && (method === 'GET' || (method === 'POST' && operation === '_extract'))) {
+    if (!existing || !scope.includes(existing)) send(res, 404, null, 'Material unavailable')
+    else {
+      if (method === 'POST') {
+        // The UI fixture only decodes plain text; Office/PDF parsing is verified against the service.
+        const supported = /\.(txt|md)$/i.test(existing.fileName)
+        const content = supported ? (files.get(existing.id)?.toString('utf8') || '').trim() : ''
+        const result: MaterialText = {
+          id: existing.id,
+          status: supported ? (content ? 'READY' : 'EMPTY') : 'UNSUPPORTED',
+          content,
+          characterCount: [...content].length,
+          extractedAt: now,
+          extractorVersion: 'material-text-v1',
+        }
+        texts.set(existing.id, result)
+        Object.assign(existing, {
+          textStatus: result.status,
+          textCharacterCount: result.characterCount,
+          textExtractedAt: now,
+          textExtractorVersion: result.extractorVersion,
+        })
+      }
+      send(
+        res,
+        200,
+        texts.get(existing.id) || {
+          id: existing.id,
+          status: 'NOT_EXTRACTED',
+          content: '',
+          characterCount: 0,
+          extractedAt: null,
+          extractorVersion: null,
+        },
+      )
+    }
+    return true
+  }
   if (suffix === 'content' && method === 'GET') {
     if (!existing || !scope.includes(existing)) send(res, 404, null, 'File missing')
     else {
@@ -246,6 +295,7 @@ export function materialsResponse(
     } else if (method === 'POST' && suffix === '_delete') {
       rows.delete(existing.id)
       files.delete(existing.id)
+      texts.delete(existing.id)
       result = true
     }
   }

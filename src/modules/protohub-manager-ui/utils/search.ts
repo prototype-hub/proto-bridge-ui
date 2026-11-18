@@ -18,7 +18,7 @@ export function searchSourceLocation(row: PrototypeSearchResult) {
     query: {
       revisionId: row.revisionId,
       ...(row.type === 'MATERIAL'
-        ? { tool: 'materials' }
+        ? { tool: 'materials', materialId: row.sourceId }
         : {
             pageId: row.pageId!,
             ...(row.type === 'FEEDBACK' ? { threadId: row.threadId! } : { tool: 'copy' }),
@@ -29,11 +29,16 @@ export function searchSourceLocation(row: PrototypeSearchResult) {
 export function searchTool(
   query: Record<string, unknown>,
 ): 'copy' | 'materials' | null | undefined {
-  if (query.tool === undefined) return undefined
+  if (query.tool === undefined) return query.materialId === undefined ? undefined : null
   if (query.threadId !== undefined) return null
   if (query.tool !== 'copy' && query.tool !== 'materials') return null
   if (!searchScope({ revisionId: query.revisionId })?.revisionId) return null
   if (query.tool === 'copy' && !searchScope({ revisionId: query.pageId })?.revisionId) return null
+  if (
+    query.materialId !== undefined &&
+    (query.tool !== 'materials' || !searchScope({ revisionId: query.materialId })?.revisionId)
+  )
+    return null
   return query.tool
 }
 /** Escape-free Vue text nodes carry untrusted snippets; highlighting never renders HTML. */

@@ -94,7 +94,8 @@ watch(assetsAllowed, (allowed) => {
 const requestedTool = computed(() => searchTool(route.query))
 const initialTool = requestedTool.value,
   initialRevision = route.query.revisionId,
-  initialPage = route.query.pageId
+  initialPage = route.query.pageId,
+  initialMaterial = route.query.materialId
 const invalidSearchSource = computed(() => initialTool === null || requestedTool.value === null)
 let openedSearchSource = false
 watch([() => route.fullPath, data, selectedPage, assetsAllowed], () => {
@@ -105,6 +106,7 @@ watch([() => route.fullPath, data, selectedPage, assetsAllowed], () => {
     !assetsAllowed.value ||
     openedSearchSource ||
     route.query.revisionId !== initialRevision ||
+    (tool === 'materials' && route.query.materialId !== initialMaterial) ||
     (tool === 'copy' && route.query.pageId !== initialPage)
   )
     return
@@ -322,6 +324,11 @@ function locateAnchor(anchor: ReviewAnchor) {
       :revision="revision"
       :project="project"
       :allowed="assetsAllowed"
+      :material-id="
+        initialTool === 'materials' && typeof initialMaterial === 'string'
+          ? initialMaterial
+          : undefined
+      "
       @close="closeMaterials"
     />
   </a-drawer>
