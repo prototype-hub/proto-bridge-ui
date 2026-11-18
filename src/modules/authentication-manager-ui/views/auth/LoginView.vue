@@ -13,11 +13,23 @@ import { useI18n } from 'vue-i18n'
 import { useLogin } from '@/modules/authentication-manager-ui/views/auth/hooks/useLogin'
 import { useBranding } from '@/app/stores/branding'
 import { useSettings } from '@/app/stores/settings'
+import { extensions } from '@/app/modules/extensions'
 const branding = useBranding()
 const { t, locale } = useI18n()
 const settings = useSettings()
-const { form, loading, busy, error, captcha, captchaEnabled, submit, prepare, refreshCaptcha } =
-  useLogin()
+const {
+  form,
+  loading,
+  busy,
+  error,
+  captcha,
+  captchaEnabled,
+  submit,
+  prepare,
+  refreshCaptcha,
+  run,
+  enterPlatform,
+} = useLogin()
 const recordNumber = computed(() => branding.front.recordNumber?.trim() || '')
 const policeRecordNumber = computed(() => branding.front.policeRecordNumber?.trim() || '')
 const policeRecordUrl = computed(
@@ -88,6 +100,15 @@ const policeRecordUrl = computed(
             t('common.retry')
           }}</a-button></a-form
         >
+        <component
+          :is="tool"
+          v-for="(tool, index) in extensions.loginTools"
+          :key="index"
+          :busy="busy || loading"
+          :ready="!loading"
+          :run="run"
+          :enter-platform="enterPlatform"
+        />
       </div>
       <footer class="login-footer muted">
         <p v-if="branding.front.copyright">{{ branding.front.copyright }}</p>

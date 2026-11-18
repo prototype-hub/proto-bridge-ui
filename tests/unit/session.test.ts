@@ -83,3 +83,28 @@ it('does not persist failed login credentials or revive a token from a late logi
   await expect(pending).rejects.toMatchObject({ status: 401 })
   expect(token.get()).toBeNull()
 })
+
+it('does not revive an extension sign-in after logout or a newer sign-in', async () => {
+  const session = useSession()
+  let complete!: (value: { token: string }) => void
+  const pending = session.authenticate(() => new Promise((resolve) => (complete = resolve)))
+  await session.authenticate(async () => ({ token: 'current' }))
+  complete({ token: 'late' })
+  await expect(pending).rejects.toMatchObject({ status: 401 })
+  expect(token.get()).toBe('current')
+  expect(token.getRemembered()).toBeNull()
+})
+
+it.each([false, true])(
+  'preserves another tab credential when an extension sign-in completes late (remembered=%s)',
+  async (remembered) => {
+    const session = useSession()
+    let complete!: (value: { token: string }) => void
+    const pending = session.authenticate(() => new Promise((resolve) => (complete = resolve)))
+    token.set('other-tab', remembered)
+    complete({ token: 'late-extension' })
+    await expect(pending).rejects.toMatchObject({ status: 401 })
+    expect(token.get()).toBe('other-tab')
+    expect(token.getRemembered()).toBe(remembered ? 'other-tab' : null)
+  },
+)

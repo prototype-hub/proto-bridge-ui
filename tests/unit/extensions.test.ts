@@ -9,6 +9,7 @@ it('keeps the basic edition registry empty without locally assembled modules', (
     locales: { zh: {}, en: {} },
     versionTools: [],
     comparisonTools: [],
+    loginTools: [],
   })
 })
 
@@ -21,6 +22,7 @@ it('merges only build-time modules in stable path order', () => {
         componentMap: { 'example/Page': second },
         locales: { zh: { example: { title: '后' } }, en: { example: { title: 'Last' } } },
         versionTools: [{ name: 'LastTool' }],
+        loginTools: [{ name: 'LastLogin' }],
         comparisonTools: [
           { key: 'example', labelKey: 'example.title', component: { name: 'CompareTool' } },
         ],
@@ -31,6 +33,7 @@ it('merges only build-time modules in stable path order', () => {
         componentMap: { 'example/Page': first },
         menuPathMap: { '/example': { code: 'example/Page', component: first } },
         versionTools: [{ name: 'FirstTool' }],
+        loginTools: [{ name: 'FirstLogin' }],
       },
     },
   })
@@ -42,4 +45,12 @@ it('merges only build-time modules in stable path order', () => {
     'FirstTool',
     'LastTool',
   ])
+})
+
+it('merges login tools in stable module order', () => {
+  const result = mergeExtensions({
+    '/z': { default: { loginTools: [{ name: 'Last' }] } },
+    '/a': { default: { loginTools: [{ name: 'First' }] } },
+  })
+  expect(result.loginTools.map((tool) => 'name' in tool && tool.name)).toEqual(['First', 'Last'])
 })
