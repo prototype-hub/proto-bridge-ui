@@ -70,17 +70,26 @@ export const useSession = defineStore('session', () => {
       await menuFlight
     }
   }
-  async function login(
-    input: Parameters<typeof sessionApi.login>[0],
+  /** Every sign-in method uses the same generation check before publishing a credential. */
+  async function authenticate(
+    loadToken: () => Promise<{ token: string }>,
     options: { rememberMe?: boolean } = {},
   ) {
     clear()
     const epoch = generation
-    const result = await sessionApi.login(input)
-    // Logout or a newer login invalidates an earlier response, including persistent credentials.
-    if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
+    const expectedToken = token.get()
+    const result = await loadToken()
+    // A local logout, newer sign-in or replacement shared credential invalidates this response.
+    if (epoch !== generation || token.get() !== expectedToken)
+      throw new ApiError(t('common.sessionExpired'), 401)
     token.set(result.token, options.rememberMe)
     resetUnauthorized()
+  }
+  function login(
+    input: Parameters<typeof sessionApi.login>[0],
+    options: { rememberMe?: boolean } = {},
+  ) {
+    return authenticate(() => sessionApi.login(input), options)
   }
   async function refreshMenus() {
     const epoch = generation
@@ -106,6 +115,7 @@ export const useSession = defineStore('session', () => {
     initialize,
     refreshMenus,
     login,
+    authenticate,
     logout,
     clear,
     can,

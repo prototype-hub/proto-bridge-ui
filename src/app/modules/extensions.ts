@@ -23,6 +23,8 @@ export interface ApplicationExtension extends Partial<MenuEntryRegistry> {
   /** Optional tools receive the current project and version; the basic build has no tools. */
   versionTools?: Component[]
   comparisonTools?: ComparisonTool[]
+  /** Optional sign-in tools share the password form's serialized task and navigation. */
+  loginTools?: Component[]
 }
 
 export function mergeExtensions(modules: Record<string, { default: ApplicationExtension }>) {
@@ -34,6 +36,7 @@ export function mergeExtensions(modules: Record<string, { default: ApplicationEx
   const locales: Required<ApplicationExtension>['locales'] = { zh: {}, en: {} }
   const versionTools: Component[] = []
   const comparisonTools: ComparisonTool[] = []
+  const loginTools: Component[] = []
   for (const key of Object.keys(modules).sort()) {
     const extension = modules[key]!.default
     Object.assign(registry.componentMap, extension.componentMap)
@@ -41,10 +44,11 @@ export function mergeExtensions(modules: Record<string, { default: ApplicationEx
     Object.assign(registry.menuPathMap, extension.menuPathMap)
     versionTools.push(...(extension.versionTools || []))
     comparisonTools.push(...(extension.comparisonTools || []))
+    loginTools.push(...(extension.loginTools || []))
     for (const language of ['zh', 'en'] as const)
       Object.assign(locales[language], extension.locales?.[language])
   }
-  return { ...registry, locales, versionTools, comparisonTools }
+  return { ...registry, locales, versionTools, comparisonTools, loginTools }
 }
 
 export const extensions = mergeExtensions(
