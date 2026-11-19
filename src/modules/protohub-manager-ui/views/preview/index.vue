@@ -43,6 +43,17 @@ const RevisionAssetsPanel = defineAsyncComponent(
 const RevisionMaterialsPanel = defineAsyncComponent(
   () => import('../../components/RevisionMaterialsPanel.vue'),
 )
+const PageDeliveryDrawer = defineAsyncComponent(
+  () => import('../project/components/PageDeliveryDrawer.vue'),
+)
+const deliveryPageId = ref<string>()
+function openDelivery() {
+  if (assetsAllowed.value && selectedPage.value) deliveryPageId.value = selectedPage.value.pageId
+}
+function closeDelivery() {
+  deliveryPageId.value = undefined
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const materialsOpen = ref(false)
 const materialsPanel = ref<InstanceType<typeof RevisionMaterialsPanel>>()
 async function closeMaterials() {
@@ -89,7 +100,10 @@ const assetsAllowed = computed(
     permissions.can(p.version.query),
 )
 watch(assetsAllowed, (allowed) => {
-  if (!allowed) assetsOpen.value = copyOpen.value = viewportOpen.value = materialsOpen.value = false
+  if (!allowed) {
+    assetsOpen.value = copyOpen.value = viewportOpen.value = materialsOpen.value = false
+    deliveryPageId.value = undefined
+  }
 })
 const requestedTool = computed(() => searchTool(route.query))
 const initialTool = requestedTool.value,
@@ -278,6 +292,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                     :title="t('proto.searchNewWindow')"
                     >{{ t('proto.searchThisRevision') }}</router-link
                   ></a-menu-item
+                ><a-menu-item key="delivery" :disabled="!selectedPage" @click="openDelivery">{{
+                  t('proto.pageDelivery')
+                }}</a-menu-item
                 ><a-menu-item key="materials" @click="materialsOpen = true">{{
                   t('proto.materials')
                 }}</a-menu-item
@@ -339,6 +356,13 @@ function locateAnchor(anchor: ReviewAnchor) {
     :context="data"
     :initial-page="viewportPage"
     @close="closeViewport"
+  />
+  <page-delivery-drawer
+    v-if="deliveryPageId && assetsAllowed"
+    :project="project"
+    :revision="revision"
+    :page-id="deliveryPageId"
+    @close="closeDelivery"
   />
   <copy-inventory-drawer
     v-if="copyOpen && assetsAllowed"

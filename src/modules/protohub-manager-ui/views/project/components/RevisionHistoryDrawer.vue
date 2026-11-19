@@ -36,6 +36,7 @@ const emit = defineEmits<{
   preview: [version: Version, revisionId: string]
   workItems: [version: Version, revision: Revision]
   copyInventory: [revision: Revision]
+  pageDelivery: [revision: Revision]
 }>()
 const { t } = useI18n()
 const permissions = usePermissions()
@@ -224,6 +225,9 @@ const columns = computed(() => [
                   >{{ t('proto.pageResources') }} <down-outlined aria-hidden="true" /></a-button
                 ><template #overlay
                   ><a-menu
+                    ><a-menu-item key="delivery" @click="emit('pageDelivery', record)">{{
+                      t('proto.pageDelivery')
+                    }}</a-menu-item
                     ><a-menu-item key="materials" @click="materialsRevision = record">{{
                       t('proto.materials')
                     }}</a-menu-item

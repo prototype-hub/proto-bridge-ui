@@ -52,6 +52,22 @@ async function closeCopyInventory() {
 const WorkItemsDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/WorkItemsDrawer.vue'),
 )
+const PageDeliveryDrawer = defineAsyncComponent(
+  () => import('../components/PageDeliveryDrawer.vue'),
+)
+const deliveryRevision = ref<Revision>()
+function openPageDelivery(revision: Revision) {
+  historyVersion.value = undefined
+  deliveryRevision.value = revision
+}
+async function closePageDelivery() {
+  const versionId = deliveryRevision.value?.versionId
+  deliveryRevision.value = undefined
+  await nextTick()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[data-version-history]'))
+    .find((button) => button.dataset.versionHistory === versionId)
+    ?.focus()
+}
 const workItems = ref<{ version: Version; revision: Revision }>()
 function openWorkItems(version: Version, revision: Revision) {
   historyVersion.value = undefined
@@ -99,6 +115,7 @@ watch(
   () => {
     reviewGuestsOpen.value = false
     workItems.value = undefined
+    deliveryRevision.value = undefined
   },
 )
 const columns = computed(() => [
@@ -377,6 +394,7 @@ watch(
       :project="resource.data.value.project"
       :version="historyVersion"
       @close="historyVersion = undefined"
+      @page-delivery="openPageDelivery"
       @copy-inventory="openCopyInventory"
       @work-items="openWorkItems"
       @preview="preview" /><work-items-drawer
@@ -384,7 +402,11 @@ watch(
       :project="resource.data.value.project"
       :version="workItems.version"
       :revision="workItems.revision"
-      @close="closeWorkItems"
+      @close="closeWorkItems" /><page-delivery-drawer
+      v-if="deliveryRevision"
+      :project="resource.data.value.project"
+      :revision="deliveryRevision"
+      @close="closePageDelivery"
   /></page-container>
 </template>
 <style scoped>

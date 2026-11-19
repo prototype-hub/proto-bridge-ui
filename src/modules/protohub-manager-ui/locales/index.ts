@@ -1,3 +1,4 @@
+import { pageDeliveryLocales } from './page-delivery'
 import { searchLocales } from './search'
 import { copyInventoryLocales } from './copy-inventory'
 import { viewportCheckLocales } from './viewport-check'
@@ -6,6 +7,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...pageDeliveryLocales.zh,
     compareOpenPageShort: '选择页面',
     compareSelectScope: '页面与文件差异 · 切换比较页面',
     compareMethod: '比较方式与范围',
@@ -787,6 +789,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...pageDeliveryLocales.en,
     compareOpenPageShort: 'Compare',
     compareSelectScope: 'Page & file differences · choose pages',
     compareMethod: 'Comparison method & scope',

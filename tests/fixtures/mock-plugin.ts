@@ -1,3 +1,4 @@
+import { resetPageDeliveries, pageDeliveryResponse } from './page-delivery'
 import { searchResponse } from './search'
 import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
 import { resetViewportChecks, viewportCheckResponse } from './viewport-check'
@@ -264,6 +265,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
 function reset() {
   licenseStatus = fixtureLicense()
   resetWorkItems()
+  resetPageDeliveries()
   resetCopyInventories()
   resetViewportChecks()
   resetMaterials()
@@ -984,6 +986,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       data,
       member,
       String(req.headers['x-access-token'] || ''),
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
+  if (
+    pageDeliveryResponse(
+      path,
+      method,
+      method === 'GET' ? Object.fromEntries(url.searchParams) : data,
+      member,
+      token,
       revisions,
       revisionPages,
       res,
