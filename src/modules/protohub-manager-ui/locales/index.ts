@@ -497,6 +497,15 @@ export const protoLocales = {
     reviewUnavailable: '身份验证暂时失败，请重试。发送结果不明确时不会自动重发验证码。',
     qualityCheck: '质量体检',
     qualityDownload: '下载 JSON 报告',
+    qualityDownloadXlsx: '下载 Excel 报告（.xlsx）',
+    qualityDownloadDocx: '下载 Word 报告（.docx）',
+    qualityConclusion: '检查结论',
+    qualityFindings: '问题明细',
+    qualityScopeDetails: '检查范围与限制',
+    qualityExport: '导出报告',
+    qualityExportHint: '导出当前结果及全部已收录问题，保留检查范围与限制。',
+    qualityExporting: '正在生成并核验访问权限…',
+    qualityAccessChanged: '报告或访问权限已变化，请关闭后刷新项目，再重新检查。',
     qualityScope:
       '检查本修订包内支持的 HTML/CSS 静态引用。不运行脚本、不访问外网，不判断动态交互是否正确。',
     qualityComplete: '支持的本地静态引用已检查，请结合问题和未检查项判断交付质量。',
@@ -1337,6 +1346,16 @@ export const protoLocales = {
       'Identity verification failed. Retry manually; an uncertain delivery never triggers an automatic resend.',
     qualityCheck: 'Package quality',
     qualityDownload: 'Download JSON report',
+    qualityDownloadXlsx: 'Download Excel report (.xlsx)',
+    qualityDownloadDocx: 'Download Word report (.docx)',
+    qualityConclusion: 'Check result',
+    qualityFindings: 'Findings',
+    qualityScopeDetails: 'Scope and limits',
+    qualityExport: 'Export report',
+    qualityExportHint: 'Export this result and all recorded findings, including scope and limits.',
+    qualityExporting: 'Generating and checking access…',
+    qualityAccessChanged:
+      'The report or access has changed. Close this view, refresh the project and check again.',
     qualityScope:
       'Checks supported static HTML/CSS references in this revision. Scripts and external requests are not run, and dynamic interactions are not assessed.',
     qualityComplete:

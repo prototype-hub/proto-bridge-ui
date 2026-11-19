@@ -59,9 +59,20 @@ async function closeMaterials() {
   void nextTick(() => assetsTrigger?.focus())
 }
 function closeDrawer() {
-  if (materialsRevision.value) void closeMaterials()
+  if (qualityRevision.value) closeQuality()
+  else if (materialsRevision.value) void closeMaterials()
   else if (assetsRevision.value) closeAssets()
   else emit('close')
+}
+let qualityTrigger: HTMLElement | undefined
+function openQuality(revision: Revision, event: MouseEvent) {
+  if (!open.value) return
+  qualityTrigger = event.currentTarget as HTMLElement
+  qualityRevision.value = revision
+}
+function closeQuality() {
+  qualityRevision.value = undefined
+  void nextTick(() => qualityTrigger?.focus())
 }
 let assetsTrigger: HTMLElement | undefined
 function rememberResourceTrigger(event: MouseEvent) {
@@ -81,6 +92,7 @@ watch(
   () => {
     selected.value = []
     qualityRevision.value = undefined
+    qualityTrigger = undefined
     assetsRevision.value = undefined
     materialsRevision.value = undefined
     assetsTrigger = undefined
@@ -229,9 +241,11 @@ const columns = computed(() => [
                 @click="version && emit('workItems', version, record)"
                 >{{ t('proto.workItems') }}</permission-button
               >
-              <permission-button :permission="p.version.query" @click="qualityRevision = record">{{
-                t('proto.qualityCheck')
-              }}</permission-button>
+              <permission-button
+                :permission="p.version.query"
+                @click="openQuality(record, $event)"
+                >{{ t('proto.qualityCheck') }}</permission-button
+              >
             </div>
           </template>
         </data-table>
@@ -250,7 +264,7 @@ const columns = computed(() => [
     v-if="qualityRevision"
     :revision="qualityRevision"
     :allowed="open"
-    @close="qualityRevision = undefined"
+    @close="closeQuality"
   />
 </template>
 
