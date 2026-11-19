@@ -564,3 +564,30 @@ export interface ReviewAssociationRevokeInput {
   reason: string
   clientRequestId: string
 }
+
+export type PageDeliveryState = 'DRAFT' | 'READY' | 'IN_PROGRESS' | 'DONE'
+export interface PageDeliveryCandidate {
+  userId: string
+  name: string
+}
+export interface PageDelivery {
+  projectId: string
+  versionId: string
+  revisionId: string
+  pageId: string
+  pageName: string
+  pagePath: string
+  state: PageDeliveryState | null
+  assignee: (PageDeliveryCandidate & { available: boolean }) | null
+  reason: string
+  configVersion: number
+  updatedAt: number | null
+}
+export interface PageDeliveryInput {
+  revisionId: string
+  state: PageDeliveryState
+  assigneeId: string | null
+  reason: string
+  expectedVersion: number
+  clientRequestId: string
+}
