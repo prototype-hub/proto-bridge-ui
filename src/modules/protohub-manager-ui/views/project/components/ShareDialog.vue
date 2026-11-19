@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { computed, toRef, shallowRef, watch, defineAsyncComponent, type PropType } from 'vue'
-import dayjs from 'dayjs'
+import {
+  computed,
+  toRef,
+  shallowRef,
+  ref,
+  watch,
+  nextTick,
+  onScopeDispose,
+  defineAsyncComponent,
+  type PropType,
+} from 'vue'
 import {
   Modal as AModal,
   Textarea as ATextarea,
@@ -9,32 +18,23 @@ import {
   Form as AForm,
   FormItem as AFormItem,
   Alert as AAlert,
-  Space as ASpace,
+  Button as AButton,
   Tag as ATag,
   RadioGroup as ARadioGroup,
   RadioButton as ARadioButton,
+  Dropdown as ADropdown,
+  Menu as AMenu,
+  MenuItem as AMenuItem,
+  Empty as AEmpty,
 } from 'ant-design-vue'
-import type { TableColumnsType } from 'ant-design-vue'
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-  StopOutlined,
-  ReloadOutlined,
-  SafetyCertificateOutlined,
-  MailOutlined,
-} from '@ant-design/icons-vue'
+import { DownOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useShares } from '@/modules/protohub-manager-ui/views/project/hooks/useShares'
 import type { Project, Share, Version } from '@/modules/protohub-manager-ui/types'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
 import LoadState from '@/shared/components/LoadState.vue'
-import DataTable from '@/shared/components/DataTable.vue'
 import TextEllipsis from '@/shared/components/TextEllipsis.vue'
-import ActionButton from '@/shared/components/ActionButton.vue'
 import ShareCopyDialog from './ShareCopyDialog.vue'
 import { usePermissions } from '@/shared/auth/provider'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
@@ -48,8 +48,15 @@ const props = defineProps({
   project: { type: Object as PropType<Project>, default: undefined },
 })
 const emit = defineEmits<{ close: [] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const permissions = usePermissions()
+const createOpen = ref(false)
+const createForm = ref<HTMLElement>()
+const createdResult = ref<HTMLElement>()
+const shareList = ref<HTMLElement>()
+const moreTarget = ref<string>()
+const savedDraft = ref('')
+let confirmation: ReturnType<typeof AModal.confirm> | undefined
 const validityColors = {
   permanent: 'success',
   temporary: 'warning',
@@ -57,30 +64,16 @@ const validityColors = {
   disabled: 'default',
   revoked: 'error',
 } as const
-const columns = computed<TableColumnsType<Share>>(() => [
-  {
-    title: t('proto.link'),
-    dataIndex: 'sharePath',
-    width: 200,
-    ellipsis: { showTitle: false },
-  },
-  {
-    title: t('proto.shareDescription'),
-    dataIndex: 'description',
-    width: 130,
-    ellipsis: { showTitle: false },
-  },
-  { title: t('common.status'), dataIndex: 'enabled', width: 80 },
-  { title: t('proto.password'), dataIndex: 'passwordRequired', width: 90 },
-  { title: t('proto.shareTime'), dataIndex: 'createdAt', width: 140 },
-  { title: t('proto.expiryTime'), dataIndex: 'expiresAt', width: 140 },
-  { title: t('common.actions'), key: 'actions', width: 320 },
-])
 const {
   task,
   resource,
+  refresh,
+  createdShare,
+  creationUnknown,
   revisionMode,
   editTarget,
+  editConflict,
+  reloadEdit,
   edit,
   closeEdit,
   update,
@@ -97,6 +90,23 @@ const {
   validity,
   shareCopy,
 } = useShares(toRef(props, 'version'), toRef(props, 'project'))
+const draft = computed(() =>
+  JSON.stringify([description.value, password.value, expires.value?.valueOf(), revisionMode.value]),
+)
+const date = (value: number) =>
+  new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(value)
+const shareName = (share: Share) => share.description || t('proto.shareUntitled')
+const menuContainer = (trigger: HTMLElement) =>
+  trigger.closest<HTMLElement>('.ant-modal-content') || trigger
+const canCreate = computed(
+  () =>
+    !props.version?.migrationRequired &&
+    projectAllows(props.project, 'manageShares') &&
+    permissions.can(p.share.save),
+)
 watch(
   () => [
     props.version?.id,
@@ -107,24 +117,175 @@ watch(
   () => {
     reviewTarget.value = undefined
     invitationTarget.value = undefined
+    createOpen.value = false
+    moreTarget.value = undefined
+    savedDraft.value = draft.value
+    confirmation?.destroy()
+    confirmation = undefined
   },
+  { immediate: true },
 )
 watch(resource.data, (rows) => {
   if (invitationTarget.value)
     invitationTarget.value = rows.find((row) => row.id === invitationTarget.value?.id)
 })
+watch(createdShare, async (share) => {
+  if (!share) return
+  createOpen.value = false
+  savedDraft.value = draft.value
+  await nextTick()
+  createdResult.value?.querySelector('button')?.focus()
+})
+onScopeDispose(() => confirmation?.destroy())
+async function toggleCreate() {
+  createOpen.value = !createOpen.value
+  if (createOpen.value) {
+    await nextTick()
+    createForm.value?.querySelector('textarea')?.focus()
+  }
+}
+function openMore(id: string, open: boolean) {
+  moreTarget.value = open ? id : undefined
+}
+async function focusMoreMenu(id: string) {
+  await nextTick()
+  if (moreTarget.value !== id) return
+  const menu = document.getElementById(`share-menu-${id}`)
+  if (!menu?.contains(document.activeElement))
+    menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+}
+function escapeMore(id: string, event: KeyboardEvent) {
+  if (moreTarget.value !== id) return
+  event.stopPropagation()
+  event.preventDefault()
+  void closeMore(id)
+}
+function navigateMore(id: string, event: KeyboardEvent) {
+  const menu = document.getElementById(`share-menu-${id}`)
+  if (moreTarget.value !== id || !(event.target instanceof Node) || !menu?.contains(event.target))
+    return
+  if (event.key === 'Tab') {
+    moreTarget.value = undefined
+    focusMoreTrigger(id)
+    event.stopPropagation()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    event.preventDefault()
+    void closeMore(id)
+    return
+  }
+  const items = Array.from(
+    menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])'),
+  ).filter((item) => item.getClientRects().length && getComputedStyle(item).visibility !== 'hidden')
+  const current = items.indexOf(document.activeElement as HTMLElement)
+  if (event.key === ' ' && current >= 0) {
+    event.preventDefault()
+    event.stopPropagation()
+    items[current]?.click()
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !items.length) return
+  event.preventDefault()
+  event.stopPropagation()
+  const index =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : current < 0
+          ? event.key === 'ArrowDown'
+            ? 0
+            : items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length
+  items[index]?.focus()
+}
+async function closeMore(id: string) {
+  moreTarget.value = undefined
+  await nextTick()
+  focusMoreTrigger(id)
+}
+function focusMoreTrigger(id: string) {
+  const row = Array.from(
+    shareList.value?.querySelectorAll<HTMLElement>('[data-share-id]') || [],
+  ).find((element) => element.dataset.shareId === id)
+  row?.querySelector<HTMLButtonElement>('.share-more-trigger')?.focus()
+}
+function close() {
+  if (task.busy.value) return
+  if (draft.value === savedDraft.value && !creationUnknown.value) {
+    emit('close')
+    return
+  }
+  confirmation = AModal.confirm({
+    title: t('proto.shareDiscardTitle'),
+    content: t(creationUnknown.value ? 'proto.shareUnknownCloseHint' : 'proto.shareDiscardHint'),
+    okText: t('proto.shareDiscard'),
+    cancelText: t('proto.shareKeepEditing'),
+    onOk: () => emit('close'),
+  })
+}
 function reviewSaved() {
   reviewTarget.value = undefined
-  void resource.load()
+  void refresh()
 }
-// Keyboard form submission must respect the same capability as the visible creation button.
+// Keyboard submission follows the same permission and unknown-result boundary as the button.
 const submitCreate = () => {
-  if (
-    !props.version?.migrationRequired &&
-    projectAllows(props.project, 'manageShares') &&
-    permissions.can(p.share.save)
-  )
-    void create()
+  if (canCreate.value && !creationUnknown.value) void create()
+}
+type LifecycleAction = 'enabled' | 'rotate' | 'revoke' | 'delete'
+function confirmAction(share: Share, action: LifecycleAction) {
+  if (task.busy.value) return
+  const versionId = props.version?.id
+  const permission = action === 'delete' ? p.share.delete : p.share.save
+  if (!permissions.can(permission)) return
+  const label =
+    action === 'enabled'
+      ? share.enabled
+        ? 'proto.pauseShare'
+        : 'proto.resumeShare'
+      : action === 'rotate'
+        ? 'proto.rotateShare'
+        : action === 'revoke'
+          ? 'proto.revokeShare'
+          : 'common.delete'
+  const consequence =
+    action === 'enabled'
+      ? share.enabled
+        ? 'proto.pauseShareConfirm'
+        : 'proto.resumeShareConfirm'
+      : action === 'rotate'
+        ? 'proto.rotateShareConfirm'
+        : action === 'revoke'
+          ? 'proto.revokeShareConfirm'
+          : 'proto.deleteShareConfirm'
+  confirmation = AModal.confirm({
+    title: t('proto.shareActionTarget', { action: t(label), name: shareName(share) }),
+    content: t(consequence),
+    okText: t(label),
+    cancelText: t('common.cancel'),
+    okButtonProps: {
+      danger: action === 'delete' || action === 'revoke',
+      ...{ 'aria-label': t(label) },
+    },
+    cancelButtonProps: { type: 'default', ...{ 'aria-label': t('common.cancel') } },
+    wrapClassName: 'share-action-confirmation',
+    afterClose: () => void closeMore(share.id),
+    // A confirmation cannot execute after its project/version or effective permission changed.
+    onOk: async () => {
+      if (
+        props.version?.id !== versionId ||
+        !projectAllows(props.project, 'manageShares') ||
+        !permissions.can(permission)
+      )
+        return
+      if (action === 'enabled') await setEnabled(share)
+      else if (action === 'rotate') await rotate(share)
+      else if (action === 'revoke') await revoke(share)
+      else await remove(share.id)
+    },
+  })
 }
 </script>
 <template>
@@ -133,162 +294,301 @@ const submitCreate = () => {
     :open="!!version && projectAllows(project, 'manageShares')"
     :title="t('proto.share')"
     :footer="null"
-    :width="1120"
+    :width="1040"
+    :mask-closable="false"
+    :closable="!task.busy.value"
+    :keyboard="!task.busy.value"
     wrap-class-name="share-management-modal"
-    @cancel="emit('close')"
-    ><a-alert type="info" show-icon :message="t('proto.shareRevisionHint')" /><a-form
-      name="share-create"
-      class="share-create"
-      :model="{ description, password, expires, revisionMode }"
-      layout="vertical"
-      @submit.prevent="submitCreate"
-      ><a-form-item class="share-password" name="password" :label="t('proto.password')"
-        ><a-input-password
-          v-model:value="password"
-          :placeholder="t('proto.passwordOptional')"
-          autocomplete="new-password" /></a-form-item
-      ><a-form-item class="share-expiry" name="expires" :label="t('proto.expiresAt')"
-        ><a-date-picker
-          v-model:value="expires"
-          show-time
-          :disabled-date="(date) => date.endOf('day').valueOf() < Date.now()" /></a-form-item
-      ><a-form-item
-        class="share-description"
-        name="description"
-        :label="t('proto.shareDescription')"
-        ><a-textarea
-          v-model:value="description"
-          :placeholder="t('proto.shareDescriptionPlaceholder')"
-          :maxlength="2000"
-          :rows="2"
-          show-count /></a-form-item
-      ><a-form-item class="share-mode" name="revisionMode" :label="t('proto.shareRevisionMode')">
-        <a-radio-group v-model:value="revisionMode"
-          ><a-radio-button value="fixed">{{ t('proto.shareFixed') }}</a-radio-button
-          ><a-radio-button value="latest">{{
-            t('proto.shareLatest')
-          }}</a-radio-button></a-radio-group
-        > </a-form-item
-      ><permission-button
-        class="share-create-button"
-        :permission="p.share.save"
-        type="primary"
-        :loading="task.busy.value"
-        html-type="submit"
-        >{{ t('proto.createShare') }}</permission-button
-      ></a-form
-    ><a-alert v-if="task.error.value" type="error" :message="task.error.value" /><load-state
-      :loading="resource.loading.value"
-      :error="resource.error.value"
-      :empty="!resource.data.value.length"
-      @retry="resource.load"
-      ><div class="share-list">
-        <data-table class="share-table" :rows="resource.data.value" :columns="columns"
-          ><template #cell="{ column, record }"
-            ><template v-if="column.dataIndex === 'sharePath'"
-              ><text-ellipsis class="share-url" :text="url(record)" /><span
-                class="share-revision-mode"
-                :title="record.revisionId || ''"
-                >{{
-                  t(record.revisionMode === 'latest' ? 'proto.shareLatest' : 'proto.shareFixed')
-                }}</span
-              ></template
-            ><text-ellipsis
-              v-else-if="column.dataIndex === 'description'"
-              class="share-description-text"
-              :text="record.description || ''" /><a-tag
-              v-else-if="column.dataIndex === 'enabled'"
-              class="share-status"
-              :color="validityColors[validity(record)]"
-              >{{ t(`proto.shareStatus.${validity(record)}`) }}</a-tag
-            ><span
-              v-else-if="column.dataIndex === 'passwordRequired'"
-              class="share-password-state"
-              >{{ t(record.passwordRequired ? 'proto.password' : 'proto.noPassword') }}</span
-            ><span v-else-if="column.dataIndex === 'createdAt'" class="share-created-time">{{
-              dayjs(record.createdAt).format('YYYY-MM-DD HH:mm:ss')
-            }}</span
-            ><span v-else-if="column.dataIndex === 'expiresAt'" class="share-expiry-time">{{
-              record.expiresAt == null ? '—' : dayjs(record.expiresAt).format('YYYY-MM-DD HH:mm:ss')
-            }}</span
-            ><a-space v-else-if="column.key === 'actions'" :size="4" :wrap="false">
-              <action-button
-                v-if="permissions.can(p.share.query)"
-                :label="t('proto.reviewInvitations')"
-                :icon="MailOutlined"
-                :permission="p.share.query"
+    @cancel="close"
+  >
+    <div class="share-context">
+      <strong>{{ project?.name }}</strong>
+      <span>{{ version?.versionName }}</span>
+    </div>
+    <a-alert
+      v-if="version?.migrationRequired"
+      type="warning"
+      show-icon
+      :message="t('proto.revisionMigrationRequired')"
+    />
+    <div class="share-toolbar">
+      <h2>{{ t('proto.shareListTitle', { count: resource.data.value.length }) }}</h2>
+      <div class="share-toolbar-actions">
+        <a-button :loading="resource.loading.value" :disabled="task.busy.value" @click="refresh">
+          <template #icon><reload-outlined aria-hidden="true" /></template>
+          {{ t('common.refresh') }}
+        </a-button>
+        <permission-button
+          :permission="p.share.save"
+          :type="createOpen ? 'default' : 'primary'"
+          :disabled="!canCreate || task.busy.value"
+          :aria-expanded="createOpen"
+          aria-controls="share-create-region"
+          @click="toggleCreate"
+        >
+          <template #icon><plus-outlined v-if="!createOpen" aria-hidden="true" /></template>
+          {{ t(createOpen ? 'proto.shareCollapseCreate' : 'proto.createShare') }}
+        </permission-button>
+      </div>
+    </div>
+    <section
+      v-show="createOpen"
+      id="share-create-region"
+      ref="createForm"
+      class="share-create-region"
+      :aria-label="t('proto.createShare')"
+    >
+      <a-form
+        name="share-create"
+        class="share-create"
+        :model="{ description, password, expires, revisionMode }"
+        layout="vertical"
+        @submit.prevent="submitCreate"
+      >
+        <div class="share-content-fields">
+          <h3>{{ t('proto.shareRevisionMode') }}</h3>
+          <a-form-item name="description" :label="t('proto.shareDescription')">
+            <a-textarea
+              v-model:value="description"
+              :placeholder="t('proto.shareDescriptionPlaceholder')"
+              :maxlength="2000"
+              :rows="2"
+              show-count
+            />
+          </a-form-item>
+          <a-form-item name="revisionMode" :label="t('proto.shareRevisionMode')">
+            <a-radio-group v-model:value="revisionMode">
+              <a-radio-button value="fixed">{{ t('proto.shareFixed') }}</a-radio-button>
+              <a-radio-button value="latest">{{ t('proto.shareLatest') }}</a-radio-button>
+            </a-radio-group>
+            <p class="share-field-help">
+              {{
+                t(revisionMode === 'fixed' ? 'proto.shareFixedCreateHint' : 'proto.shareLatestHint')
+              }}
+            </p>
+          </a-form-item>
+        </div>
+        <div class="share-access-fields">
+          <h3>{{ t('proto.shareAccessTitle') }}</h3>
+          <a-form-item class="share-password" name="password" :label="t('proto.password')">
+            <a-input-password
+              v-model:value="password"
+              :placeholder="t('proto.passwordOptional')"
+              autocomplete="new-password"
+            />
+          </a-form-item>
+          <a-form-item class="share-expiry" name="expires" :label="t('proto.expiresAt')">
+            <a-date-picker
+              v-model:value="expires"
+              show-time
+              :disabled-date="(value) => value.endOf('day').valueOf() < Date.now()"
+            />
+            <p class="share-field-help">{{ t('proto.shareExpiryHint') }}</p>
+          </a-form-item>
+        </div>
+        <div class="share-create-footer">
+          <span class="muted">{{ t('proto.shareCustomerAccessHint') }}</span>
+          <permission-button
+            class="share-create-button"
+            :permission="p.share.save"
+            type="primary"
+            :loading="task.busy.value"
+            :disabled="!canCreate || creationUnknown"
+            html-type="submit"
+            >{{ t('proto.createShare') }}</permission-button
+          >
+        </div>
+      </a-form>
+    </section>
+    <a-alert
+      v-if="task.error.value && !editTarget"
+      class="share-feedback"
+      type="error"
+      show-icon
+      role="alert"
+      :message="task.error.value"
+    >
+      <template v-if="creationUnknown" #action>
+        <a-button :loading="resource.loading.value" @click="refresh">{{
+          t('proto.shareCheckList')
+        }}</a-button>
+      </template>
+    </a-alert>
+    <section
+      v-if="createdShare"
+      ref="createdResult"
+      class="share-created-result"
+      aria-live="polite"
+    >
+      <div>
+        <strong>{{ t('proto.shareCreated') }}</strong>
+        <p>
+          {{
+            t(
+              createdShare.passwordRequired
+                ? 'proto.shareCreatedProtected'
+                : 'proto.shareCreatedPublic',
+            )
+          }}
+        </p>
+      </div>
+      <div class="share-result-actions">
+        <a-button type="primary" @click="copy(createdShare, $event)">{{
+          t('proto.copyShare')
+        }}</a-button>
+        <a :href="url(createdShare)" target="_blank" rel="noopener noreferrer">{{
+          t('proto.shareOpenCustomer')
+        }}</a>
+      </div>
+    </section>
+    <load-state :loading="resource.loading.value" :error="resource.error.value" @retry="refresh">
+      <a-empty v-if="!resource.data.value.length" :description="t('proto.shareEmpty')" />
+      <ul v-else ref="shareList" class="share-list" :aria-label="t('proto.share')">
+        <li
+          v-for="record in resource.data.value"
+          :key="record.id"
+          class="share-row"
+          :data-share-id="record.id"
+        >
+          <div class="share-object">
+            <div class="share-row-heading">
+              <strong class="share-description-text">{{ shareName(record) }}</strong>
+              <a-tag class="share-status" :color="validityColors[validity(record)]">{{
+                t(`proto.shareStatus.${validity(record)}`)
+              }}</a-tag>
+            </div>
+            <text-ellipsis class="share-url" :text="url(record)" />
+            <span class="share-revision-mode"
+              >{{ t(record.revisionMode === 'latest' ? 'proto.shareLatest' : 'proto.shareFixed') }}
+              ·
+              {{
+                t(
+                  record.revisionMode === 'latest'
+                    ? 'proto.shareLatestRowHint'
+                    : record.revisionId === version?.currentRevisionId
+                      ? 'proto.currentRevision'
+                      : 'proto.sharePinnedRevision',
+                )
+              }}</span
+            >
+          </div>
+          <dl class="share-conditions">
+            <div>
+              <dt>{{ t('proto.shareAccessTitle') }}</dt>
+              <dd class="share-password-state">
+                {{
+                  t(record.passwordRequired ? 'proto.sharePasswordProtected' : 'proto.noPassword')
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>{{ t('proto.expiryTime') }}</dt>
+              <dd class="share-expiry-time">
+                {{ record.expiresAt == null ? t('proto.shareNoExpiry') : date(record.expiresAt) }}
+              </dd>
+            </div>
+            <div>
+              <dt>{{ t('proto.shareTime') }}</dt>
+              <dd class="share-created-time">{{ date(record.createdAt) }}</dd>
+            </div>
+          </dl>
+          <div class="share-row-actions">
+            <a-button
+              v-if="['permanent', 'temporary'].includes(validity(record))"
+              :aria-label="t('common.copy')"
+              @click="copy(record, $event)"
+              >{{ t('common.copy') }}</a-button
+            >
+            <permission-button
+              v-if="!record.revoked"
+              :aria-label="t('common.edit')"
+              :permission="p.share.save"
+              :disabled="task.busy.value"
+              @click="edit(record)"
+              >{{ t('common.edit') }}</permission-button
+            >
+            <a-dropdown
+              v-if="
+                permissions.can(p.share.query) ||
+                permissions.can(p.share.save) ||
+                permissions.can(p.share.delete)
+              "
+              :trigger="['click']"
+              :get-popup-container="menuContainer"
+              :open="moreTarget === record.id"
+              @open-change="openMore(record.id, $event)"
+              @popup-align="focusMoreMenu(record.id)"
+            >
+              <a-button
+                class="share-more-trigger"
                 :disabled="task.busy.value"
-                @action="invitationTarget = record"
-              />
-              <action-button
-                v-if="!record.revoked"
-                :label="t('proto.reviewSettings')"
-                :icon="SafetyCertificateOutlined"
-                :permission="p.share.save"
-                :disabled="task.busy.value"
-                @action="reviewTarget = record"
-              />
-              <action-button
-                v-if="['permanent', 'temporary'].includes(validity(record))"
-                :label="t('common.copy')"
-                :icon="CopyOutlined"
-                @action="copy(record)"
-              />
-              <action-button
-                v-if="!record.revoked"
-                :label="t('common.edit')"
-                :icon="EditOutlined"
-                :permission="p.share.save"
-                :disabled="task.busy.value"
-                @action="edit(record)"
-              />
-              <action-button
-                v-if="!record.revoked"
-                :label="t(record.enabled ? 'proto.pauseShare' : 'proto.resumeShare')"
-                :icon="record.enabled ? PauseCircleOutlined : PlayCircleOutlined"
-                :permission="p.share.save"
-                :disabled="task.busy.value"
-                :confirm="
-                  t(record.enabled ? 'proto.pauseShareConfirm' : 'proto.resumeShareConfirm')
-                "
-                @action="setEnabled(record)"
-              />
-              <action-button
-                v-if="!record.revoked"
-                :label="t('proto.rotateShare')"
-                :icon="ReloadOutlined"
-                :permission="p.share.save"
-                :disabled="task.busy.value"
-                :confirm="t('proto.rotateShareConfirm')"
-                @action="rotate(record)"
-              />
-              <action-button
-                v-if="!record.revoked"
-                :label="t('proto.revokeShare')"
-                :icon="StopOutlined"
-                :permission="p.share.save"
-                :disabled="task.busy.value"
-                danger
-                :confirm="t('proto.revokeShareConfirm')"
-                @action="revoke(record)"
-              />
-              <action-button
-                :label="t('common.delete')"
-                :icon="DeleteOutlined"
-                :permission="p.share.delete"
-                danger
-                :disabled="task.busy.value"
-                :confirm="t('common.confirmDelete')"
-                @action="remove(record.id)"
-              /> </a-space></template
-        ></data-table></div></load-state
-  ></a-modal>
+                aria-haspopup="menu"
+                :aria-expanded="moreTarget === record.id"
+                :aria-controls="`share-menu-${record.id}`"
+                :aria-label="t('proto.shareMoreFor', { name: shareName(record) })"
+                @keydown.esc="escapeMore(record.id, $event)"
+                >{{ t('proto.shareMore') }} <down-outlined aria-hidden="true"
+              /></a-button>
+              <template #overlay>
+                <div @keydown="navigateMore(record.id, $event)">
+                  <a-menu :id="`share-menu-${record.id}`" @click="moreTarget = undefined">
+                    <a-menu-item
+                      v-if="permissions.can(p.share.query)"
+                      key="invitations"
+                      @click="invitationTarget = record"
+                      >{{ t('proto.reviewInvitations') }}</a-menu-item
+                    >
+                    <a-menu-item
+                      v-if="!record.revoked && permissions.can(p.share.save)"
+                      key="review"
+                      @click="reviewTarget = record"
+                      >{{ t('proto.reviewSettings') }}</a-menu-item
+                    >
+                    <a-menu-item
+                      v-if="!record.revoked && permissions.can(p.share.save)"
+                      key="enabled"
+                      @click="confirmAction(record, 'enabled')"
+                      >{{
+                        t(record.enabled ? 'proto.pauseShare' : 'proto.resumeShare')
+                      }}</a-menu-item
+                    >
+                    <a-menu-item
+                      v-if="!record.revoked && permissions.can(p.share.save)"
+                      key="rotate"
+                      @click="confirmAction(record, 'rotate')"
+                      >{{ t('proto.rotateShare') }}</a-menu-item
+                    >
+                    <a-menu-item
+                      v-if="!record.revoked && permissions.can(p.share.save)"
+                      key="revoke"
+                      danger
+                      @click="confirmAction(record, 'revoke')"
+                      >{{ t('proto.revokeShare') }}</a-menu-item
+                    >
+                    <a-menu-item
+                      v-if="permissions.can(p.share.delete)"
+                      key="delete"
+                      danger
+                      @click="confirmAction(record, 'delete')"
+                      >{{ t('common.delete') }}</a-menu-item
+                    >
+                  </a-menu>
+                </div>
+              </template>
+            </a-dropdown>
+          </div>
+        </li>
+      </ul>
+    </load-state>
+  </a-modal>
   <share-edit-dialog
     v-if="editTarget && permissions.can(p.share.save) && projectAllows(project, 'manageShares')"
     :share="editTarget"
     :version="version"
-    :busy="task.busy.value"
+    :busy="task.busy.value || resource.loading.value"
     :error="task.error.value"
+    :conflict="editConflict"
+    @reload="reloadEdit"
     @close="closeEdit"
     @save="update"
   />
@@ -299,6 +599,8 @@ const submitCreate = () => {
     :busy="shareCopy.busy.value"
     :error="shareCopy.error.value"
     :content="shareCopy.content.value"
+    :object-label="shareCopy.target.value ? shareName(shareCopy.target.value) : ''"
+    :link="shareCopy.target.value ? url(shareCopy.target.value) : ''"
     @close="shareCopy.cancel"
     @verify="shareCopy.verify"
     @copy="shareCopy.copyVerified"
@@ -324,94 +626,192 @@ const submitCreate = () => {
   />
 </template>
 <style scoped>
-.share-revision-mode {
-  display: block;
+.share-context {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.share-context span,
+.share-revision-mode,
+.share-field-help {
   color: var(--color-muted);
-  font-size: var(--text-small);
 }
-.share-list {
-  width: 100%;
-  min-width: 0;
-  margin-top: var(--space-4);
-  max-width: 100%;
-  border: 1px solid var(--color-border);
+.share-toolbar,
+.share-toolbar-actions,
+.share-row-heading,
+.share-row-actions,
+.share-result-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.share-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.share-toolbar h2 {
+  margin: 0;
+  font-size: var(--text-body);
+}
+.share-create-region {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-background);
   border-radius: var(--radius);
-}
-.share-table {
-  max-width: 100%;
-  min-width: 0;
-}
-.share-table :deep(.ant-spin-nested-loading),
-.share-table :deep(.ant-spin-container) {
-  min-width: 0;
-}
-.share-table :deep(.ant-table-cell) {
-  white-space: nowrap;
-}
-.share-table :deep(.ant-table-container) {
-  border-radius: var(--radius);
-}
-.share-table :deep(.ant-table-content) {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
 }
 .share-create {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(230px, 1fr) auto;
-  align-items: flex-end;
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+}
+.share-create h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-body);
 }
 .share-create :deep(.ant-form-item) {
-  margin-bottom: 0;
-  min-width: 0;
-}
-.share-description {
-  grid-column: 1 / 3;
-  grid-row: 2;
-}
-.share-password {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-}
-.share-expiry {
-  grid-column: 2 / -1;
-  grid-row: 1;
+  margin-bottom: var(--space-3);
   min-width: 0;
 }
 .share-expiry :deep(.ant-picker) {
   width: 100%;
 }
-.share-mode {
-  grid-column: 1 / 3;
-  grid-row: 3;
+.share-field-help {
+  margin: var(--space-2) 0 0;
+  line-height: 1.6;
 }
-.share-create-button {
-  flex: 0 0 auto;
-  grid-column: 3;
-  grid-row: 2;
-  margin-bottom: 22px;
+.share-create-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+.share-feedback {
+  margin-bottom: var(--space-4);
+}
+.share-created-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-background);
+  border-radius: var(--radius);
+}
+.share-created-result p {
+  margin: var(--space-1) 0 0;
+}
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.share-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 0.7fr) auto;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
+}
+.share-object {
+  min-width: 0;
+}
+.share-row-heading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+.share-description-text {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.share-url {
+  display: block;
+  max-width: 100%;
+}
+.share-revision-mode {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-small);
+}
+.share-conditions {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-small);
+}
+.share-conditions > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.share-conditions dt {
+  color: var(--color-muted);
+}
+.share-conditions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.share-row-actions {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  align-content: start;
+}
+:global(.share-action-confirmation .ant-modal-confirm-title) {
+  overflow-wrap: anywhere;
+}
+:global(.share-action-confirmation .ant-modal-content) {
+  max-height: calc(100dvh - 8rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+:global(.share-management-modal .ant-modal-body) {
+  max-height: calc(100dvh - 13rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 @media (max-width: 767px) {
   :global(.share-management-modal .ant-modal) {
+    top: var(--space-2);
     max-width: calc(100vw - 16px);
-    margin: var(--space-2) auto;
+    margin: 0 auto;
+    padding-bottom: 0;
+  }
+  :global(.share-management-modal .ant-modal-body) {
+    max-height: calc(100dvh - 6rem);
   }
   .share-create {
     grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
   }
-  .share-description,
-  .share-password,
-  .share-expiry,
-  .share-mode,
-  .share-create-button {
-    grid-column: auto;
-    grid-row: auto;
+  .share-create-footer {
+    align-items: stretch;
+    flex-direction: column;
   }
   .share-create-button {
     width: 100%;
-    margin-bottom: 0;
+  }
+  .share-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .share-conditions > div {
+    grid-template-columns: 5rem minmax(0, 1fr);
+  }
+  .share-toolbar-actions {
+    flex-wrap: wrap;
+  }
+  .share-row-actions {
+    gap: var(--space-2);
+  }
+  .share-row-actions :deep(.ant-btn) {
+    min-height: 2.25rem;
   }
 }
 </style>

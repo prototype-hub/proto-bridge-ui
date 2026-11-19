@@ -139,7 +139,14 @@ it('refreshes on a stale CAS response without retrying the mutation or keeping s
   expect(sharesApi.update).toHaveBeenCalledTimes(1)
   expect(state.resource.data.value).toEqual([authoritative])
   expect(state.task.error.value).toBe(protoLocales.zh.shareConflict)
-  expect(state.editTarget.value).toBeUndefined()
+  expect(state.editTarget.value).toEqual(original)
+  expect(state.editConflict.value).toBe(true)
+  await state.update({ expectedVersion: 1, revisionMode: 'fixed', passwordAction: 'keep' })
+  expect(sharesApi.update).toHaveBeenCalledTimes(1)
+  vi.mocked(sharesApi.list).mockResolvedValueOnce([authoritative])
+  await state.reloadEdit()
+  expect(state.editTarget.value).toEqual(authoritative)
+  expect(state.editConflict.value).toBe(false)
   await state.copy(authoritative)
   expect(state.shareCopy.target.value).toEqual(authoritative)
 })
@@ -182,4 +189,79 @@ it('sends latest only when explicitly selected and keeps new shares fixed by def
     'v1',
     expect.objectContaining({ revisionMode: 'latest' }),
   )
+})
+
+it('keeps the original edit draft and CAS when explicit server reload fails, then adopts only a successful reload', async () => {
+  const { state } = setup()
+  await flush()
+  state.edit(original)
+  vi.mocked(sharesApi.update).mockRejectedValueOnce(new ApiError('stale', 409))
+  vi.mocked(sharesApi.list).mockRejectedValueOnce(new ApiError('list unavailable', 503))
+  await state.update({ expectedVersion: 1, revisionMode: 'fixed', passwordAction: 'keep' })
+  expect(state.editTarget.value).toEqual(original)
+  expect(state.editConflict.value).toBe(true)
+  vi.mocked(sharesApi.list).mockRejectedValueOnce(new ApiError('still unavailable', 503))
+  await state.reloadEdit()
+  expect(state.editTarget.value).toEqual(original)
+  expect(state.editConflict.value).toBe(true)
+  expect(state.task.error.value).toBe('still unavailable')
+  const current = { ...original, configVersion: 3, description: 'server text' }
+  vi.mocked(sharesApi.list).mockResolvedValueOnce([current])
+  await state.reloadEdit()
+  expect(state.editTarget.value).toEqual(current)
+  expect(state.editConflict.value).toBe(false)
+  expect(sharesApi.update).toHaveBeenCalledTimes(1)
+})
+
+it('retains an unknown creation draft, blocks repeated POST and reconciles only through an explicit successful list refresh', async () => {
+  const { state } = setup()
+  await flush()
+  state.description.value = 'keep my draft'
+  state.password.value = ' exact password '
+  vi.mocked(sharesApi.create).mockRejectedValueOnce(new ApiError('offline'))
+  await state.create()
+  expect(state.creationUnknown.value).toBe(true)
+  expect(state.description.value).toBe('keep my draft')
+  expect(state.password.value).toBe(' exact password ')
+  expect(state.createdShare.value).toBeUndefined()
+  await state.create()
+  expect(sharesApi.create).toHaveBeenCalledTimes(1)
+  vi.mocked(sharesApi.list).mockRejectedValueOnce(new ApiError('offline'))
+  await state.refresh()
+  expect(state.creationUnknown.value).toBe(true)
+  vi.mocked(sharesApi.list).mockResolvedValueOnce([original])
+  await state.refresh()
+  expect(state.creationUnknown.value).toBe(false)
+  expect(state.description.value).toBe('keep my draft')
+  expect(state.password.value).toBe(' exact password ')
+  expect(sharesApi.create).toHaveBeenCalledTimes(1)
+})
+
+it('does not overlap list reconciliation or unlock an unknown POST while its current refresh is pending or failed', async () => {
+  const { state } = setup()
+  await flush()
+  vi.mocked(sharesApi.create).mockRejectedValueOnce(new ApiError('offline'))
+  await state.create()
+  let reject!: (cause: Error) => void
+  vi.mocked(sharesApi.list).mockReturnValueOnce(
+    new Promise((_, fail) => {
+      reject = fail
+    }),
+  )
+  const first = state.refresh()
+  await flush()
+  const calls = vi.mocked(sharesApi.list).mock.calls.length
+  await state.refresh()
+  expect(sharesApi.list).toHaveBeenCalledTimes(calls)
+  expect(state.resource.loading.value).toBe(true)
+  expect(state.creationUnknown.value).toBe(true)
+  await state.create()
+  expect(sharesApi.create).toHaveBeenCalledTimes(1)
+  reject(new ApiError('list failed', 503))
+  await first
+  expect(state.creationUnknown.value).toBe(true)
+  vi.mocked(sharesApi.list).mockResolvedValueOnce([original])
+  await state.refresh()
+  expect(state.creationUnknown.value).toBe(false)
+  expect(sharesApi.create).toHaveBeenCalledTimes(1)
 })

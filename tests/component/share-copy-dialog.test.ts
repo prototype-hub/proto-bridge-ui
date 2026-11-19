@@ -2,7 +2,6 @@ import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h } from 'vue'
-import dayjs from 'dayjs'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { sharesApi } from '@/modules/protohub-manager-ui/api'
 import { protoLocales } from '@/modules/protohub-manager-ui/locales'
@@ -70,7 +69,7 @@ const modal = () =>
 const copyModal = () =>
   new DOMWrapper(document.body)
     .findAll('.ant-modal')
-    .find((item) => item.text().includes('复制分享'))!
+    .find((item) => item.find('.ant-modal-title').text() === '复制分享')!
 async function render(permission = true) {
   const router = createRouter({
     history: createMemoryHistory('/tools'),
@@ -84,9 +83,7 @@ async function render(permission = true) {
   })
   wrappers.push(wrapper)
   await flushPromises()
-  await vi.waitFor(() =>
-    expect(modal().findAll('tbody tr.ant-table-row').length).toBeGreaterThan(0),
-  )
+  await vi.waitFor(() => expect(modal().findAll('.share-row').length).toBeGreaterThan(0))
   return wrapper
 }
 beforeEach(() => {
@@ -118,7 +115,7 @@ describe('created and protected shares', () => {
   })
 
   it('submits the actual inline form by keyboard exactly once, clears its field and copies only the created password', async () => {
-    await modal().get('form input').setValue(' created ')
+    await modal().get('.share-password input').setValue(' created ')
     vi.mocked(sharesApi.list).mockResolvedValue([
       locked,
       { ...locked, id: 'new', token: 'created' },
@@ -132,22 +129,22 @@ describe('created and protected shares', () => {
       expiresAt: undefined,
       revisionMode: 'fixed',
     })
-    expect(modal().get<HTMLInputElement>('form input').element.value).toBe('')
-    const rows = modal().findAll('tbody tr.ant-table-row')
+    expect(modal().get<HTMLInputElement>('.share-password input').element.value).toBe('')
+    const rows = modal().findAll('.share-row')
     await rows[1]!.get('button[aria-label="复制"]').trigger('click')
     await flushPromises()
     expect(copyText).toHaveBeenLastCalledWith(
       `项目-V1：${window.location.origin}/tools/share/created\n密码： created `,
-      undefined,
+      expect.any(HTMLButtonElement),
     )
-    await modal().get('form input').setValue('different')
+    await modal().get('.share-password input').setValue('different')
     await rows[0]!.get('button[aria-label="复制"]').trigger('click')
     await flushPromises()
     expect(copyModal().get('input').element.value).toBe('')
     expect(copyText).toHaveBeenCalledOnce()
   })
   it('blocks wrong history passwords and only copies after a verified user click with selectable multiline text', async () => {
-    await modal().get('tbody button[aria-label="复制"]').trigger('click')
+    await modal().get('.share-row button[aria-label="复制"]').trigger('click')
     await flushPromises()
     await copyModal().get('input').setValue('wrong')
     vi.mocked(sharesApi.verifyPassword).mockResolvedValueOnce(false)
@@ -182,46 +179,42 @@ describe('denied creation permission', () => {
     await modal().get('form').trigger('submit')
     await flushPromises()
     expect(sharesApi.create).not.toHaveBeenCalled()
-    expect(modal().find('tbody button[aria-label="复制"]').exists()).toBe(true)
-    expect(modal().find('tbody button[aria-label="访问者身份设置"]').exists()).toBe(false)
-    expect(modal().find('tbody button[aria-label="删除"]').exists()).toBe(false)
+    expect(modal().find('.share-row button[aria-label="复制"]').exists()).toBe(true)
+    expect(modal().find('.share-row button[aria-label^="更多操作"]').exists()).toBe(false)
+    expect(modal().find('.share-row button[aria-label="编辑"]').exists()).toBe(false)
   })
 })
-describe('share table', () => {
+describe('share ledger', () => {
   beforeEach(async () => {
     vi.mocked(sharesApi.list).mockResolvedValueOnce([open, locked])
     await render()
   })
 
-  it('renders the compact share table with dates, no-password copy and accessible icon actions', async () => {
-    const table = modal().get('.share-table')
-    expect(table.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '分享链接',
-      '分享描述',
-      '状态',
-      '分享密码',
-      '分享时间',
-      '失效时间',
-      '操作',
-    ])
-    const rows = table.findAll('tbody tr.ant-table-row')
+  it('keeps names, status, access conditions and common text actions readable while grouping lifecycle controls', async () => {
+    const list = modal().get('.share-list')
+    const rows = list.findAll('.share-row')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.get('.share-description-text').text()).toBe(open.description)
     expect(rows[0]!.get('.share-password-state').text()).toBe('无密码')
     expect(rows[0]!.get('.share-created-time').text()).toBe(
-      dayjs(open.createdAt).format('YYYY-MM-DD HH:mm:ss'),
+      new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
+        open.createdAt,
+      ),
     )
-    expect(rows[0]!.get('.share-expiry-time').text()).toBe('—')
+    expect(rows[0]!.get('.share-expiry-time').text()).toBe('长期有效')
     expect(rows[0]!.get('.share-url').classes()).toContain('ellipsis')
-    expect(rows[0]!.findAll('button').map((button) => button.attributes('aria-label'))).toEqual([
-      '访问者身份设置',
+    expect(rows[0]!.findAll('button').map((button) => button.text().replace(/\s/g, ''))).toEqual([
       '复制',
       '编辑',
-      '暂停分享',
-      '轮换链接',
-      '永久撤销',
-      '删除',
+      '更多',
     ])
+    expect(rows[0]!.text()).not.toContain('永久撤销')
+    await rows[0]!.get('button[aria-label^="更多操作"]').trigger('click')
+    await flushPromises()
+    const menu = new DOMWrapper(document.body).get('.ant-dropdown-menu')
+    expect(menu.text()).toContain('访问者身份设置')
+    expect(menu.text()).toContain('永久撤销')
+    expect(menu.text()).toContain('删除')
     await rows[0]!.get('.share-url').trigger('mouseenter')
     await vi.waitFor(() =>
       expect(new DOMWrapper(document.body).get('.ant-tooltip-inner').text()).toBe(
@@ -243,11 +236,17 @@ describe('inactive shares', () => {
   })
 
   it('does not render copy actions for expired or disabled shares while keeping delete available', async () => {
-    const rows = modal().findAll('tbody tr.ant-table-row')
+    const rows = modal().findAll('.share-row')
     expect(rows).toHaveLength(2)
     for (const row of rows) {
       expect(row.find('button[aria-label="复制"]').exists()).toBe(false)
-      expect(row.find('button[aria-label="删除"]').exists()).toBe(true)
+      await row.get('button[aria-label^="更多操作"]').trigger('click')
+      await flushPromises()
+      const menu = new DOMWrapper(document.body)
+        .findAll('.ant-dropdown-menu')
+        .filter((item) => !item.element.closest('.ant-dropdown-hidden'))
+        .at(-1)!
+      expect(menu.findAll('[role="menuitem"]').some((item) => item.text() === '删除')).toBe(true)
     }
   })
 })
