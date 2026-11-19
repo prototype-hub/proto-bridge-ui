@@ -32,12 +32,14 @@
     "ant-design-vue": "4.2.6",
     "axios": "1.20.0",
     "dayjs": "1.11.13",
+    "docx": "9.15.4",
     "fflate": "0.8.3",
     "jsencrypt": "3.5.4",
     "pinia": "3.0.3",
     "vue": "3.5.42",
     "vue-i18n": "11.4.14",
-    "vue-router": "4.5.1"
+    "vue-router": "4.5.1",
+    "write-excel-file": "4.1.1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,19 +1,222 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { unzipSync, strFromU8 } from 'fflate'
 import { login } from './system-helpers'
 import { protoLocales } from '../../src/modules/protohub-manager-ui/locales'
 import type { RevisionQuality } from '../../src/modules/protohub-manager-ui/types'
 
 const origin = 'http://127.0.0.1:5187'
-async function openReport(page: Page) {
+async function openReport(page: Page, language: 'zh' | 'en' = 'zh') {
   await login(page)
+  if (language === 'en') await page.getByRole('button', { name: '语言', exact: true }).click()
   await page.goto('prototype-hub/projects/p1')
-  await page.getByRole('button', { name: protoLocales.zh.revisionHistory, exact: true }).click()
-  await page.getByRole('button', { name: protoLocales.zh.qualityCheck, exact: true }).click()
-  return page.getByRole('dialog', { name: protoLocales.zh.qualityCheck, exact: true })
+  await page
+    .getByRole('button', { name: protoLocales[language].revisionHistory, exact: true })
+    .click()
+  await page.getByRole('button', { name: protoLocales[language].qualityCheck, exact: true }).click()
+  return page.getByRole('dialog', { name: protoLocales[language].qualityCheck, exact: true })
 }
 test.beforeEach(async ({ request }) => {
   await request.post(`${origin}/__test/reset`)
+})
+
+for (const language of ['zh', 'en'] as const) {
+  for (const width of [1440, 390]) {
+    test(`${language} ${width}px keeps report, all export formats and scope usable`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
+      const outgoing: string[] = []
+      page.on('request', (request) => {
+        if (request.url().endsWith('/quality')) outgoing.push(request.url())
+      })
+      const dialog = await openReport(page, language)
+      const labels = protoLocales[language]
+      await expect(dialog.getByText(labels.qualityComplete, { exact: true })).toBeVisible()
+      await expect
+        .poll(async () => {
+          const bounds = await page
+            .locator('.revision-quality-drawer .ant-drawer-content-wrapper')
+            .boundingBox()
+          return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= width
+        })
+        .toBe(true)
+      const reportContent = dialog.locator('.quality-content')
+      const footer = dialog.locator('.quality-footer')
+      for (const label of [
+        labels.qualityDownload,
+        labels.qualityDownloadXlsx,
+        labels.qualityDownloadDocx,
+      ]) {
+        const button = dialog.getByRole('button', { name: label, exact: true })
+        await expect(button).toBeVisible()
+        const bounds = (await button.boundingBox())!
+        expect(bounds.x).toBeGreaterThanOrEqual(0)
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 390 ? 844 : 1000)
+      }
+      const footerBefore = await footer.boundingBox()
+      await reportContent.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      await dialog.getByText(labels.qualityScopeDetails, { exact: true }).click()
+      await expect(dialog.getByText(labels.qualityScope, { exact: true })).toBeVisible()
+      const footerAfter = await footer.boundingBox()
+      for (const key of ['x', 'y', 'width', 'height'] as const)
+        expect(footerAfter![key]).toBeCloseTo(footerBefore![key], 2)
+      await dialog.getByText(labels.qualityScopeDetails, { exact: true }).click()
+      await reportContent.evaluate((element) => {
+        element.scrollTop = 0
+      })
+      await page.screenshot({
+        path: testInfo.outputPath(`after-${language}-${width}.png`),
+        animations: 'disabled',
+        fullPage: false,
+      })
+      for (const [format, label] of [
+        ['json', labels.qualityDownload],
+        ['xlsx', labels.qualityDownloadXlsx],
+        ['docx', labels.qualityDownloadDocx],
+      ] as const) {
+        const waiting = page.waitForEvent('download')
+        await dialog.getByRole('button', { name: label, exact: true }).click()
+        const saved = await waiting
+        expect(saved.suggestedFilename()).toBe(`prototype-quality-v1-r-v1.${format}`)
+        const bytes = await readFile((await saved.path())!)
+        if (format === 'json') {
+          const report = JSON.parse(bytes.toString('utf8')) as RevisionQuality
+          expect(report.revisionId).toBe('r-v1')
+          expect(report.findings).toHaveLength(52)
+        } else {
+          const entries = unzipSync(new Uint8Array(bytes))
+          expect(entries['[Content_Types].xml']).toBeDefined()
+          expect(entries[format === 'xlsx' ? 'xl/workbook.xml' : 'word/document.xml']).toBeDefined()
+          const content = Object.entries(entries)
+            .filter(([name]) => name.endsWith('.xml'))
+            .map(([, value]) => strFromU8(value))
+            .join('\n')
+          expect(content).toContain('r-v1')
+          expect(content).toContain('images/missing-50.png')
+          expect(content).toContain('页面/首页.html')
+          expect(content).toContain(language === 'zh' ? '未收录问题数' : 'Omitted findings')
+        }
+      }
+      expect(outgoing).toHaveLength(1)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+    })
+  }
+}
+
+test('keyboard exports all three formats then Escape returns focus to the same history action', async ({
+  page,
+}) => {
+  await login(page)
+  await page.goto('prototype-hub/projects/p1')
+  await page.getByRole('button', { name: protoLocales.zh.revisionHistory, exact: true }).click()
+  const history = page.getByRole('dialog', { name: protoLocales.zh.revisionHistory, exact: true })
+  const trigger = history.getByRole('button', { name: protoLocales.zh.qualityCheck, exact: true })
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: protoLocales.zh.qualityCheck, exact: true })
+  for (const [format, label] of [
+    ['json', protoLocales.zh.qualityDownload],
+    ['xlsx', protoLocales.zh.qualityDownloadXlsx],
+    ['docx', protoLocales.zh.qualityDownloadDocx],
+  ] as const) {
+    const button = dialog.getByRole('button', { name: label, exact: true })
+    await button.focus()
+    await expect(button).toBeFocused()
+    const downloading = page.waitForEvent('download')
+    await page.keyboard.press('Enter')
+    const saved = await downloading
+    expect(saved.suggestedFilename()).toBe(`prototype-quality-v1-r-v1.${format}`)
+    await saved.path()
+    await expect(button).toBeEnabled()
+    await expect(button).toBeFocused()
+  }
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(history).toBeVisible()
+  await expect(trigger).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByText(protoLocales.zh.qualityComplete, { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: '关闭', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(trigger).toBeFocused()
+})
+
+test('export permission denial clears the cached report instead of offering a stale download', async ({
+  page,
+}) => {
+  const dialog = await openReport(page)
+  await expect(dialog.getByText(protoLocales.zh.qualityComplete, { exact: true })).toBeVisible()
+  await page.route('**/api/prototype-hub/versions/v1/revisions/r-v1', (route) =>
+    route.fulfill({
+      status: 403,
+      json: { success: false, status: 403, message: 'Revoked' },
+    }),
+  )
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  await dialog
+    .getByRole('button', { name: protoLocales.zh.qualityDownloadDocx, exact: true })
+    .click()
+  await expect(
+    dialog.getByText(protoLocales.zh.qualityAccessChanged, { exact: true }),
+  ).toBeVisible()
+  await expect(
+    dialog.getByRole('button', { name: protoLocales.zh.qualityDownload, exact: true }),
+  ).toHaveCount(0)
+  await expect(dialog.locator('.quality-findings')).toHaveCount(0)
+  expect(downloads).toEqual([])
+})
+
+test('closing during export authorization cancels the busy download and ignores its late success', async ({
+  page,
+}) => {
+  const dialog = await openReport(page)
+  await expect(dialog.getByText(protoLocales.zh.qualityComplete, { exact: true })).toBeVisible()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let entered!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  let authorizations = 0
+  await page.route('**/api/prototype-hub/versions/v1/revisions/r-v1', async (route) => {
+    authorizations++
+    entered()
+    await gate
+    await route.continue().catch(() => {})
+  })
+  const downloads: string[] = []
+  page.on('download', (download) => downloads.push(download.suggestedFilename()))
+  const json = dialog.getByRole('button', { name: protoLocales.zh.qualityDownload, exact: true })
+  await json.focus()
+  await page.keyboard.press('Enter')
+  await waiting
+  await expect(dialog.getByRole('status')).toHaveText(protoLocales.zh.qualityExporting)
+  await expect(dialog.locator('.quality-export')).toHaveAttribute('aria-busy', 'true')
+  await expect(json).toHaveAttribute('aria-disabled', 'true')
+  await expect(json).toBeFocused()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Tab')
+  const excel = dialog.getByRole('button', {
+    name: protoLocales.zh.qualityDownloadXlsx,
+    exact: true,
+  })
+  await expect(excel).toBeFocused()
+  await expect(excel).toBeDisabled()
+  await page.keyboard.press('Enter')
+  expect(authorizations).toBe(1)
+  await page.keyboard.press('Escape')
+  release()
+  await expect(dialog).toHaveCount(0)
+  expect(downloads).toEqual([])
 })
 
 test('checks an old fixed revision once and downloads the same report after local pagination', async ({
