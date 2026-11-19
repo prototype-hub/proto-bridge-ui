@@ -24,6 +24,9 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   const task = useTask()
   const revisionMode = ref<ShareRevisionMode>('fixed')
   const editTarget = shallowRef<Share>()
+  const editConflict = ref(false)
+  const creationUnknown = ref(false)
+  const createdShare = shallowRef<Share>()
   const description = ref('')
   const password = ref('')
   const expires = ref<Dayjs>()
@@ -60,6 +63,9 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
     () => {
       generation += 1
       editTarget.value = undefined
+      editConflict.value = false
+      creationUnknown.value = false
+      createdShare.value = undefined
       revisionMode.value = 'fixed'
       task.error.value = ''
       resource.data.value = []
@@ -85,6 +91,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   async function create() {
     if (
       !version.value ||
+      creationUnknown.value ||
       version.value.migrationRequired ||
       !projectAllows(project.value, 'manageShares')
     )
@@ -95,19 +102,33 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
     const selectedExpiry = expires.value?.valueOf()
     const creationGeneration = generation
     await task.run(async () => {
-      const created = await sharesApi.create(selectedVersion.id, {
-        description: rawDescription || undefined,
-        password: rawPassword || undefined,
-        expiresAt: selectedExpiry,
-        revisionMode: revisionMode.value,
-      })
+      createdShare.value = undefined
+      let created: Share
+      try {
+        created = await sharesApi.create(selectedVersion.id, {
+          description: rawDescription || undefined,
+          password: rawPassword || undefined,
+          expiresAt: selectedExpiry,
+          revisionMode: revisionMode.value,
+        })
+      } catch (cause) {
+        if (creationGeneration !== generation) return
+        if (cause instanceof ApiError && !cause.status && !cause.cancelled) {
+          creationUnknown.value = true
+          throw new Error(t('proto.shareCreateUnknown'), { cause })
+        }
+        throw cause
+      }
       // A late creation must not repopulate plaintext after its share dialog has closed or changed.
       if (creationGeneration !== generation) return
       description.value = ''
       password.value = ''
       saved()
       await resource.load()
-      if (creationGeneration === generation) shareCopy.remember(created, rawPassword)
+      if (creationGeneration === generation) {
+        shareCopy.remember(created, rawPassword)
+        createdShare.value = created
+      }
     })
   }
   const matches = (share: Share) =>
@@ -117,16 +138,48 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   function edit(share: Share) {
     if (!matches(share) || share.revoked || task.busy.value) return
     task.error.value = ''
+    editConflict.value = false
+    createdShare.value = undefined
     shareCopy.cancel()
     editTarget.value = share
   }
   function closeEdit() {
     editTarget.value = undefined
+    editConflict.value = false
+    task.error.value = ''
+  }
+  /** A list refresh reconciles an unknown create; it never repeats the POST or changes its draft. */
+  async function refresh() {
+    if (resource.loading.value) return
+    const refreshGeneration = generation
+    await resource.load()
+    if (refreshGeneration === generation && !resource.error.value && creationUnknown.value) {
+      creationUnknown.value = false
+      task.error.value = ''
+    }
+  }
+  /** Only an explicit reload discards the stale edit draft and adopts the server CAS version. */
+  async function reloadEdit() {
+    if (!editTarget.value || resource.loading.value) return
+    const reloadGeneration = generation
+    await resource.load()
+    if (reloadGeneration !== generation) return
+    if (resource.error.value) {
+      task.error.value = resource.error.value
+      return
+    }
+    const current = resource.data.value.find((row) => row.id === editTarget.value?.id)
+    if (!current || current.revoked) {
+      closeEdit()
+      return
+    }
+    edit(current)
   }
   /** Never retry a stale write: refresh the authoritative row and require a new explicit intent. */
   async function mutate(share: Share, action: () => Promise<Share>, rawPassword?: string) {
     if (!matches(share) || share.revoked) return
     const submittedGeneration = generation
+    createdShare.value = undefined
     shareCopy.forget(share.id)
     await task.run(async () => {
       try {
@@ -142,7 +195,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
       } catch (cause) {
         if (submittedGeneration !== generation) return
         if (cause instanceof ApiError && cause.status === 409) {
-          editTarget.value = undefined
+          editConflict.value = true
           await resource.load()
           throw new Error(t('proto.shareConflict'), { cause })
         }
@@ -154,7 +207,7 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   }
   async function update(input: ShareUpdate) {
     const share = editTarget.value
-    if (!share || input.expectedVersion !== share.configVersion) return
+    if (!share || editConflict.value || input.expectedVersion !== share.configVersion) return
     await mutate(
       share,
       () => sharesApi.update(share.id, input, { silent: true }),
@@ -186,6 +239,11 @@ export function useShares(version: Ref<Version | undefined>, project: Ref<Projec
   return {
     task,
     resource,
+    refresh,
+    createdShare,
+    creationUnknown,
+    editConflict,
+    reloadEdit,
     revisionMode,
     editTarget,
     edit,

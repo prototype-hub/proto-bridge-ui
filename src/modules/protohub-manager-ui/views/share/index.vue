@@ -221,28 +221,31 @@ watch(
           >
         </template></prototype-workspace
       >
-      <main v-else-if="resource.data.value.share" class="public-shell">
-        <section class="panel public-card">
+      <main v-else-if="resource.data.value.share" class="public-shell share-password-shell">
+        <section class="panel public-card share-password-card">
           <h1>{{ resource.data.value.share.projectName }}</h1>
-          <p>{{ resource.data.value.share.versionName }}</p>
+          <p class="share-public-version">{{ resource.data.value.share.versionName }}</p>
+          <h2>{{ t('proto.sharePasswordProtected') }}</h2>
+          <p class="muted">{{ t('proto.sharePublicPasswordHint') }}</p>
           <a-alert
             v-if="invitation.invitation.value !== undefined"
             type="info"
             show-icon
             :message="t('proto.reviewInvitationAccessHint')"
           />
-          <a-alert v-if="task.error.value" :message="task.error.value" type="error" /><a-form
-            layout="vertical"
-            :model="{ password }"
-            @finish="verify"
+          <a-alert
+            v-if="task.error.value"
+            class="share-public-error"
+            role="alert"
+            :message="task.error.value"
+            type="error"
+            show-icon
+          /><a-form layout="vertical" :model="{ password }" @finish="verify"
             ><a-form-item
               name="password"
               :label="t('proto.password')"
               :rules="[{ required: true, message: t('proto.passwordRequired') }]"
-              ><a-input-password
-                v-model:value="password"
-                autofocus
-                autocomplete="off" /></a-form-item
+              ><a-input-password v-model:value="password" autocomplete="off" /></a-form-item
             ><a-button type="primary" html-type="submit" block :loading="task.busy.value">{{
               t('proto.open')
             }}</a-button></a-form
@@ -287,3 +290,35 @@ watch(
     @view="viewOverview"
   />
 </template>
+
+<style scoped>
+.share-password-shell {
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.share-password-card {
+  width: min(30rem, 100%);
+  overflow-wrap: anywhere;
+}
+.share-password-card h1 {
+  margin: 0;
+  font-size: var(--text-title);
+  text-wrap: balance;
+}
+.share-public-version {
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--color-muted);
+}
+.share-password-card h2 {
+  font-size: var(--text-body);
+  margin: 0 0 var(--space-2);
+}
+.share-password-card .muted {
+  line-height: 1.6;
+  margin: 0 0 var(--space-4);
+}
+.share-public-error {
+  margin-bottom: var(--space-4);
+}
+</style>
