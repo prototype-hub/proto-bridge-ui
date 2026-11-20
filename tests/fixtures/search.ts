@@ -100,7 +100,7 @@ export function searchResponse(
         },
         {
           sourceId: row.id,
-          title: row.fileName,
+          title: row.materialType === 'link' ? row.sourceName || '' : row.fileName || '',
           materialType: row.materialType,
           updatedAt: row.updatedAt,
         },

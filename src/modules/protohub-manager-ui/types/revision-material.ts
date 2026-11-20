@@ -4,7 +4,7 @@ export interface MaterialSource {
   sourceUrl?: string | null
   sourceNotes?: string | null
 }
-export type MaterialType = 'prototype' | 'image' | 'document'
+export type MaterialType = 'prototype' | 'image' | 'document' | 'link'
 export type MaterialTextStatus =
   | 'NOT_EXTRACTED'
   | 'READY'
@@ -27,10 +27,10 @@ export interface RevisionMaterial extends MaterialSource {
   versionId: string
   revisionId: string
   materialType: MaterialType
-  fileName: string
-  mediaType: string
-  fileSize: number
-  sha256: string
+  fileName: string | null
+  mediaType: string | null
+  fileSize: number | null
+  sha256: string | null
   configVersion: number
   createdBy: string
   updatedBy: string
@@ -45,4 +45,11 @@ export interface MaterialQuery {
   pageIndex: number
   pageSize: number
   materialType?: MaterialType
+}
+export interface MaterialPreview {
+  blob: Blob
+  page: number
+  pages: number
+  width: number
+  height: number
 }

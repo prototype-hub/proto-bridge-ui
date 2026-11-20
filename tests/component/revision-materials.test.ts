@@ -12,15 +12,21 @@ vi.mock('@/modules/protohub-manager-ui/api/revision-material', () => ({
     query: vi.fn(),
     upload: vi.fn(),
     declare: vi.fn(),
+    link: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
     content: vi.fn(),
+    preview: vi.fn(),
     get: vi.fn(),
     text: vi.fn(),
     extractText: vi.fn(),
   },
 }))
-vi.mock('ant-design-vue', () => ({ Modal: { confirm: vi.fn((options) => options.onOk()) } }))
+vi.mock('ant-design-vue', () => ({
+  Modal: {
+    confirm: vi.fn((options) => Promise.resolve(options.onOk()).then(() => options.afterClose?.())),
+  },
+}))
 vi.mock('@/shared/api/client', () => ({ download: vi.fn() }))
 const wrappers: VueWrapper[] = []
 const revision: Revision = {
@@ -52,6 +58,18 @@ const row: RevisionMaterial = {
   updatedAt: 1,
   sourceName: '设计稿',
 }
+const link: RevisionMaterial = {
+  ...row,
+  id: 'link1',
+  materialType: 'link',
+  sourceName: 'PRD',
+  sourceUrl: 'https://example.com/prd',
+  fileName: null,
+  mediaType: null,
+  fileSize: null,
+  sha256: null,
+  textStatus: 'UNSUPPORTED',
+}
 function render() {
   const scope = ref({ ...revision }),
     readable = ref(true),
@@ -76,6 +94,7 @@ beforeEach(() => {
   }))
   vi.mocked(api.upload).mockResolvedValue({ ...row })
   vi.mocked(api.declare).mockResolvedValue({ ...row, id: 'r1', materialType: 'prototype' })
+  vi.mocked(api.link).mockResolvedValue({ ...link })
   vi.mocked(api.update).mockResolvedValue({ ...row, configVersion: 4 })
   vi.mocked(api.remove).mockResolvedValue(true)
   vi.mocked(api.get).mockResolvedValue({ ...row })
@@ -351,4 +370,137 @@ it('delete uses the selected immutable material and exact CAS receipt', async ()
     expect.any(String),
     expect.anything(),
   )
+})
+it('requires a title and safe target for standalone links and preserves the same unknown request', async () => {
+  const { state } = render()
+  await flushPromises()
+  await state.openEditor('link')
+  await state.save()
+  expect(state.formErrors.sourceName).toBeTruthy()
+  expect(state.formErrors.sourceUrl).toBeTruthy()
+  expect(api.link).not.toHaveBeenCalled()
+  state.form.sourceName = '  PRD  '
+  state.form.sourceUrl = 'https://example.com/prd'
+  vi.mocked(api.link).mockRejectedValueOnce(new ApiError('Response lost', 503))
+  await state.save()
+  expect(state.unknown.value).toBe(true)
+  expect(state.form.sourceName).toBe('  PRD  ')
+  const first = vi.mocked(api.link).mock.calls[0]!
+  expect(first.slice(0, 3)).toEqual([
+    'v1',
+    'r1',
+    expect.objectContaining({ sourceName: 'PRD', sourceUrl: 'https://example.com/prd' }),
+  ])
+  expect(await state.canLeave()).toBe(false)
+  await state.retry()
+  expect(vi.mocked(api.link).mock.calls[1]).toEqual([
+    ...first.slice(0, 4),
+    expect.objectContaining({ signal: expect.any(AbortSignal), silent: true }),
+  ])
+  expect(state.mode.value).toBeUndefined()
+  expect(api.upload).not.toHaveBeenCalled()
+  expect(api.declare).not.toHaveBeenCalled()
+})
+it('treats standalone links as metadata only and retains their CAS edit on conflict', async () => {
+  const { state } = render()
+  await flushPromises()
+  await state.openEditor('view', link)
+  await state.content(link)
+  await state.loadText(true)
+  expect(api.content).not.toHaveBeenCalled()
+  expect(api.text).not.toHaveBeenCalled()
+  expect(api.extractText).not.toHaveBeenCalled()
+  await state.openEditor('source', link)
+  state.form.sourceName = 'Updated PRD'
+  state.form.sourceUrl = 'https://example.com/new'
+  vi.mocked(api.update).mockRejectedValueOnce(
+    new ApiError('conflict', 409, 'PROTOTYPE_HUB_MATERIAL_CONFLICT'),
+  )
+  await state.save()
+  expect(api.update).toHaveBeenCalledWith(
+    'v1',
+    'r1',
+    'link1',
+    expect.objectContaining({ sourceName: 'Updated PRD', sourceUrl: 'https://example.com/new' }),
+    3,
+    expect.any(String),
+    expect.anything(),
+  )
+  expect(state.form.sourceUrl).toBe('https://example.com/new')
+  expect(state.conflict.value).toBe(true)
+})
+it('rejects link creation when read-only and erases link draft when reads are revoked', async () => {
+  const { state, readable, editable } = render()
+  await flushPromises()
+  editable.value = false
+  await state.openEditor('link')
+  expect(state.mode.value).toBeUndefined()
+  editable.value = true
+  await state.openEditor('link')
+  state.form.sourceUrl = 'https://example.com/private'
+  readable.value = false
+  expect(state.form.sourceUrl).toBe('')
+  expect(api.link).not.toHaveBeenCalled()
+})
+it('loads only the requested PDF page and revokes the prior page Blob on navigation or read revocation', async () => {
+  const { state, readable } = render()
+  await flushPromises()
+  const pdf = { ...row, materialType: 'document' as const, mediaType: 'application/pdf' }
+  await state.openEditor('view', pdf)
+  vi.mocked(api.preview).mockResolvedValue({
+    blob: new Blob(['png']),
+    page: 0,
+    pages: 3,
+    width: 800,
+    height: 1000,
+  })
+  await state.preview(pdf)
+  expect(api.preview).toHaveBeenCalledWith(
+    'v1',
+    'r1',
+    'm1',
+    0,
+    expect.objectContaining({ signal: expect.any(AbortSignal), silent: true }),
+  )
+  expect(state.previewPages.value).toBe(3)
+  vi.mocked(api.preview).mockResolvedValue({
+    blob: new Blob(['page 2']),
+    page: 1,
+    pages: 3,
+    width: 800,
+    height: 1000,
+  })
+  await state.preview(pdf, 1)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:material')
+  expect(state.previewPage.value).toBe(1)
+  readable.value = false
+  expect(state.previewUrl.value).toBe('')
+  expect(state.previewPages.value).toBe(0)
+})
+it('fences late PDF pages when selecting another material and keeps visual failure separate from body text', async () => {
+  const { state } = render()
+  await flushPromises()
+  const pdf = { ...row, materialType: 'document' as const, mediaType: 'application/pdf' }
+  await state.openEditor('view', pdf)
+  let resolve!: (value: Awaited<ReturnType<typeof api.preview>>) => void
+  vi.mocked(api.preview).mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }),
+  )
+  const pending = state.preview(pdf)
+  await state.openEditor('view', { ...row, id: 'm2' })
+  resolve({ blob: new Blob(['late']), page: 0, pages: 2, width: 800, height: 1000 })
+  await pending
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
+  await state.openEditor('view', pdf)
+  vi.mocked(api.preview).mockRejectedValueOnce(
+    new ApiError('Encrypted', 422, 'PROTOTYPE_HUB_MATERIAL_PREVIEW_ENCRYPTED'),
+  )
+  await state.preview(pdf)
+  expect(state.previewError.value).toBeTruthy()
+  expect(state.selected.value?.id).toBe('m1')
+  expect(state.textError.value).toBe('')
+  expect(state.unknown.value).toBe(false)
 })

@@ -14,16 +14,18 @@ import {
   FileImageOutlined,
   FileTextOutlined,
   PlusOutlined,
+  LinkOutlined,
 } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import type { Project, Revision } from '../types'
-import type { MaterialType } from '../types/revision-material'
+import type { MaterialType, RevisionMaterial } from '../types/revision-material'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '../routes/permissions'
 import { projectAllows } from '../utils/project-access'
 import { useRevisionMaterials } from '../hooks/useRevisionMaterials'
-import { validSourceUrl } from '../utils/material-source'
+import { validLinkUrl, validSourceUrl } from '../utils/material-source'
 import MaterialSourceFields from './MaterialSourceFields.vue'
+import MaterialVisualPreview from './MaterialVisualPreview.vue'
 import LoadState from '@/shared/components/LoadState.vue'
 const props = defineProps<{
   revision: Revision
@@ -58,13 +60,58 @@ window.addEventListener('beforeunload', beforeUnload)
 onScopeDispose(() => window.removeEventListener('beforeunload', beforeUnload))
 const heading = ref<HTMLElement>(),
   editorHeading = ref<HTMLElement>(),
+  linkTrigger = ref<{ $el: HTMLElement }>(),
   uploadTrigger = ref<{ $el: HTMLElement }>()
 const picker = ref<HTMLInputElement>()
 const textContent = ref<HTMLElement>()
 const textHeading = ref<HTMLElement>()
+let returnTrigger: HTMLElement | undefined
+let returnToLink = false
 const sourceLink = computed(() =>
-  validSourceUrl(state.selected.value?.sourceUrl) ? state.selected.value?.sourceUrl || '' : '',
+  (state.selected.value?.materialType === 'link' ? validLinkUrl : validSourceUrl)(
+    state.selected.value?.sourceUrl,
+  )
+    ? state.selected.value?.sourceUrl || ''
+    : '',
 )
+const sourceHost = computed(() => (sourceLink.value ? new URL(sourceLink.value).host : ''))
+const linkForm = computed(
+  () => state.mode.value === 'link' || state.selected.value?.materialType === 'link',
+)
+const pdf = computed(() => state.selected.value?.mediaType === 'application/pdf')
+const fieldErrors = computed(() => Object.values(state.formErrors).some(Boolean))
+function name(row: RevisionMaterial) {
+  return row.materialType === 'link' ? row.sourceName || '' : row.fileName || ''
+}
+function kind(type: MaterialType) {
+  return t(
+    type === 'link'
+      ? 'proto.materialLink'
+      : type === 'prototype'
+        ? 'proto.materialPrototype'
+        : type === 'image'
+          ? 'proto.materialImage'
+          : 'proto.materialDocument',
+  )
+}
+async function openEditor(
+  next: 'view' | 'upload' | 'source' | 'link',
+  event: Event,
+  row?: RevisionMaterial,
+) {
+  const target = event.currentTarget as HTMLElement
+  await state.openEditor(next, row)
+  if (state.mode.value === next && target.closest('.materials-browser')) {
+    returnTrigger = target
+    returnToLink = next === 'link' || row?.materialType === 'link'
+  }
+}
+function restoreFocus() {
+  const target = returnTrigger?.isConnected
+    ? returnTrigger
+    : (returnToLink ? linkTrigger.value?.$el : uploadTrigger.value?.$el) || heading.value
+  target?.focus()
+}
 const textStatus = computed(
   () => state.text.value?.status || state.selected.value?.textStatus || 'NOT_EXTRACTED',
 )
@@ -80,15 +127,23 @@ async function back() {
   if (await state.canLeave()) emit('close')
 }
 async function backToList() {
-  if (await state.closeEditor())
-    await nextTick(() => (uploadTrigger.value?.$el || heading.value)?.focus())
+  if (await state.closeEditor()) await nextTick(restoreFocus)
+}
+async function cancelEdit() {
+  if (state.selected.value) await state.openEditor('view', state.selected.value)
+  else await backToList()
+}
+async function removeMaterial(row: RevisionMaterial) {
+  if (await state.remove(row)) await nextTick(restoreFocus)
 }
 async function submit() {
   await state.save()
   await nextTick()
-  if (state.writeError.value)
+  if (fieldErrors.value)
+    document.querySelector<HTMLElement>('.material-editor [aria-invalid="true"]')?.focus()
+  else if (state.writeError.value)
     document.querySelector<HTMLElement>('.material-editor [role="alert"]')?.focus()
-  else if (!state.mode.value) uploadTrigger.value?.$el.focus()
+  else if (!state.mode.value) restoreFocus()
 }
 async function readText(extract = false) {
   const id = state.selected.value?.id
@@ -96,6 +151,19 @@ async function readText(extract = false) {
   await nextTick()
   if (accepted && state.mode.value === 'view' && state.selected.value?.id === id)
     (state.text.value?.status === 'READY' ? textContent.value : textHeading.value)?.focus()
+}
+async function showPreview(page: number) {
+  const row = state.selected.value
+  if (!row) return
+  const entering = !state.previewPages.value && !state.previewUrl.value
+  await state.preview(row, page)
+  await nextTick()
+  if (entering && state.selected.value?.id === row.id)
+    document
+      .querySelector<HTMLElement>(
+        state.previewUrl.value ? '.material-visual-viewport' : '.material-visual [role="alert"]',
+      )
+      ?.focus()
 }
 watch(state.mode, async (value) => {
   if (value) await nextTick(() => editorHeading.value?.focus())
@@ -155,22 +223,23 @@ defineExpose({ canLeave: state.canLeave })
           <a-button
             v-if="state.prototype.value"
             :disabled="state.blocked.value"
-            @click="state.openEditor('view', state.prototype.value)"
+            @click="openEditor('view', $event, state.prototype.value)"
             >{{ t('proto.materialView') }}</a-button
           >
           <a-button
             v-else-if="editable"
             :disabled="state.blocked.value || state.loading.value"
-            @click="state.openEditor('source')"
+            @click="openEditor('source', $event)"
             >{{ t('proto.materialSourceAdd') }}</a-button
           >
         </div>
         <div class="materials-toolbar">
-          <label for="material-type"
-            >{{ t('proto.materialFilter') }}
+          <label for="material-type">
+            <span id="material-type-label">{{ t('proto.materialFilter') }}</span>
             <select
               id="material-type"
               name="materialType"
+              aria-labelledby="material-type-label"
               :value="state.filter.value"
               :disabled="state.blocked.value"
               @change="
@@ -180,16 +249,25 @@ defineExpose({ canLeave: state.canLeave })
               <option value="">{{ t('proto.materialAll') }}</option>
               <option value="image">{{ t('proto.materialImage') }}</option>
               <option value="document">{{ t('proto.materialDocument') }}</option>
+              <option value="link">{{ t('proto.materialLink') }}</option>
             </select>
           </label>
-          <a-button
-            v-if="editable"
-            ref="uploadTrigger"
-            type="primary"
-            :disabled="state.blocked.value"
-            @click="state.openEditor('upload')"
-            ><plus-outlined aria-hidden="true" />{{ t('proto.materialUpload') }}</a-button
-          >
+          <div v-if="editable" class="materials-add-actions">
+            <a-button
+              ref="linkTrigger"
+              :disabled="state.blocked.value"
+              @click="openEditor('link', $event)"
+              ><link-outlined aria-hidden="true" />{{ t('proto.materialLinkAdd') }}</a-button
+            >
+            <a-button
+              v-if="editable"
+              ref="uploadTrigger"
+              type="primary"
+              :disabled="state.blocked.value"
+              @click="openEditor('upload', $event)"
+              ><plus-outlined aria-hidden="true" />{{ t('proto.materialUpload') }}</a-button
+            >
+          </div>
         </div>
         <load-state
           :loading="state.loading.value || (state.textLoading.value && !state.mode.value)"
@@ -214,24 +292,31 @@ defineExpose({ canLeave: state.canLeave })
                 :key="row.id"
                 :class="{ selected: state.selected.value?.id === row.id }"
               >
+                <link-outlined
+                  v-if="row.materialType === 'link'"
+                  class="material-type-icon"
+                  aria-hidden="true"
+                />
                 <file-image-outlined
-                  v-if="row.materialType === 'image'"
+                  v-else-if="row.materialType === 'image'"
                   class="material-type-icon"
                   aria-hidden="true"
                 /><file-text-outlined v-else class="material-type-icon" aria-hidden="true" />
                 <div class="material-row-info">
-                  <strong>{{ row.fileName }}</strong
+                  <strong>{{ name(row) }}</strong
                   ><span class="muted"
-                    >{{
-                      t(
-                        `proto.${row.materialType === 'prototype' ? 'materialPrototype' : row.materialType === 'image' ? 'materialImage' : 'materialDocument'}`,
-                      )
-                    }}
-                    · {{ size(row.fileSize) }}</span
+                    >{{ kind(row.materialType)
+                    }}<template v-if="row.materialType !== 'link'">
+                      · {{ size(row.fileSize || 0) }}</template
+                    ></span
                   >
-                  <span v-if="row.sourceName || row.sourceTool" class="muted">{{
-                    row.sourceName || row.sourceTool
-                  }}</span>
+                  <span
+                    v-if="row.materialType === 'link' || row.sourceName || row.sourceTool"
+                    class="muted"
+                    >{{
+                      row.materialType === 'link' ? row.sourceUrl : row.sourceName || row.sourceTool
+                    }}</span
+                  >
                   <span v-if="row.materialType === 'document'" class="material-text-summary">{{
                     t(`proto.materialTextStatus_${row.textStatus || 'NOT_EXTRACTED'}`)
                   }}</span>
@@ -239,13 +324,14 @@ defineExpose({ canLeave: state.canLeave })
                 <div class="material-row-actions">
                   <a-button
                     :disabled="state.blocked.value"
-                    :aria-label="`${t('proto.materialView')}: ${row.fileName}`"
-                    @click="state.openEditor('view', row)"
+                    :aria-label="`${t('proto.materialView')}: ${name(row)}`"
+                    @click="openEditor('view', $event, row)"
                     >{{ t('proto.materialView') }}</a-button
                   >
                   <a-button
+                    v-if="row.materialType !== 'link'"
                     :disabled="state.binaryBusy.value || state.blocked.value"
-                    :aria-label="`${t('proto.materialDownload')}: ${row.fileName}`"
+                    :aria-label="`${t('proto.materialDownload')}: ${name(row)}`"
                     @click="state.content(row)"
                     ><download-outlined aria-hidden="true" />{{
                       t('proto.materialDownload')
@@ -279,9 +365,13 @@ defineExpose({ canLeave: state.canLeave })
               t(
                 state.mode.value === 'upload'
                   ? 'proto.materialUploadTitle'
-                  : state.mode.value === 'source'
-                    ? 'proto.materialSourceEdit'
-                    : 'proto.materialDetails',
+                  : linkForm && state.mode.value !== 'view'
+                    ? state.selected.value
+                      ? 'proto.materialLinkEdit'
+                      : 'proto.materialLinkAddTitle'
+                    : state.mode.value === 'source'
+                      ? 'proto.materialSourceEdit'
+                      : 'proto.materialDetails',
               )
             }}
           </h3>
@@ -290,7 +380,7 @@ defineExpose({ canLeave: state.canLeave })
           }}</a-button>
         </div>
         <a-alert
-          v-if="state.writeError.value"
+          v-if="state.writeError.value && !fieldErrors"
           tabindex="-1"
           role="alert"
           type="error"
@@ -301,8 +391,50 @@ defineExpose({ canLeave: state.canLeave })
         }}</a-button>
         <template v-if="state.mode.value === 'view' && state.selected.value">
           <div class="material-detail-name">
-            <strong>{{ state.selected.value.fileName }}</strong
-            ><a-tag>{{ size(state.selected.value.fileSize) }}</a-tag>
+            <strong>{{ name(state.selected.value) }}</strong
+            ><a-tag>{{
+              state.selected.value.materialType === 'link'
+                ? kind('link')
+                : size(state.selected.value.fileSize || 0)
+            }}</a-tag>
+          </div>
+          <section v-if="state.selected.value.materialType === 'link'" class="material-link-detail">
+            <p v-if="sourceHost" class="muted">{{ sourceHost }}</p>
+            <a
+              v-if="sourceLink"
+              class="material-link-target"
+              :href="sourceLink"
+              target="_blank"
+              rel="noopener noreferrer"
+              >{{ sourceLink }}<span>{{ t('proto.materialLinkOpen') }}</span></a
+            >
+            <a-alert v-else type="warning" :message="t('proto.materialLinkInvalid')" />
+            <p v-if="state.selected.value.sourceNotes" class="material-link-notes">
+              {{ state.selected.value.sourceNotes }}
+            </p>
+            <p class="muted">{{ t('proto.materialLinkUnverified') }}</p>
+          </section>
+          <material-visual-preview
+            v-if="state.selected.value.materialType === 'image' || pdf"
+            :key="state.selected.value.id"
+            :src="state.previewUrl.value"
+            :title="name(state.selected.value)"
+            :loading="state.binaryBusy.value"
+            :error="state.previewError.value"
+            :pdf="pdf"
+            :page="state.previewPage.value"
+            :pages="state.previewPages.value"
+            :width="state.previewWidth.value"
+            :height="state.previewHeight.value"
+            @request="showPreview"
+            @failed="state.previewFailed"
+          />
+          <div v-if="state.selected.value.materialType !== 'link'" class="material-read-actions">
+            <a-button
+              :disabled="state.binaryBusy.value"
+              @click="state.content(state.selected.value)"
+              ><download-outlined aria-hidden="true" />{{ t('proto.materialDownload') }}</a-button
+            >
           </div>
           <section
             v-if="state.selected.value.materialType === 'document'"
@@ -381,8 +513,8 @@ defineExpose({ canLeave: state.canLeave })
             </details>
           </section>
           <details
+            v-if="state.selected.value.materialType !== 'link'"
             class="materials-help material-provenance"
-            :open="state.selected.value.materialType !== 'document'"
           >
             <summary>{{ t('proto.materialSource') }}</summary>
             <dl class="material-source-details">
@@ -414,33 +546,36 @@ defineExpose({ canLeave: state.canLeave })
             </p>
             <p class="muted">{{ t('proto.materialSourceDeclared') }}</p>
           </details>
-          <div class="material-detail-actions">
-            <a-button
-              v-if="state.selected.value.materialType === 'image'"
-              :loading="state.binaryBusy.value"
-              @click="state.content(state.selected.value, true)"
-              >{{ t('proto.materialPreview') }}</a-button
-            >
-            <a-button
-              :disabled="state.binaryBusy.value"
-              @click="state.content(state.selected.value)"
-              >{{ t('proto.materialDownload') }}</a-button
-            >
-            <a-button v-if="editable" @click="state.openEditor('source', state.selected.value)">{{
-              t('proto.materialSourceEdit')
-            }}</a-button>
-            <a-button v-if="editable" danger @click="state.remove(state.selected.value)">{{
-              t('proto.materialDelete')
-            }}</a-button>
-          </div>
-          <img
-            v-if="state.previewUrl.value"
-            class="material-image-preview"
-            :src="state.previewUrl.value"
-            :alt="state.selected.value.fileName"
-          />
+          <details v-if="editable" class="materials-help material-maintenance">
+            <summary>{{ t('proto.materialManage') }}</summary>
+            <div class="material-detail-actions">
+              <a-button
+                :disabled="state.blocked.value"
+                @click="state.openEditor('source', state.selected.value)"
+                >{{
+                  t(
+                    state.selected.value.materialType === 'link'
+                      ? 'proto.materialLinkEdit'
+                      : 'proto.materialSourceEdit',
+                  )
+                }}</a-button
+              >
+              <a-button
+                :disabled="state.blocked.value"
+                danger
+                @click="removeMaterial(state.selected.value)"
+                >{{
+                  t(
+                    state.selected.value.materialType === 'link'
+                      ? 'proto.materialLinkRemove'
+                      : 'proto.materialDelete',
+                  )
+                }}</a-button
+              >
+            </div>
+          </details>
         </template>
-        <form v-else class="material-form" @submit.prevent="submit">
+        <form v-else class="material-form" novalidate @submit.prevent="submit">
           <template v-if="state.mode.value === 'upload'">
             <input
               ref="picker"
@@ -456,25 +591,30 @@ defineExpose({ canLeave: state.canLeave })
               <strong>{{ state.file.value.name }}</strong> · {{ size(state.file.value.size) }}
             </p>
           </template>
+          <p v-if="linkForm" class="muted">{{ t('proto.materialLinkHint') }}</p>
           <p v-if="state.mode.value === 'source' && !state.selected.value" class="muted">
             {{ t('proto.materialSourceMissingHint') }}
           </p>
           <material-source-fields
             :model="state.form"
+            :link="linkForm"
+            :errors="state.formErrors"
             prefix="material-source"
             :disabled="state.blocked.value || state.conflict.value"
             @change="
               (key, value) => {
                 state.form[key] = value
+                delete state.formErrors[key]
+                state.writeError.value = ''
               }
             "
           />
-          <details class="materials-help">
+          <details v-if="!linkForm" class="materials-help">
             <summary>{{ t('proto.materialSource') }}</summary>
             <p class="muted">{{ t('proto.materialSourceDeclared') }}</p>
           </details>
           <div class="material-form-actions">
-            <a-button :disabled="state.blocked.value" @click="backToList">{{
+            <a-button :disabled="state.blocked.value" @click="cancelEdit">{{
               t('common.cancel')
             }}</a-button
             ><a-button
@@ -484,9 +624,11 @@ defineExpose({ canLeave: state.canLeave })
               :disabled="state.blocked.value || state.conflict.value"
               >{{
                 t(
-                  state.mode.value === 'upload'
-                    ? 'proto.materialUpload'
-                    : 'proto.materialSourceSave',
+                  linkForm
+                    ? 'proto.materialLinkSave'
+                    : state.mode.value === 'upload'
+                      ? 'proto.materialUpload'
+                      : 'proto.materialSourceSave',
                 )
               }}</a-button
             >
@@ -561,6 +703,45 @@ defineExpose({ canLeave: state.canLeave })
   align-items: end;
   justify-content: space-between;
   gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.materials-add-actions,
+.material-read-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.material-read-actions {
+  margin-top: var(--space-4);
+}
+.material-link-detail {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.material-link-detail p {
+  margin: 0;
+  line-height: 1.6;
+}
+.material-link-target {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-background);
+  overflow-wrap: anywhere;
+}
+.material-link-target span {
+  font-weight: 600;
+}
+.material-link-target:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+.material-link-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.material-maintenance {
   margin-top: var(--space-4);
 }
 .materials-toolbar label {
@@ -687,13 +868,6 @@ defineExpose({ canLeave: state.canLeave })
 .materials-help p {
   margin-top: var(--space-2);
   line-height: 1.5;
-}
-.material-image-preview {
-  display: block;
-  max-width: 100%;
-  max-height: 400px;
-  object-fit: contain;
-  margin-top: var(--space-4);
 }
 .material-text {
   margin-block: var(--space-6);
