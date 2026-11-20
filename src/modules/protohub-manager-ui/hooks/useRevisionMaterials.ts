@@ -17,11 +17,12 @@ import {
   emptySource,
   normalizedSource,
   validMaterialFile,
+  validLinkUrl,
   validSourceUrl,
 } from '../utils/material-source'
 
 type Mutation = {
-  kind: 'upload' | 'declare' | 'update' | 'remove'
+  kind: 'upload' | 'declare' | 'link' | 'update' | 'remove'
   key: string
   source: MaterialSource
   file?: File
@@ -37,8 +38,9 @@ export function useRevisionMaterials(
   const report = shallowRef<PageResult<RevisionMaterial>>()
   const prototype = shallowRef<RevisionMaterial>()
   const selected = shallowRef<RevisionMaterial>()
-  const mode = ref<'view' | 'upload' | 'source'>()
+  const mode = ref<'view' | 'upload' | 'source' | 'link'>()
   const form = reactive<MaterialSource>(emptySource())
+  const formErrors = reactive<Partial<Record<keyof MaterialSource, string>>>({})
   const file = shallowRef<File>()
   const filter = ref<MaterialType | ''>('')
   const pageIndex = ref(0)
@@ -50,6 +52,11 @@ export function useRevisionMaterials(
     notice = ref(''),
     conflict = ref(false)
   const previewUrl = ref('')
+  const previewError = ref('')
+  const previewPage = ref(0),
+    previewPages = ref(0),
+    previewWidth = ref(0),
+    previewHeight = ref(0)
   const pending = shallowRef<Mutation>()
   const unknown = ref(false)
   const text = shallowRef<MaterialText>()
@@ -77,12 +84,16 @@ export function useRevisionMaterials(
     textLoading.value = extracting.value = false
     textError.value = ''
   }
-  function clearPreview() {
+  function clearPreview(resetPages = true) {
     binaryController?.abort()
     binaryController = undefined
     binaryBusy.value = false
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = ''
+    previewError.value = ''
+    if (resetPages) {
+      previewPage.value = previewPages.value = previewWidth.value = previewHeight.value = 0
+    }
   }
   function clearEditor() {
     clearText()
@@ -93,6 +104,7 @@ export function useRevisionMaterials(
     Object.assign(form, emptySource())
     baseline = JSON.stringify(normalizedSource(form))
     writeError.value = ''
+    Object.keys(formErrors).forEach((key) => delete formErrors[key as keyof MaterialSource])
     conflict.value = false
   }
   function invalidate() {
@@ -178,7 +190,7 @@ export function useRevisionMaterials(
       }),
     )
   }
-  async function openEditor(next: 'view' | 'upload' | 'source', row?: RevisionMaterial) {
+  async function openEditor(next: 'view' | 'upload' | 'source' | 'link', row?: RevisionMaterial) {
     if (
       !readable.value ||
       blocked.value ||
@@ -324,6 +336,8 @@ export function useRevisionMaterials(
         )
       else if (command.kind === 'declare')
         await api.declare(scope.versionId, scope.id, command.source, command.key, options)
+      else if (command.kind === 'link')
+        await api.link(scope.versionId, scope.id, command.source, command.key, options)
       else if (command.kind === 'update')
         await api.update(
           scope.versionId,
@@ -372,9 +386,16 @@ export function useRevisionMaterials(
     if (!editable.value || blocked.value || conflict.value || !mode.value || mode.value === 'view')
       return
     writeError.value = ''
+    Object.keys(formErrors).forEach((key) => delete formErrors[key as keyof MaterialSource])
     const source = normalizedSource(form)
-    if (!validSourceUrl(source.sourceUrl)) {
-      writeError.value = t('proto.materialUrlInvalid')
+    const link = mode.value === 'link' || selected.value?.materialType === 'link'
+    if (link && !source.sourceName) formErrors.sourceName = t('proto.materialLinkTitleRequired')
+    if (link && !source.sourceUrl) formErrors.sourceUrl = t('proto.materialLinkUrlRequired')
+    if (source.sourceUrl && !(link ? validLinkUrl : validSourceUrl)(source.sourceUrl)) {
+      formErrors.sourceUrl = t('proto.materialUrlInvalid')
+    }
+    if (formErrors.sourceName || formErrors.sourceUrl) {
+      writeError.value = formErrors.sourceName || formErrors.sourceUrl || ''
       return
     }
     if (mode.value === 'upload' && !file.value) {
@@ -386,7 +407,8 @@ export function useRevisionMaterials(
       return
     }
     await run({
-      kind: mode.value === 'upload' ? 'upload' : selected.value ? 'update' : 'declare',
+      kind:
+        mode.value === 'upload' ? 'upload' : selected.value ? 'update' : link ? 'link' : 'declare',
       key: secureId(),
       source,
       file: file.value,
@@ -395,22 +417,33 @@ export function useRevisionMaterials(
   }
   async function remove(row: RevisionMaterial) {
     if (!editable.value || blocked.value || !matches(row) || !(await canLeave())) return
-    Modal.confirm({
-      title: t(
-        row.materialType === 'prototype'
-          ? 'proto.materialDeleteSourceTitle'
-          : 'proto.materialDeleteTitle',
-        { name: row.fileName },
-      ),
-      content: t(
-        row.materialType === 'prototype'
-          ? 'proto.materialDeleteSourceHint'
-          : 'proto.materialDeleteHint',
-      ),
-      okText: t('common.delete'),
-      cancelText: t('common.cancel'),
-      okButtonProps: { danger: true },
-      onOk: () => run({ kind: 'remove', key: secureId(), source: {}, material: row }),
+    return new Promise<boolean>((resolve) => {
+      let removed = false
+      Modal.confirm({
+        title: t(
+          row.materialType === 'link'
+            ? 'proto.materialLinkDeleteTitle'
+            : row.materialType === 'prototype'
+              ? 'proto.materialDeleteSourceTitle'
+              : 'proto.materialDeleteTitle',
+          { name: row.materialType === 'link' ? row.sourceName : row.fileName },
+        ),
+        content: t(
+          row.materialType === 'link'
+            ? 'proto.materialLinkDeleteHint'
+            : row.materialType === 'prototype'
+              ? 'proto.materialDeleteSourceHint'
+              : 'proto.materialDeleteHint',
+        ),
+        okText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          await run({ kind: 'remove', key: secureId(), source: {}, material: row })
+          removed = notice.value === t('proto.materialDeleted')
+        },
+        afterClose: () => resolve(removed),
+      })
     })
   }
   async function content(row: RevisionMaterial, preview = false) {
@@ -418,10 +451,11 @@ export function useRevisionMaterials(
       !readable.value ||
       binaryBusy.value ||
       !matches(row) ||
+      row.materialType === 'link' ||
       (preview && row.materialType !== 'image')
     )
       return
-    clearPreview()
+    if (preview) clearPreview()
     const current = generation
     const abort = new AbortController()
     binaryController = abort
@@ -443,7 +477,72 @@ export function useRevisionMaterials(
     } catch (cause) {
       if (current !== generation || abort.signal.aborted) return
       if (!authorized(cause)) return
-      writeError.value = cause instanceof Error ? cause.message : t('common.unknown')
+      if (preview)
+        previewError.value =
+          cause instanceof Error ? cause.message : t('proto.materialVisualFailed')
+      else writeError.value = cause instanceof Error ? cause.message : t('common.unknown')
+    } finally {
+      if (current === generation && binaryController === abort) binaryBusy.value = false
+    }
+  }
+  function previewFailed() {
+    clearPreview(false)
+    previewError.value = t('proto.materialVisualFailed')
+  }
+  /** Each PDF request owns one selected page and its Blob; no document is embedded or cached. */
+  async function preview(row: RevisionMaterial, page = 0) {
+    if (row.materialType === 'image') return content(row, true)
+    if (
+      !readable.value ||
+      binaryBusy.value ||
+      !matches(row) ||
+      mode.value !== 'view' ||
+      selected.value?.id !== row.id ||
+      row.mediaType !== 'application/pdf' ||
+      !Number.isInteger(page) ||
+      page < 0 ||
+      page > 99
+    )
+      return
+    clearPreview(false)
+    const current = generation
+    const abort = new AbortController()
+    binaryController = abort
+    binaryBusy.value = true
+    try {
+      const result = await api.preview(revision.value.versionId, revision.value.id, row.id, page, {
+        signal: abort.signal,
+        silent: true,
+      })
+      if (
+        current !== generation ||
+        abort.signal.aborted ||
+        !readable.value ||
+        selected.value?.id !== row.id
+      )
+        return
+      previewUrl.value = URL.createObjectURL(result.blob)
+      previewPage.value = result.page
+      previewPages.value = result.pages
+      previewWidth.value = result.width
+      previewHeight.value = result.height
+    } catch (cause) {
+      if (current !== generation || abort.signal.aborted) return
+      if (!authorized(cause)) return
+      const key =
+        cause instanceof ApiError
+          ? (
+              {
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_UNSUPPORTED: 'proto.materialVisualUnsupported',
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_PAGE_INVALID: 'proto.materialVisualPageInvalid',
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_INVALID: 'proto.materialVisualInvalid',
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_ENCRYPTED: 'proto.materialVisualEncrypted',
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_LIMIT_EXCEEDED: 'proto.materialVisualLimit',
+                PROTOTYPE_HUB_MATERIAL_PREVIEW_BUSY: 'proto.materialVisualBusy',
+              } as Record<string, string>
+            )[cause.code || '']
+          : undefined
+      previewError.value = t(key || 'proto.materialVisualFailed')
     } finally {
       if (current === generation && binaryController === abort) binaryBusy.value = false
     }
@@ -495,6 +594,7 @@ export function useRevisionMaterials(
     selected,
     mode,
     form,
+    formErrors,
     file,
     filter,
     loading,
@@ -505,6 +605,13 @@ export function useRevisionMaterials(
     notice,
     conflict,
     previewUrl,
+    previewError,
+    previewPage,
+    previewPages,
+    previewWidth,
+    previewHeight,
+    preview,
+    previewFailed,
     unknown,
     dirty,
     blocked,

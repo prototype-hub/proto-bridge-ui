@@ -24,6 +24,20 @@ export function validSourceUrl(value?: string | null): boolean {
     return false
   }
 }
+/** Standalone targets have the stricter link contract; legacy source declarations keep theirs. */
+export function validLinkUrl(value?: string | null): boolean {
+  if (
+    !value ||
+    !validSourceUrl(value) ||
+    /[\s\\]/u.test(value) ||
+    Array.from(value).some((char) => char.charCodeAt(0) >= 127 && char.charCodeAt(0) <= 159)
+  )
+    return false
+  const authority = value.match(/^https?:\/\/([^/?#]*)/i)?.[1]
+  if (!authority || authority.includes('@') || authority.endsWith(':')) return false
+  const url = new URL(value)
+  return !!url.hostname && (!url.port || Number(url.port) > 0)
+}
 export function validMaterialFile(file: File): boolean {
   const image = /\.(png|jpe?g)$/i.test(file.name)
   return (

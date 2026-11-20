@@ -16,6 +16,7 @@ export interface BinaryResponse {
   blob: Blob
   filename: string
   contentType: string
+  headers?: Record<string, unknown>
 }
 export interface PageResult<T> {
   data: T[]

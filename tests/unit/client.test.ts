@@ -29,6 +29,35 @@ beforeEach(() => {
   resetUnauthorized()
 })
 describe('request boundary', () => {
+  it('retains binary response headers with the original Blob, type and filename', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' })
+    const client = createClient(
+      true,
+      axios.create({
+        adapter: async (config) => ({
+          config,
+          status: 200,
+          statusText: 'OK',
+          data: blob,
+          headers: {
+            'content-type': 'image/png',
+            'content-disposition': 'inline; filename="preview.png"',
+            'x-preview-page': '0',
+            'x-preview-pages': '2',
+          },
+        }),
+      }),
+    )
+    const result = await client.getStream('/preview')
+    expect(result).toMatchObject({ blob, contentType: 'image/png', filename: 'preview.png' })
+    expect(result.blob).toBe(blob)
+    expect(result.headers?.['x-preview-pages']).toBe('2')
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      client.getStream('/preview', undefined, { signal: controller.signal }),
+    ).rejects.toMatchObject({ cancelled: true })
+  })
   it('normalizes wrapped and unwrapped success without touching binary content', async () => {
     expect(normalize({ result: [1] }, 200).result).toEqual([1])
     expect(normalize([1], 200).success).toBe(true)

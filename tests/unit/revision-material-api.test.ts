@@ -4,6 +4,7 @@ import { revisionMaterialsApi as api } from '@/modules/protohub-manager-ui/api/r
 import { versionsApi } from '@/modules/protohub-manager-ui/api/version'
 import {
   validMaterialFile,
+  validLinkUrl,
   validSourceUrl,
 } from '@/modules/protohub-manager-ui/utils/material-source'
 vi.mock('@/shared/api/client', () => ({
@@ -69,4 +70,77 @@ it('keeps metadata/text reads and bodyless extraction in the fixed, escaped mate
     timeout: 120000,
     headers: { 'Idempotency-Key': 'same-key' },
   })
+})
+it('creates standalone links in the fixed revision without a file or multipart payload', async () => {
+  const source = { sourceName: 'PRD', sourceUrl: 'https://example.com/prd', sourceNotes: 'v2' }
+  const options = { signal: new AbortController().signal, silent: true }
+  await api.link('v/', 'r/', source, 'link-key', options)
+  expect(request.post).toHaveBeenCalledWith(
+    '/prototype-hub/versions/v%2F/revisions/r%2F/materials/links',
+    { ...source, clientRequestId: 'link-key' },
+    options,
+  )
+})
+it.each([
+  'https:example.com',
+  'https://@example.com',
+  'https://example.com:0/path',
+  'https://example.com:',
+  'https://example.com:65536/path',
+  'https://example.com/a b',
+  'https://example.com/a\u00a0b',
+  'https://example.com\\path',
+])('rejects URL syntax normalized unsafely by the browser: %s', (value) => {
+  expect(validLinkUrl(value)).toBe(false)
+})
+it('reads one PDF preview with server page and pixel metadata', async () => {
+  const blob = new Blob(['png'])
+  vi.mocked(request.getStream).mockResolvedValue({
+    blob,
+    contentType: 'image/png',
+    filename: 'preview.png',
+    headers: {
+      'x-preview-page': '1',
+      'x-preview-pages': '3',
+      'x-preview-width': '800',
+      'x-preview-height': '1200',
+    },
+  })
+  const options = { signal: new AbortController().signal, silent: true }
+  await expect(api.preview('v/', 'r/', 'm/', 1, options)).resolves.toEqual({
+    blob,
+    page: 1,
+    pages: 3,
+    width: 800,
+    height: 1200,
+  })
+  expect(request.getStream).toHaveBeenCalledWith(
+    '/prototype-hub/versions/v%2F/revisions/r%2F/materials/m%2F/preview',
+    { page: 1 },
+    { ...options, timeout: 45000 },
+  )
+})
+it.each([
+  {},
+  { 'x-preview-page': '2' },
+  { 'x-preview-pages': '101' },
+  { 'x-preview-width': '4097' },
+  { 'x-preview-width': '4000', 'x-preview-height': '4000' },
+  { 'x-preview-height': 'NaN' },
+])('rejects missing, mismatched or over-budget preview metadata: %j', async (headers) => {
+  vi.mocked(request.getStream).mockResolvedValue({
+    blob: new Blob(['png']),
+    contentType: 'image/png',
+    filename: 'preview.png',
+    headers: Object.keys(headers).length
+      ? {
+          'x-preview-page': '0',
+          'x-preview-pages': '2',
+          'x-preview-width': '800',
+          'x-preview-height': '1000',
+          ...headers,
+        }
+      : {},
+  })
+  await expect(api.preview('v1', 'r1', 'm1', 0)).rejects.toThrow()
 })

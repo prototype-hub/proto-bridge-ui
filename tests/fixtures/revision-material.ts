@@ -6,6 +6,7 @@ import type {
   MaterialSource,
   MaterialText,
 } from '../../src/modules/protohub-manager-ui/types/revision-material'
+import { validLinkUrl } from '../../src/modules/protohub-manager-ui/utils/material-source'
 const rows = new Map<string, RevisionMaterial>()
 const files = new Map<string, Buffer>()
 const texts = new Map<string, MaterialText>()
@@ -90,7 +91,7 @@ export function materialsResponse(
   if (
     member &&
     action !== '_query' &&
-    !(method === 'GET' && /^[^/]+(?:\/(?:content|text))?$/.test(action))
+    !(method === 'GET' && /^[^/]+(?:\/(?:content|text|preview))?$/.test(action))
   ) {
     send(res, 403, null, 'Access denied')
     return true
@@ -123,7 +124,7 @@ export function materialsResponse(
     else {
       if (method === 'POST') {
         // The UI fixture only decodes plain text; Office/PDF parsing is verified against the service.
-        const supported = /\.(txt|md)$/i.test(existing.fileName)
+        const supported = /\.(txt|md)$/i.test(existing.fileName || '')
         const content = supported ? (files.get(existing.id)?.toString('utf8') || '').trim() : ''
         const result: MaterialText = {
           id: existing.id,
@@ -146,7 +147,7 @@ export function materialsResponse(
         200,
         texts.get(existing.id) || {
           id: existing.id,
-          status: 'NOT_EXTRACTED',
+          status: existing.materialType === 'link' ? 'UNSUPPORTED' : 'NOT_EXTRACTED',
           content: '',
           characterCount: 0,
           extractedAt: null,
@@ -158,14 +159,44 @@ export function materialsResponse(
   }
   if (suffix === 'content' && method === 'GET') {
     if (!existing || !scope.includes(existing)) send(res, 404, null, 'File missing')
+    else if (existing.materialType === 'link')
+      send(res, 400, null, 'Links have no original file', 'PROTOTYPE_HUB_MATERIAL_TYPE_UNSUPPORTED')
     else {
       res.writeHead(200, {
-        'content-type': existing.mediaType,
-        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(existing.fileName)}`,
+        'content-type': existing.mediaType || 'application/octet-stream',
+        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(existing.fileName || '')}`,
         'x-content-type-options': 'nosniff',
         'cache-control': 'private, no-store',
       })
       res.end(files.get(existing.id))
+    }
+    return true
+  }
+  if (suffix === 'preview' && method === 'GET') {
+    if (!existing || !scope.includes(existing)) send(res, 404, null, 'Material unavailable')
+    else if (existing.mediaType !== 'application/pdf')
+      send(res, 400, null, 'Preview unsupported', 'PROTOTYPE_HUB_MATERIAL_PREVIEW_UNSUPPORTED')
+    else {
+      const page = Number(new URL(req.url || '', 'http://localhost').searchParams.get('page') || 0)
+      if (!Number.isInteger(page) || page < 0 || page > 1) {
+        send(res, 400, null, 'Invalid page', 'PROTOTYPE_HUB_MATERIAL_PREVIEW_PAGE_INVALID')
+      } else {
+        // One-pixel PNG tests UI state only; real PDF rendering is exercised through PostgreSQL/HTTP.
+        res.writeHead(200, {
+          'content-type': 'image/png',
+          'x-preview-page': String(page),
+          'x-preview-pages': '2',
+          'x-preview-width': '1',
+          'x-preview-height': '1',
+          'cache-control': 'private, no-store',
+        })
+        res.end(
+          Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+            'base64',
+          ),
+        )
+      }
     }
     return true
   }
@@ -255,6 +286,36 @@ export function materialsResponse(
     rows.set(id, row)
     files.set(id, upload.content)
     result = row
+  } else if (action === 'links' && method === 'POST') {
+    const declared = source(data)
+    if (!declared.sourceName || !validLinkUrl(declared.sourceUrl)) {
+      send(res, 400, null, 'A title and safe HTTP(S) target are required')
+      return true
+    }
+    if (scope.filter((row) => row.materialType === 'link').length >= 100) {
+      send(res, 409, null, 'Link limit reached', 'PROTOTYPE_HUB_MATERIAL_LIMIT_REACHED')
+      return true
+    }
+    const row: RevisionMaterial = {
+      id: `link-${++serial}`,
+      projectId: revision.projectId,
+      versionId,
+      revisionId,
+      materialType: 'link',
+      fileName: null,
+      mediaType: null,
+      fileSize: null,
+      sha256: null,
+      configVersion: 0,
+      createdBy: 'admin',
+      updatedBy: 'admin',
+      createdAt: now,
+      updatedAt: now,
+      textStatus: 'UNSUPPORTED',
+      ...declared,
+    }
+    rows.set(row.id, row)
+    result = row
   } else if (action === 'prototype-source' && method === 'POST') {
     if (scope.some((row) => row.materialType === 'prototype')) {
       send(res, 409, null, 'Source already exists')
@@ -287,7 +348,15 @@ export function materialsResponse(
       return true
     }
     if (method === 'PUT') {
-      Object.assign(existing, source(data), {
+      const declared = source(data)
+      if (
+        existing.materialType === 'link' &&
+        (!declared.sourceName || !validLinkUrl(declared.sourceUrl))
+      ) {
+        send(res, 400, null, 'A title and safe HTTP(S) target are required')
+        return true
+      }
+      Object.assign(existing, declared, {
         configVersion: existing.configVersion + 1,
         updatedAt: now,
       })

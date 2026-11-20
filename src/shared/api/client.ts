@@ -219,6 +219,7 @@ export function createClient(authenticated: boolean, transport?: AxiosInstance) 
       blob,
       contentType: String(response.headers['content-type'] || ''),
       filename: filenameFromHeader(String(response.headers['content-disposition'] || '')),
+      headers: response.headers,
     }
   }
   return {
