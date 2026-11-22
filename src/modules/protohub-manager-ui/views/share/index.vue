@@ -27,6 +27,7 @@ import {
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreadsOverview'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import LoadState from '@/shared/components/LoadState.vue'
+import { extensions, type ReviewThreadToolContext } from '@/app/modules/extensions'
 const { t } = useI18n()
 // Capture and clean before workspace setup can canonicalize its page link and drop the fragment.
 const invitation = useShareInvitation()
@@ -41,6 +42,7 @@ const identityOpen = ref(false),
   returnToFeedback = ref(false),
   drawing = ref(false)
 const selectedPage = ref<ReviewPage>()
+const reviewToolBlocked = ref(false)
 const share = computed(() => resource.data.value.share)
 const visit = useShareVisit(share)
 const identity = useReviewIdentity(
@@ -85,7 +87,11 @@ const overviewScope = computed<ReviewOverviewScope | undefined>(() =>
 )
 const overview = useReviewThreadsOverview(overviewScope, overviewOpen, identity.context)
 const navigationBlocked = computed(
-  () => feedback.busy.value || feedback.assignment.busy.value || drawing.value,
+  () =>
+    feedback.busy.value ||
+    feedback.assignment.busy.value ||
+    drawing.value ||
+    reviewToolBlocked.value,
 )
 const navigationGuarded = computed(
   () =>
@@ -144,6 +150,27 @@ function openIdentity() {
   returnToOverview.value = false
   identityOpen.value = true
 }
+function reviewThreadToolContext(
+  thread: ReviewThread,
+  disabled: boolean,
+): ReviewThreadToolContext | undefined {
+  const current = share.value,
+    reviewContext = identity.context.value
+  if (
+    !current?.accessKey ||
+    !current.revisionId ||
+    !reviewContext ||
+    thread.revisionId !== current.revisionId
+  )
+    return
+  return {
+    grant: { token: current.token, revisionId: current.revisionId, accessKey: current.accessKey },
+    reviewContext,
+    threadId: thread.id,
+    accessMode: thread.accessMode,
+    disabled,
+  }
+}
 
 watch(
   () => [
@@ -156,6 +183,7 @@ watch(
   () => {
     identityOpen.value = feedbackOpen.value = overviewOpen.value = drawing.value = false
     selectedPage.value = undefined
+    reviewToolBlocked.value = false
   },
 )
 </script>
@@ -271,13 +299,24 @@ watch(
     :page="selectedPage"
     :state="feedback"
     :identity-loading="identity.loading.value"
+    :external-blocked="reviewToolBlocked"
     @close="threadLocation.close"
     @authenticate="authenticate()"
     @capture-anchor="captureAnchor"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
     @overview="overviewOpen = true"
-  />
+  >
+    <template #thread-tools="{ thread, disabled }">
+      <component
+        :is="tool"
+        v-for="(tool, index) in extensions.reviewThreadTools"
+        :key="index"
+        :context="reviewThreadToolContext(thread, disabled)"
+        @blocked="reviewToolBlocked = $event"
+      />
+    </template>
+  </review-threads-drawer>
   <review-threads-overview-drawer
     :open="overviewOpen && !identityOpen"
     :state="overview"

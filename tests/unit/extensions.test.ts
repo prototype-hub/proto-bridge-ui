@@ -10,6 +10,7 @@ it('keeps the basic edition registry empty without locally assembled modules', (
     versionTools: [],
     comparisonTools: [],
     loginTools: [],
+    reviewThreadTools: [],
   })
 })
 
@@ -53,4 +54,15 @@ it('merges login tools in stable module order', () => {
     '/a': { default: { loginTools: [{ name: 'First' }] } },
   })
   expect(result.loginTools.map((tool) => 'name' in tool && tool.name)).toEqual(['First', 'Last'])
+})
+
+it('merges optional review tools without enabling any in the basic edition', () => {
+  const result = mergeExtensions({
+    '/z': { default: { reviewThreadTools: [{ name: 'Last' }] } },
+    '/a': { default: { reviewThreadTools: [{ name: 'First' }] } },
+  })
+  expect(result.reviewThreadTools.map((tool) => 'name' in tool && tool.name)).toEqual([
+    'First',
+    'Last',
+  ])
 })

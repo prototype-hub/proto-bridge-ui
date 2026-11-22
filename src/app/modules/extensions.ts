@@ -1,5 +1,16 @@
 import type { MenuEntryRegistry } from '@/shared/router/menu-entry'
 import type { Component } from 'vue'
+import type { ReviewGrant } from '@/modules/protohub-manager-ui/api/review'
+import type { ReviewContext, ReviewThread } from '@/modules/protohub-manager-ui/types'
+
+/** Trusted shell scope for optional tools; never passed into the prototype iframe. */
+export interface ReviewThreadToolContext {
+  grant: ReviewGrant
+  reviewContext: ReviewContext
+  threadId: string
+  accessMode?: ReviewThread['accessMode']
+  disabled: boolean
+}
 
 /** Fixed revision and page scope passed to optional comparison tools. */
 export interface ComparisonToolContext {
@@ -25,6 +36,7 @@ export interface ApplicationExtension extends Partial<MenuEntryRegistry> {
   comparisonTools?: ComparisonTool[]
   /** Optional sign-in tools share the password form's serialized task and navigation. */
   loginTools?: Component[]
+  reviewThreadTools?: Component[]
 }
 
 export function mergeExtensions(modules: Record<string, { default: ApplicationExtension }>) {
@@ -37,6 +49,7 @@ export function mergeExtensions(modules: Record<string, { default: ApplicationEx
   const versionTools: Component[] = []
   const comparisonTools: ComparisonTool[] = []
   const loginTools: Component[] = []
+  const reviewThreadTools: Component[] = []
   for (const key of Object.keys(modules).sort()) {
     const extension = modules[key]!.default
     Object.assign(registry.componentMap, extension.componentMap)
@@ -45,10 +58,11 @@ export function mergeExtensions(modules: Record<string, { default: ApplicationEx
     versionTools.push(...(extension.versionTools || []))
     comparisonTools.push(...(extension.comparisonTools || []))
     loginTools.push(...(extension.loginTools || []))
+    reviewThreadTools.push(...(extension.reviewThreadTools || []))
     for (const language of ['zh', 'en'] as const)
       Object.assign(locales[language], extension.locales?.[language])
   }
-  return { ...registry, locales, versionTools, comparisonTools, loginTools }
+  return { ...registry, locales, versionTools, comparisonTools, loginTools, reviewThreadTools }
 }
 
 export const extensions = mergeExtensions(
