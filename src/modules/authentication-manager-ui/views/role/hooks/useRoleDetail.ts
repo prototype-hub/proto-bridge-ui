@@ -9,7 +9,9 @@ import {
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { saved } from '@/shared/utils/feedback'
+import { useSession } from '@/app/stores/session'
 export function useRoleDetail(role: Ref<Role | undefined>) {
+  const session = useSession()
   const task = useTask(),
     grants = ref<GrantMenu[]>([])
   let loadedRoleId = ''
@@ -35,6 +37,7 @@ export function useRoleDetail(role: Ref<Role | undefined>) {
         return
       await rolesApi.grant(roleId, serializeRoleGrants(grants.value))
       saved()
+      if (session.initialized) await session.refreshMenus()
     })
   return { resource, task, grants, save }
 }

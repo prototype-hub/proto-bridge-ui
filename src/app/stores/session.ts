@@ -16,6 +16,7 @@ export const useSession = defineStore('session', () => {
   let generation = 0
   let sessionFlight: Promise<void> | undefined
   let menuFlight: Promise<void> | undefined
+  let refreshFlight: Promise<void> | undefined
   const routeCleanups = new Set<() => void>()
   let resources: ResourcePermission[] = []
   function clear() {
@@ -32,6 +33,7 @@ export const useSession = defineStore('session', () => {
     menusReady.value = false
     sessionFlight = undefined
     menuFlight = undefined
+    refreshFlight = undefined
   }
   function registerRoutes(remove: () => void) {
     routeCleanups.add(remove)
@@ -93,10 +95,35 @@ export const useSession = defineStore('session', () => {
   }
   async function refreshMenus() {
     const epoch = generation
-    if (menuFlight) await menuFlight
-    if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
-    menusReady.value = false
-    await initialize()
+    const previous = refreshFlight
+    const flight = (async () => {
+      // Each save needs a snapshot requested after it, even when an older refresh is pending.
+      if (previous) await previous.catch(() => {})
+      if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
+      await initialize(false)
+      if (menuFlight) await menuFlight
+      if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
+      menusReady.value = false
+      // Menu edits can change resource grants; publish both server snapshots together.
+      menuFlight = Promise.all([sessionApi.authorization(), sessionApi.menus()])
+        .then(([auth, result]) => {
+          if (epoch !== generation) throw new ApiError(t('common.sessionExpired'), 401)
+          resources = auth.permissions || []
+          menus.value = result
+          permissions.value = permissionSet(result, resources)
+          menusReady.value = true
+        })
+        .finally(() => {
+          if (epoch === generation) menuFlight = undefined
+        })
+      await menuFlight
+    })()
+    refreshFlight = flight
+    try {
+      await flight
+    } finally {
+      if (refreshFlight === flight) refreshFlight = undefined
+    }
   }
   async function logout() {
     try {

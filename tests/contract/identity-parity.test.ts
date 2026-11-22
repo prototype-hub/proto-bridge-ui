@@ -6,6 +6,7 @@ import { request } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/api/types'
 import type { ServerMenu } from '@/shared/auth/types'
 import type { Role } from '@/modules/authentication-manager-ui/types/role'
+import { saved } from '@/shared/utils/feedback'
 import { useRoleDetail } from '@/modules/authentication-manager-ui/views/role/hooks/useRoleDetail'
 import { useRelatedRecord } from '@/modules/authentication-manager-ui/hooks/useRelatedRecord'
 import { usersApi } from '@/modules/authentication-manager-ui/api/user/users'
@@ -37,7 +38,13 @@ vi.mock('@/shared/api/client', () => ({
   ),
 }))
 vi.mock('@/shared/utils/feedback', () => ({ saved: vi.fn(), deleted: vi.fn() }))
-beforeEach(() => vi.clearAllMocks())
+const session = vi.hoisted(() => ({ initialized: false, refreshMenus: vi.fn() }))
+vi.mock('@/app/stores/session', () => ({ useSession: () => session }))
+beforeEach(() => {
+  vi.clearAllMocks()
+  session.initialized = false
+  session.refreshMenus.mockReset().mockResolvedValue(undefined)
+})
 it('reads canonical user type values/text and keeps released string and id/name options compatible', async () => {
   const types = [
     { value: 'normal', text: '普通用户', id: 'compat-normal', name: 'Ignored legacy label' },
@@ -217,6 +224,7 @@ it('forwards role member query cancellation and transport options without changi
   )
 })
 it('ignores a delayed previous role grant response and only saves the loaded current role', async () => {
+  session.initialized = true
   function deferred() {
     let resolve!: (response: ApiResponse<ServerMenu[]>) => void
     const promise = new Promise<ApiResponse<ServerMenu[]>>((complete) => (resolve = complete))
@@ -238,6 +246,7 @@ it('ignores a delayed previous role grant response and only saves the loaded cur
     expect(firstSignal?.aborted).toBe(true)
     await detail.save()
     expect(request.put).not.toHaveBeenCalled()
+    expect(session.refreshMenus).not.toHaveBeenCalled()
     second.resolve({
       success: true,
       status: 200,
@@ -256,10 +265,56 @@ it('ignores a delayed previous role grant response and only saves the loaded cur
     expect(request.put).toHaveBeenCalledWith('/menu/role/B/_grant', {
       menus: [expect.objectContaining({ id: 'menu-B' })],
     })
+    expect(session.refreshMenus).toHaveBeenCalledOnce()
     role.value = undefined
     await nextTick()
     await detail.save()
     expect(request.put).toHaveBeenCalledOnce()
+    expect(session.refreshMenus).toHaveBeenCalledOnce()
+  } finally {
+    scope.stop()
+  }
+})
+it('does not refresh an uninitialized session after saving role grants', async () => {
+  const scope = effectScope()
+  const detail = scope.run(() => useRoleDetail(ref<Role>({ id: 'role', name: 'Role' })))!
+  try {
+    await detail.resource.load()
+    await detail.save()
+    expect(request.put).toHaveBeenCalledWith('/menu/role/role/_grant', { menus: [] })
+    expect(saved).toHaveBeenCalledOnce()
+    expect(session.refreshMenus).not.toHaveBeenCalled()
+  } finally {
+    scope.stop()
+  }
+})
+it('does not refresh authorization or report success when saving role grants fails', async () => {
+  session.initialized = true
+  const scope = effectScope()
+  const detail = scope.run(() => useRoleDetail(ref<Role>({ id: 'role', name: 'Role' })))!
+  try {
+    await detail.resource.load()
+    vi.mocked(request.put).mockRejectedValueOnce(new Error('Grant failed'))
+    await detail.save()
+    expect(detail.task.error.value).toBe('Grant failed')
+    expect(saved).not.toHaveBeenCalled()
+    expect(session.refreshMenus).not.toHaveBeenCalled()
+  } finally {
+    scope.stop()
+  }
+})
+it('reports a refresh failure after a successful role grant without resubmitting the grant', async () => {
+  session.initialized = true
+  session.refreshMenus.mockRejectedValueOnce(new Error('Authorization refresh failed'))
+  const scope = effectScope()
+  const detail = scope.run(() => useRoleDetail(ref<Role>({ id: 'role', name: 'Role' })))!
+  try {
+    await detail.resource.load()
+    await detail.save()
+    expect(request.put).toHaveBeenCalledOnce()
+    expect(saved).toHaveBeenCalledOnce()
+    expect(session.refreshMenus).toHaveBeenCalledOnce()
+    expect(detail.task.error.value).toBe('Authorization refresh failed')
   } finally {
     scope.stop()
   }
