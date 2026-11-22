@@ -84,6 +84,160 @@ it('does not persist failed login credentials or revive a token from a late logi
   expect(token.get()).toBeNull()
 })
 
+it('refreshes resource grants and revocations together with menus without reloading the profile', async () => {
+  const session = useSession()
+  await session.initialize()
+  vi.mocked(sessionApi.authorization).mockResolvedValue({
+    permissions: [{ id: 'prototype-hub-license', actions: ['query', 'save'] }],
+  })
+  await session.refreshMenus()
+  expect(session.can('prototype-hub-license:query')).toBe(true)
+  expect(session.can('prototype-hub-license:save')).toBe(true)
+  expect(session.can('protohub-version:query')).toBe(false)
+
+  vi.mocked(sessionApi.authorization).mockResolvedValue({ permissions: [] })
+  await session.refreshMenus()
+  expect(session.can('prototype-hub-license:query')).toBe(false)
+  expect(session.can('prototype-hub-license:save')).toBe(false)
+  expect(sessionApi.user).toHaveBeenCalledTimes(1)
+  expect(sessionApi.authorization).toHaveBeenCalledTimes(3)
+  expect(session.menusReady).toBe(true)
+})
+
+it('does not turn menu permission declarations into resource grants when refreshing', async () => {
+  const session = useSession()
+  await session.initialize()
+  vi.mocked(sessionApi.authorization).mockResolvedValue({ permissions: [] })
+  vi.mocked(sessionApi.menus).mockResolvedValue([
+    {
+      id: 'license',
+      code: 'prototype-hub/License',
+      name: 'License',
+      granted: true,
+      permissions: [{ permission: 'prototype-hub-license', actions: ['query', 'save'] }],
+      buttons: [{ id: 'query', name: 'Query', granted: true }],
+    },
+  ])
+  await session.refreshMenus()
+  expect(session.can('prototype-hub/License:query')).toBe(true)
+  expect(session.can('prototype-hub-license:query')).toBe(false)
+  expect(session.can('prototype-hub-license:save')).toBe(false)
+})
+
+it('serializes concurrent refreshes and shares the current snapshot with menu initialization', async () => {
+  const session = useSession()
+  await session.initialize()
+  vi.mocked(sessionApi.authorization).mockResolvedValue({
+    permissions: [{ id: 'prototype-hub-license', actions: ['query'] }],
+  })
+  let complete!: (value: Awaited<ReturnType<typeof sessionApi.authorization>>) => void
+  vi.mocked(sessionApi.authorization).mockImplementationOnce(
+    () => new Promise((resolve) => (complete = resolve)),
+  )
+  const first = session.refreshMenus()
+  const second = session.refreshMenus()
+  await vi.waitFor(() => expect(sessionApi.authorization).toHaveBeenCalledTimes(2))
+  const initialize = session.initialize()
+  expect(session.menusReady).toBe(false)
+  complete({ permissions: [{ id: 'prototype-hub-license', actions: ['query'] }] })
+  await Promise.all([first, second, initialize])
+  expect(sessionApi.authorization).toHaveBeenCalledTimes(3)
+  expect(sessionApi.menus).toHaveBeenCalledTimes(3)
+  expect(sessionApi.user).toHaveBeenCalledTimes(1)
+  expect(session.can('prototype-hub-license:query')).toBe(true)
+})
+
+it('does not reuse a snapshot requested before a later successful permission save', async () => {
+  const session = useSession()
+  await session.initialize()
+  let complete!: (value: Awaited<ReturnType<typeof sessionApi.authorization>>) => void
+  vi.mocked(sessionApi.authorization).mockImplementationOnce(
+    () => new Promise((resolve) => (complete = resolve)),
+  )
+  const first = session.refreshMenus()
+  await vi.waitFor(() => expect(sessionApi.authorization).toHaveBeenCalledTimes(2))
+
+  // A second save revokes access after the first refresh already requested its snapshot.
+  vi.mocked(sessionApi.authorization).mockResolvedValue({ permissions: [] })
+  const second = session.refreshMenus()
+  complete({ permissions: [{ id: 'prototype-hub-license', actions: ['query'] }] })
+  await Promise.all([first, second])
+  expect(sessionApi.authorization).toHaveBeenCalledTimes(3)
+  expect(sessionApi.menus).toHaveBeenCalledTimes(3)
+  expect(session.can('prototype-hub-license:query')).toBe(false)
+  expect(session.menusReady).toBe(true)
+})
+
+it('allows a queued refresh to recover after the preceding refresh fails', async () => {
+  const session = useSession()
+  await session.initialize()
+  let reject!: (error: Error) => void
+  vi.mocked(sessionApi.authorization).mockImplementationOnce(
+    () => new Promise((_, fail) => (reject = fail)),
+  )
+  const first = session.refreshMenus()
+  const failed = expect(first).rejects.toThrow('Refresh failed')
+  await vi.waitFor(() => expect(sessionApi.authorization).toHaveBeenCalledTimes(2))
+  vi.mocked(sessionApi.authorization).mockResolvedValue({
+    permissions: [{ id: 'prototype-hub-license', actions: ['query'] }],
+  })
+  const second = session.refreshMenus()
+  reject(new Error('Refresh failed'))
+  await failed
+  await second
+  expect(sessionApi.authorization).toHaveBeenCalledTimes(3)
+  expect(session.menusReady).toBe(true)
+  expect(session.can('prototype-hub-license:query')).toBe(true)
+})
+
+it('does not publish a late authorization refresh after logout', async () => {
+  const session = useSession()
+  await session.initialize()
+  let complete!: (value: Awaited<ReturnType<typeof sessionApi.authorization>>) => void
+  vi.mocked(sessionApi.authorization).mockImplementationOnce(
+    () => new Promise((resolve) => (complete = resolve)),
+  )
+  const pending = session.refreshMenus()
+  await vi.waitFor(() => expect(sessionApi.authorization).toHaveBeenCalledTimes(2))
+  const queued = session.refreshMenus()
+  vi.mocked(sessionApi.logout).mockResolvedValueOnce({ success: true, status: 200, result: true })
+  await session.logout()
+  complete({ permissions: [{ id: 'prototype-hub-license', actions: ['query'] }] })
+  await expect(pending).rejects.toMatchObject({ status: 401 })
+  await expect(queued).rejects.toMatchObject({ status: 401 })
+  expect(sessionApi.authorization).toHaveBeenCalledTimes(2)
+  expect(sessionApi.user).toHaveBeenCalledTimes(1)
+  expect(session.user).toBeUndefined()
+  expect(session.permissions.size).toBe(0)
+  expect(session.menus).toEqual([])
+  expect(session.menusReady).toBe(false)
+})
+
+it.each(['authorization', 'menus'] as const)(
+  'does not mark a failed %s refresh ready or publish a partial snapshot, and allows retry',
+  async (failed) => {
+    const session = useSession()
+    await session.initialize()
+    vi.mocked(sessionApi.authorization).mockResolvedValue({
+      permissions: [{ id: 'prototype-hub-license', actions: ['query'] }],
+    })
+    vi.mocked(sessionApi.menus).mockResolvedValue([
+      { id: 'new', code: 'new', name: 'New', buttons: [{ id: 'query', name: 'Query' }] },
+    ])
+    vi.mocked(sessionApi[failed]).mockRejectedValueOnce(new Error('Refresh failed'))
+    await expect(session.refreshMenus()).rejects.toThrow('Refresh failed')
+    expect(session.menusReady).toBe(false)
+    expect(session.menus).toEqual([])
+    expect(session.can('prototype-hub-license:query')).toBe(false)
+    expect(session.can('new:query')).toBe(false)
+
+    await session.refreshMenus()
+    expect(session.menusReady).toBe(true)
+    expect(session.can('prototype-hub-license:query')).toBe(true)
+    expect(session.can('new:query')).toBe(true)
+  },
+)
+
 it('does not revive an extension sign-in after logout or a newer sign-in', async () => {
   const session = useSession()
   let complete!: (value: { token: string }) => void
