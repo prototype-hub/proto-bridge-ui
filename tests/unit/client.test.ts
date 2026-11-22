@@ -10,13 +10,13 @@ import {
 import { ApiError } from '@/shared/api/errors'
 import { token } from '@/shared/auth/token'
 const adapter =
-  (status: number, data: unknown): AxiosAdapter =>
+  (status: number, data: unknown, headers: Record<string, string> = {}): AxiosAdapter =>
   async (config) => {
     const response = {
       config,
       status,
       statusText: String(status),
-      headers: { 'x-request-id': 'r-1' },
+      headers: { 'x-request-id': 'r-1', ...headers },
       data,
     }
     if (status >= 400)
@@ -308,6 +308,80 @@ describe('request boundary', () => {
     expect(filenameFromHeader("attachment; filename*=UTF-8''hello%20world.zip")).toBe(
       'hello world.zip',
     )
+  })
+  it.each(['application/zip', 'image/png'])(
+    'preserves successful %s downloads without decoding their bytes as text',
+    async (contentType) => {
+      const blob = new Blob([new Uint8Array([0, 255, 80, 75])], { type: contentType })
+      const decode = vi.fn(async () => 'binary bytes')
+      Object.defineProperty(blob, 'text', { value: decode })
+      const client = createClient(
+        true,
+        axios.create({
+          adapter: adapter(200, blob, {
+            'content-type': contentType,
+            'content-disposition': 'attachment; filename="original.bin"',
+          }),
+        }),
+      )
+      const response = await client.getStream('/file')
+      expect(response).toMatchObject({
+        blob,
+        contentType,
+        filename: 'original.bin',
+      })
+      expect(response.blob).toBe(blob)
+      expect(decode).not.toHaveBeenCalled()
+    },
+  )
+  it('preserves a successful non-JSON ArrayBuffer without decoding it', async () => {
+    const data = new Uint8Array([0, 255, 80, 75]).buffer
+    const decode = vi.spyOn(TextDecoder.prototype, 'decode')
+    try {
+      const client = createClient(
+        true,
+        axios.create({
+          adapter: adapter(200, data, { 'content-type': 'application/octet-stream' }),
+        }),
+      )
+      const response = await client.get('/file', undefined, { responseType: 'arraybuffer' })
+      expect(response.result).toBe(data)
+      expect(decode).not.toHaveBeenCalled()
+    } finally {
+      decode.mockRestore()
+    }
+  })
+  it.each(['application/json; charset=utf-8', 'application/problem+json', ''])(
+    'still rejects successful binary JSON error envelopes with content type %j',
+    async (contentType) => {
+      const blob = new Blob([
+        JSON.stringify({ success: false, status: 403, code: 'DENIED', message: 'Denied' }),
+      ])
+      const client = createClient(
+        false,
+        axios.create({ adapter: adapter(200, blob, { 'content-type': contentType }) }),
+      )
+      await expect(client.getStream('/file')).rejects.toMatchObject({
+        status: 403,
+        code: 'DENIED',
+        requestId: 'r-1',
+      })
+    },
+  )
+  it('still parses an HTTP binary error when its content type is not JSON', async () => {
+    const blob = new Blob([
+      JSON.stringify({ success: false, code: 'EXPORT_FAILED', message: 'Export failed' }),
+    ])
+    const client = createClient(
+      false,
+      axios.create({ adapter: adapter(500, blob, { 'content-type': 'application/octet-stream' }) }),
+    )
+    await expect(client.getStream('/file')).rejects.toMatchObject({
+      status: 500,
+      code: 'EXPORT_FAILED',
+      message: 'Export failed',
+      requestId: 'r-1',
+    })
   })
 })
 it('cancels every active authenticated request when the session is cleared', async () => {

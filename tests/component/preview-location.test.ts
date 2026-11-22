@@ -207,8 +207,24 @@ it('shows the current name/path and copies only a stable available page', async 
   const { wrapper } = await setup('/preview/p1/v1?revisionId=r1&pageId=detail', true)
   expect(wrapper.get('.workspace-current').text()).toContain('Details')
   expect(wrapper.get('.current-path').text()).toBe('nested/details.html')
-  await wrapper.get('.workspace-current button').trigger('click')
+  await wrapper.get(`button[aria-label="${i18n.global.t('proto.copyPageLink')}"]`).trigger('click')
   expect(copyText).toHaveBeenCalledOnce()
+  expect(wrapper.get('iframe').attributes('sandbox')).toBe('allow-scripts allow-forms')
+  expect(wrapper.get('iframe').attributes('referrerpolicy')).toBe('no-referrer')
+})
+
+it('retries a failed current preview by replacing the iframe without changing its grant URL', async () => {
+  const { wrapper } = await setup('/preview/p1/v1?revisionId=r1&pageId=detail', true)
+  const original = wrapper.get('iframe').element
+  const url = wrapper.get('iframe').attributes('src')
+  await wrapper.get('iframe').trigger('error')
+  const retry = wrapper
+    .findAll('button')
+    .find((button) => button.text().replace(/\s/g, '') === i18n.global.t('common.retry'))!
+  await retry.trigger('click')
+  await flushPromises()
+  expect(wrapper.get('iframe').attributes('src')).toBe(url)
+  expect(wrapper.get('iframe').element).not.toBe(original)
   expect(wrapper.get('iframe').attributes('sandbox')).toBe('allow-scripts allow-forms')
   expect(wrapper.get('iframe').attributes('referrerpolicy')).toBe('no-referrer')
 })
@@ -253,7 +269,11 @@ it('preserves the exact selected tree label when several legacy aliases share a 
   await wrapper.findAll('.workspace-nav .tree-page')[2].trigger('click')
   await flushPromises()
   expect(wrapper.get('.workspace-current').text()).toContain('Legacy B')
-  expect(wrapper.get('.workspace-current button').attributes('disabled')).toBeDefined()
+  expect(
+    wrapper
+      .get(`button[aria-label="${i18n.global.t('proto.copyPageLink')}"]`)
+      .attributes('disabled'),
+  ).toBeDefined()
   expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('Legacy B')
   expect(wrapper.get('iframe').attributes('src')).toMatch(/index.html$/)
 })
