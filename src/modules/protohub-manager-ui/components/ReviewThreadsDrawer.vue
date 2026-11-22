@@ -25,6 +25,7 @@ const props = defineProps<{
   identityLoading?: boolean
   canAssociate?: boolean
   restoreAssociationFocus?: boolean
+  externalBlocked?: boolean
 }>()
 const emit = defineEmits<{
   close: []
@@ -48,7 +49,7 @@ const content = ref<HTMLElement>(),
   listHeading = ref<HTMLElement>()
 type ListChange = { filter: ReviewThreadState | '' } | { page: number }
 const pendingSelection = shallowRef<{ thread?: ReviewThread } | ListChange>()
-const blocked = computed(() => state.busy.value || assignment.busy.value)
+const blocked = computed(() => state.busy.value || assignment.busy.value || props.externalBlocked)
 const guarded = computed(
   () =>
     !!state.text.value ||
@@ -204,12 +205,14 @@ function selectImage(event: Event) {
   <a-drawer
     :open="open"
     :autofocus="false"
-    :keyboard="!pendingSelection"
+    :keyboard="!pendingSelection && !externalBlocked"
+    :closable="!externalBlocked"
+    :mask-closable="!externalBlocked"
     :title="t('proto.feedback')"
     :body-style="{ padding: 0 }"
     width="min(600px, 100vw)"
     @after-open-change="afterOpen"
-    @close="emit('close')"
+    @close="!externalBlocked && emit('close')"
   >
     <section
       ref="content"
@@ -459,6 +462,11 @@ function selectImage(event: Event) {
                   >{{ t('proto.feedbackReopen') }}</a-button
                 >
               </div>
+              <slot
+                name="thread-tools"
+                :thread="state.selected.value"
+                :disabled="state.busy.value || assignment.busy.value || state.loading.value"
+              />
               <section
                 v-if="!state.isPublic.value"
                 class="feedback-assignment"
@@ -800,7 +808,9 @@ function selectImage(event: Event) {
         </div>
       </section>
       <footer class="feedback-footer">
-        <a-button type="text" @click="emit('close')">{{ t('common.close') }}</a-button>
+        <a-button type="text" :disabled="externalBlocked" @click="emit('close')">{{
+          t('common.close')
+        }}</a-button>
       </footer>
     </section>
   </a-drawer>

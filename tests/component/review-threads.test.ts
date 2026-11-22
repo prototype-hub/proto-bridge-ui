@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ref, shallowRef } from 'vue'
+import { h, ref, shallowRef } from 'vue'
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import {
   useReviewThreads,
@@ -122,6 +122,27 @@ const message = (): ReviewMessage => ({
   visibility: 'public',
   createdAt: 1,
   image: null,
+})
+
+it('keeps optional thread tools in the trusted detail and leaves their recovery available while navigation is blocked', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.choose(state.threads.value[0])
+  await flushPromises()
+  const wrapper = mount(ReviewThreadsDrawer, {
+    props: { open: true, page, state, externalBlocked: true },
+    slots: {
+      'thread-tools': ({ thread, disabled }: { thread: ReviewThread; disabled: boolean }) =>
+        h('button', { 'data-tool': thread.id, disabled }, 'Example tool'),
+    },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  expect(wrapper.get('[data-tool="t1"]').attributes('disabled')).toBeUndefined()
+  expect(wrapper.get('.feedback-footer button').attributes('disabled')).toBeDefined()
+  await wrapper.setProps({ externalBlocked: false })
+  expect(wrapper.get('.feedback-footer button').attributes('disabled')).toBeUndefined()
+  expect(wrapper.find('iframe [data-tool]').exists()).toBe(false)
 })
 const pager = <T>(data: T[], total = data.length) => ({ data, total, pageIndex: 0, pageSize: 20 })
 const wrappers: VueWrapper[] = []
