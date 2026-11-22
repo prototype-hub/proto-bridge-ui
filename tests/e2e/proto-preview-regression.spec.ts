@@ -156,6 +156,54 @@ test('version preview and public share open the first accessible menu page and r
   }
 })
 
+test('preview retry reloads the same grant URL on desktop and mobile', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  await login(page)
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    for (const path of ['preview/p1/v1', 'share/open']) {
+      await page.goto(path)
+      await expect(page).toHaveTitle('ProtoBridge')
+      await expect(page.locator('.workspace')).toBeVisible()
+      await expect(
+        page.frameLocator('iframe').getByRole('button', { name: 'Contract element' }),
+      ).toBeVisible()
+      const frame = page.locator('iframe')
+      const original = (await frame.elementHandle())!
+      const url = (await frame.getAttribute('src'))!
+      await frame.dispatchEvent('error')
+      const requested = page.waitForRequest(
+        (request) => request.url() === url && request.isNavigationRequest(),
+      )
+      await page
+        .locator('.frame-stage')
+        .getByRole('button', { name: /重\s*试/ })
+        .click()
+      const response = await (await requested).response()
+      expect(response?.status()).toBe(200)
+      await expect.poll(() => original.evaluate((element) => element.isConnected)).toBe(false)
+      await expect(frame).toHaveAttribute('src', url)
+      await expect(
+        page.frameLocator('iframe').getByRole('button', { name: 'Contract element' }),
+      ).toBeVisible()
+      await expect(page.locator('vite-error-overlay')).toHaveCount(0)
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `preview-retry-${width}-${path.startsWith('share') ? 'share' : 'member'}.png`,
+        ),
+        animations: 'disabled',
+      })
+    }
+  }
+  expect(errors).toEqual([])
+})
+
 async function expectSingleLineEllipsis(node: Locator, container: Locator) {
   await expect(node).toBeVisible()
   const bounds = await container.boundingBox()

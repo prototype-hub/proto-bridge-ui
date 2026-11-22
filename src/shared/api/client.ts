@@ -136,7 +136,16 @@ export function createClient(authenticated: boolean, transport?: AxiosInstance) 
         signal: controller.signal,
         withCredentials: false,
       })
-      const payload = await bodyOf(response.data)
+      const contentType = String(response.headers['content-type'] || '')
+      // Avoid decoding whole archives/images just to inspect a possible JSON error envelope.
+      const payload =
+        (response.data instanceof Blob || response.data instanceof ArrayBuffer) &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        contentType &&
+        !/(?:\/|\+)json(?:\s*;|$)/i.test(contentType)
+          ? undefined
+          : await bodyOf(response.data)
       if (
         isRecord(payload) &&
         (payload.success === false || (typeof payload.status === 'number' && payload.status >= 400))

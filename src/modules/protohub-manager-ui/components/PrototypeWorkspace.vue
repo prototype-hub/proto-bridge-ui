@@ -60,6 +60,12 @@ const {
   loaded,
   failed,
 } = useWorkspace(toRef(props, 'context'), props.pane, props.compact)
+const frameKey = ref(0)
+// Retrying the same grant URL must replace the failed document, not only reset its loading state.
+function retry() {
+  frameKey.value++
+  load()
+}
 const desktopInspector = ref<InstanceType<typeof InspectorPanel>>()
 const narrowInspector = ref<InstanceType<typeof InspectorPanel>>()
 function selectToolTab(tab: InspectToolTab) {
@@ -202,12 +208,12 @@ function select(path: string, id?: string, page?: PrototypePage) {
         </div>
         <a-alert v-if="error" :message="error" type="error"
           ><template #action
-            ><a-button @click="load">{{ t('common.retry') }}</a-button></template
+            ><a-button @click="retry">{{ t('common.retry') }}</a-button></template
           ></a-alert
         ><a-spin v-if="loading" class="frame-spinner" /><iframe
           v-if="url"
           ref="frame"
-          :key="url"
+          :key="`${url}:${frameKey}`"
           :src="url"
           sandbox="allow-scripts allow-forms"
           referrerpolicy="no-referrer"
