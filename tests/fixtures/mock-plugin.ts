@@ -1,3 +1,4 @@
+import { fixtureDiagnostics } from './diagnostics'
 import { resetPageDeliveries, pageDeliveryResponse } from './page-delivery'
 import { searchResponse } from './search'
 import { resetCopyInventories, copyInventoryResponse } from './copy-inventory'
@@ -138,6 +139,23 @@ const initialMenus: ServerMenu[] = [
         ),
         i18nMessages: { name: { zh_CN: '统计概览', en_US: 'Overview', en: 'Overview' } },
         permissions: [{ permission: 'prototype-hub-project', actions: ['query'] }],
+      },
+      {
+        ...menu(
+          'prototype-diagnostics',
+          'prototype-hub/Diagnostics',
+          '本地运行诊断',
+          '/prototype-hub/diagnostics',
+          [],
+        ),
+        i18nMessages: {
+          name: {
+            zh_CN: '本地运行诊断',
+            en_US: 'Local runtime diagnostics',
+            en: 'Local runtime diagnostics',
+          },
+        },
+        permissions: [{ permission: 'prototype-hub-diagnostics', actions: ['query'] }],
       },
       {
         ...menu(
@@ -696,7 +714,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
           'prototype-hub-project',
           'prototype-hub-version',
           'prototype-hub-share',
-          ...(req.headers['x-access-token'] === 'mock-member' ? [] : ['prototype-hub-license']),
+          ...(req.headers['x-access-token'] === 'mock-member'
+            ? []
+            : ['prototype-hub-license', 'prototype-hub-diagnostics']),
         ].map((id) => ({
           id,
           actions:
@@ -810,6 +830,16 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     return true
   }
   const member = token === 'mock-member'
+  if (path === '/prototype-hub/diagnostics' && method === 'GET') {
+    const member = req.headers['x-access-token'] === 'mock-member'
+    send(
+      res,
+      member ? 403 : 200,
+      member ? null : fixtureDiagnostics(),
+      member ? 'Forbidden' : undefined,
+    )
+    return true
+  }
   if (path === '/prototype-hub/license' && method === 'GET') {
     send(
       res,
