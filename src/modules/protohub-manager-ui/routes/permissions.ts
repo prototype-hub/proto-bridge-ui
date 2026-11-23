@@ -1,4 +1,5 @@
 export const protoPermissions = {
+  diagnostics: { query: 'prototype-hub-diagnostics:query' },
   license: {
     query: 'prototype-hub-license:query',
     save: 'prototype-hub-license:save',
