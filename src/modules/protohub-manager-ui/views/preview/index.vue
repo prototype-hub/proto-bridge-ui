@@ -14,6 +14,7 @@ import {
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
 import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
 import CopyInventoryDrawer from '@/modules/protohub-manager-ui/components/CopyInventoryDrawer.vue'
+import FunctionalSpecsSidebar from '@/modules/protohub-manager-ui/components/FunctionalSpecsSidebar.vue'
 import ViewportChecksDrawer from '@/modules/protohub-manager-ui/components/ViewportChecksDrawer.vue'
 import { DownOutlined } from '@ant-design/icons-vue'
 import ReviewAssociationsDrawer from '@/modules/protohub-manager-ui/components/ReviewAssociationsDrawer.vue'
@@ -70,6 +71,15 @@ const feedbackOpen = ref(false),
   selectedPage = ref<ReviewPage>()
 const assetsOpen = ref(false),
   copyOpen = ref(false)
+const functionalOpen = ref(false)
+const functionalPanel = ref<InstanceType<typeof FunctionalSpecsSidebar>>()
+function openFunctional() {
+  if (assetsAllowed.value && selectedPage.value) functionalOpen.value = true
+}
+function closeFunctional() {
+  functionalOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const viewportOpen = ref(false)
 const viewportPage = ref<ReviewPage>()
 function openViewport() {
@@ -101,7 +111,12 @@ const assetsAllowed = computed(
 )
 watch(assetsAllowed, (allowed) => {
   if (!allowed) {
-    assetsOpen.value = copyOpen.value = viewportOpen.value = materialsOpen.value = false
+    assetsOpen.value =
+      copyOpen.value =
+      viewportOpen.value =
+      materialsOpen.value =
+      functionalOpen.value =
+        false
     deliveryPageId.value = undefined
   }
 })
@@ -263,69 +278,89 @@ function locateAnchor(anchor: ReviewAnchor) {
       >
     </a-alert>
     <load-state v-else :loading="loading" :error="error" @retry="load"
-      ><prototype-workspace
-        v-if="data"
-        ref="workspace"
-        :context="data"
-        :anchor-epoch="feedback.anchorEpoch.value"
-        @page-change="selectedPage = $event"
-      >
-        <template #actions
-          ><a-dropdown v-if="assetsAllowed" :trigger="['click']"
-            ><a-button ref="assetsTrigger" class="page-resource-trigger"
-              ><span class="page-resource-label">{{ t('proto.pageResources') }}</span
-              ><down-outlined aria-hidden="true" /></a-button
-            ><template #overlay
-              ><a-menu
-                ><a-menu-item key="search"
-                  ><router-link
-                    :to="{
-                      name: 'PrototypeHub-search',
-                      query: {
-                        projectId: project?.id,
-                        versionId: String(route.params.versionId),
-                        revisionId: data.revisionId,
-                      },
-                    }"
-                    target="_blank"
-                    rel="noopener"
-                    :title="t('proto.searchNewWindow')"
-                    >{{ t('proto.searchThisRevision') }}</router-link
-                  ></a-menu-item
-                ><a-menu-item key="delivery" :disabled="!selectedPage" @click="openDelivery">{{
-                  t('proto.pageDelivery')
-                }}</a-menu-item
-                ><a-menu-item key="materials" @click="materialsOpen = true">{{
-                  t('proto.materials')
-                }}</a-menu-item
-                ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
-                  t('proto.copyInventory')
-                }}</a-menu-item
-                ><a-menu-item key="viewport" :disabled="!selectedPage" @click="openViewport">{{
-                  t('proto.viewportChecks')
-                }}</a-menu-item
-                ><a-menu-item key="assets" @click="assetsOpen = true">{{
-                  t('proto.originalAssets')
-                }}</a-menu-item></a-menu
-              ></template
-            ></a-dropdown
-          ><a-button
-            v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
-            ref="feedbackTrigger"
-            type="primary"
-            :disabled="!selectedPage"
-            @click="feedbackOpen = true"
-            >{{
-              t(feedback.unknown.value ? 'proto.feedbackCheckResult' : 'proto.feedback')
-            }}</a-button
-          ><a-button
-            v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
-            @click="overviewOpen = true"
-            >{{ t('proto.feedbackOverview') }}</a-button
-          ></template
+      ><div class="preview-functional-shell">
+        <prototype-workspace
+          v-if="data"
+          ref="workspace"
+          :context="data"
+          :anchor-epoch="feedback.anchorEpoch.value"
+          @page-change="selectedPage = $event"
+          @anchor-capture="functionalPanel?.receiveAnchor($event)"
+          @runtime-ready="functionalPanel?.runtimeReady()"
         >
-      </prototype-workspace></load-state
-    >
+          <template #actions
+            ><a-dropdown v-if="assetsAllowed" :trigger="['click']"
+              ><a-button ref="assetsTrigger" class="page-resource-trigger"
+                ><span class="page-resource-label">{{ t('proto.pageResources') }}</span
+                ><down-outlined aria-hidden="true" /></a-button
+              ><template #overlay
+                ><a-menu
+                  ><a-menu-item key="search"
+                    ><router-link
+                      :to="{
+                        name: 'PrototypeHub-search',
+                        query: {
+                          projectId: project?.id,
+                          versionId: String(route.params.versionId),
+                          revisionId: data.revisionId,
+                        },
+                      }"
+                      target="_blank"
+                      rel="noopener"
+                      :title="t('proto.searchNewWindow')"
+                      >{{ t('proto.searchThisRevision') }}</router-link
+                    ></a-menu-item
+                  ><a-menu-item key="delivery" :disabled="!selectedPage" @click="openDelivery">{{
+                    t('proto.pageDelivery')
+                  }}</a-menu-item
+                  ><a-menu-item key="materials" @click="materialsOpen = true">{{
+                    t('proto.materials')
+                  }}</a-menu-item
+                  ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
+                    t('proto.copyInventory')
+                  }}</a-menu-item
+                  ><a-menu-item
+                    key="functional"
+                    :disabled="!selectedPage"
+                    @click="openFunctional"
+                    >{{ t('proto.functionalSpecs') }}</a-menu-item
+                  ><a-menu-item key="viewport" :disabled="!selectedPage" @click="openViewport">{{
+                    t('proto.viewportChecks')
+                  }}</a-menu-item
+                  ><a-menu-item key="assets" @click="assetsOpen = true">{{
+                    t('proto.originalAssets')
+                  }}</a-menu-item></a-menu
+                ></template
+              ></a-dropdown
+            ><a-button
+              v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
+              ref="feedbackTrigger"
+              type="primary"
+              :disabled="!selectedPage"
+              @click="feedbackOpen = true"
+              >{{
+                t(feedback.unknown.value ? 'proto.feedbackCheckResult' : 'proto.feedback')
+              }}</a-button
+            ><a-button
+              v-if="projectAllows(project, 'edit') && permissions.can(p.version.query)"
+              @click="overviewOpen = true"
+              >{{ t('proto.feedbackOverview') }}</a-button
+            ></template
+          >
+        </prototype-workspace>
+        <functional-specs-sidebar
+          v-if="functionalOpen && assetsAllowed && project && revision && data && selectedPage"
+          ref="functionalPanel"
+          :project="project"
+          :revision="revision"
+          :context="data"
+          :page="selectedPage"
+          @close="closeFunctional"
+          @capture="workspace?.captureAnchor($event)"
+          @locate="workspace?.locateAnchor($event)"
+          @clear="workspace?.clearAnchor()"
+        /></div
+    ></load-state>
   </div>
   <a-drawer
     :open="materialsOpen && assetsAllowed"
@@ -439,5 +474,17 @@ function locateAnchor(anchor: ReviewAnchor) {
 .page-resource-trigger > .anticon {
   flex: none;
   margin-inline-start: 0;
+}
+</style>
+
+<style scoped>
+.preview-functional-shell {
+  display: flex;
+  min-width: 0;
+  height: 100dvh;
+}
+.preview-functional-shell > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 </style>

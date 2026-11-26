@@ -1,3 +1,4 @@
+import { functionalSpecLocales } from './functional-spec'
 import { diagnosticsLocales } from './diagnostics'
 import { pageDeliveryLocales } from './page-delivery'
 import { searchLocales } from './search'
@@ -8,6 +9,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...functionalSpecLocales.zh,
     ...diagnosticsLocales.zh,
     ...pageDeliveryLocales.zh,
     compareOpenPageShort: '选择页面',
@@ -829,6 +831,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...functionalSpecLocales.en,
     ...diagnosticsLocales.en,
     ...pageDeliveryLocales.en,
     compareOpenPageShort: 'Compare',
