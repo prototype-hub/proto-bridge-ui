@@ -1,3 +1,4 @@
+import { deliveryDocumentLocales } from './delivery-document'
 import { functionalSpecLocales } from './functional-spec'
 import { diagnosticsLocales } from './diagnostics'
 import { pageDeliveryLocales } from './page-delivery'
@@ -10,6 +11,7 @@ import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
     ...functionalSpecLocales.zh,
+    ...deliveryDocumentLocales.zh,
     ...diagnosticsLocales.zh,
     ...pageDeliveryLocales.zh,
     compareOpenPageShort: '选择页面',
@@ -832,6 +834,7 @@ export const protoLocales = {
   },
   en: {
     ...functionalSpecLocales.en,
+    ...deliveryDocumentLocales.en,
     ...diagnosticsLocales.en,
     ...pageDeliveryLocales.en,
     compareOpenPageShort: 'Compare',
