@@ -139,3 +139,27 @@ it('keeps filtered folder state and aria expansion synchronized while allowing t
   await wrapper.get('input').setValue('')
   expect(folder.attributes('aria-expanded')).toBe('false')
 })
+
+it('keeps a stable page selected until its parent accepts navigation and allows the same canceled target again', async () => {
+  const wrapper = mount(PageTree, {
+    props: {
+      pages: [
+        { name: 'Home', path: 'home.html', pageId: 'home' },
+        { name: 'Detail', path: 'detail.html', pageId: 'detail' },
+      ],
+      selected: 'home.html',
+      selectedId: 'home',
+    },
+    global: { plugins: [i18n] },
+  })
+  wrappers.push(wrapper)
+  await wrapper.findAll('.tree-page')[1].trigger('click')
+  expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('Home')
+  await wrapper.findAll('.tree-page')[1].trigger('click')
+  expect(wrapper.emitted('select')).toEqual([
+    ['detail.html', 'detail'],
+    ['detail.html', 'detail'],
+  ])
+  await wrapper.setProps({ selected: 'detail.html', selectedId: 'detail' })
+  expect(wrapper.get('.ant-tree-node-selected .tree-page').text()).toBe('Detail')
+})

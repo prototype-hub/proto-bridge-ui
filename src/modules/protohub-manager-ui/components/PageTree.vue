@@ -74,7 +74,8 @@ watch(
 function select(keys: (string | number)[]) {
   const node = allNodes.value.find((node) => node.key === String(keys[0] || ''))
   if (node?.selectable && node.path) {
-    selectedKey.value = node.key
+    // Stable page selection follows the accepted route; a canceled draft guard keeps the current page.
+    if (!node.pageId) selectedKey.value = node.key
     // A path may have several manifest labels, including legacy aliases without an ID.
     if (allNodes.value.filter((item) => item.selectable && item.path === node.path).length > 1)
       emit('select', node.path, node.pageId || undefined, node.source)

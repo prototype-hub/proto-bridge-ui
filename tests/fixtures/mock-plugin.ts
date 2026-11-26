@@ -1,3 +1,4 @@
+import { resetFunctionalSpecs, functionalSpecResponse } from './functional-spec'
 import { fixtureDiagnostics } from './diagnostics'
 import { resetPageDeliveries, pageDeliveryResponse } from './page-delivery'
 import { searchResponse } from './search'
@@ -285,6 +286,7 @@ function reset() {
   resetWorkItems()
   resetPageDeliveries()
   resetCopyInventories()
+  resetFunctionalSpecs()
   resetViewportChecks()
   resetMaterials()
   resetReview()
@@ -999,6 +1001,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       path,
       method,
       data,
+      member,
+      String(req.headers['x-access-token'] || ''),
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
+  if (
+    functionalSpecResponse(
+      path,
+      method,
+      method === 'GET' ? Object.fromEntries(url.searchParams) : data,
       member,
       String(req.headers['x-access-token'] || ''),
       revisions,
