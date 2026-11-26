@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRef, watch, ref, nextTick, type PropType } from 'vue'
+import { toRef, watch, ref, nextTick, computed, type PropType } from 'vue'
 import {
   Button as AButton,
   RadioGroup as ARadioGroup,
@@ -18,6 +18,7 @@ import type {
   ReviewPage,
   ReviewAnchor,
   InspectToolTab,
+  ReviewElementTarget,
 } from '../types'
 import PageTree from './PageTree.vue'
 import InspectorPanel from './InspectorPanel.vue'
@@ -31,12 +32,18 @@ const emit = defineEmits<{
   runtimeReady: []
   pageChange: [page: ReviewPage | undefined]
   anchorCapture: [anchor?: ReviewAnchor]
+  elementCapture: [target?: ReviewElementTarget]
 }>()
 const { t } = useI18n()
 const {
   mode,
   anchorStatus,
   anchorCapture,
+  elementStatus,
+  elementCapture,
+  captureElement,
+  locateElement,
+  clearElement,
   captureAnchor,
   locateAnchor,
   clearAnchor,
@@ -83,10 +90,26 @@ watch(
     if (!isNarrow.value) desktopInspector.value?.focusSelection()
   },
 )
-defineExpose({ captureAnchor, locateAnchor, clearAnchor })
+defineExpose({
+  captureAnchor,
+  locateAnchor,
+  clearAnchor,
+  captureElement,
+  locateElement,
+  clearElement,
+})
 watch(anchorCapture, (result) => {
   if (result) emit('anchorCapture', result.anchor)
 })
+watch(elementCapture, (result) => {
+  if (result) emit('elementCapture', result.target)
+})
+const activeElementStatus = computed(() =>
+  elementStatus.value &&
+  ['capturing', 'locating', 'located', 'unavailable'].includes(elementStatus.value)
+    ? elementStatus.value
+    : undefined,
+)
 // A browser load also fires on HTTP errors. Only the existing validated root handshake confirms a prototype.
 watch(anchorStatus, (status) => {
   if (status === 'ready' && !loading.value && !error.value) emit('runtimeReady')
@@ -114,6 +137,10 @@ watch(
 function cancelCapture() {
   clearAnchor()
   emit('anchorCapture')
+}
+function cancelElementCapture() {
+  clearElement()
+  emit('elementCapture')
 }
 function select(path: string, id?: string, page?: PrototypePage) {
   selectPage(path, id, page)
@@ -187,8 +214,27 @@ function select(path: string, id?: string, page?: PrototypePage) {
         />
       </nav>
       <main class="frame-stage">
-        <div v-if="anchorStatus && anchorStatus !== 'ready'" class="anchor-tools" role="status">
+        <div
+          v-if="activeElementStatus || (anchorStatus && anchorStatus !== 'ready')"
+          class="anchor-tools"
+          role="status"
+        >
           <a-alert
+            v-if="activeElementStatus"
+            :type="activeElementStatus === 'unavailable' ? 'warning' : 'info'"
+            :message="
+              t(
+                activeElementStatus === 'unavailable'
+                  ? 'proto.elementUnavailable'
+                  : activeElementStatus === 'capturing'
+                    ? 'proto.elementDrawingHint'
+                    : 'proto.elementSnapshotHint',
+              )
+            "
+            show-icon
+          />
+          <a-alert
+            v-else
             show-icon
             :type="anchorStatus === 'unavailable' ? 'warning' : 'info'"
             :message="
@@ -201,7 +247,10 @@ function select(path: string, id?: string, page?: PrototypePage) {
               )
             "
           />
-          <a-button v-if="anchorStatus === 'capturing'" @click="cancelCapture">{{
+          <a-button v-if="activeElementStatus === 'capturing'" @click="cancelElementCapture">{{
+            t('common.cancel')
+          }}</a-button>
+          <a-button v-else-if="anchorStatus === 'capturing'" @click="cancelCapture">{{
             t('common.cancel')
           }}</a-button>
           <a-button v-else @click="clearAnchor">{{ t('proto.anchorHide') }}</a-button>

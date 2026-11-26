@@ -399,12 +399,23 @@ export interface ReviewAnchor {
   viewportWidth: number
   viewportHeight: number
 }
+/** Exact DOM identity within one fixed revision/page; never an authorization grant. */
+export interface ReviewElementTarget {
+  space: 'frame-element-v1'
+  frames: { elementId: string; resourcePath: string }[]
+  elementId: string
+  tagName: string
+  textHint: string
+  viewportWidth: number
+  viewportHeight: number
+}
 export type ReviewThreadState = 'open' | 'resolved'
 export interface ReviewThread {
   /** Visitor-only, server-authorized capabilities; omission must never grant access. */
   canReopen?: boolean
   accessMode?: 'own' | 'associated'
   anchor?: ReviewAnchor | null
+  elementTarget?: ReviewElementTarget | null
   id: string
   revisionId: string
   pageId: string
@@ -462,6 +473,7 @@ export interface ReviewMessageInput extends ReviewThreadPage {
 }
 export interface ReviewCreateInput extends ReviewMessageInput {
   anchor?: ReviewAnchor | null
+  elementTarget?: ReviewElementTarget | null
 }
 export interface ReviewStatusInput extends ReviewThreadPage {
   state: ReviewThreadState
