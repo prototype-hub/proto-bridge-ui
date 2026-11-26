@@ -4,6 +4,7 @@ import type {
   InspectElement,
   WorkspacePane,
   ReviewAnchor,
+  ReviewElementTarget,
 } from '@/modules/protohub-manager-ui/types'
 import { runtimePageUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useWorkspaceLocation } from './useWorkspaceLocation'
@@ -12,6 +13,7 @@ import { secureId } from '@/shared/utils/secure-id'
 import { isAnchorEvent, isReviewAnchor, type AnchorStatus } from '../utils/review-anchor'
 import { t } from '@/shared/i18n'
 import { useInspectTools } from './useInspectTools'
+import { useReviewElements } from './useReviewElements'
 
 export function useWorkspace(
   context: Ref<WorkspaceContext>,
@@ -29,6 +31,7 @@ export function useWorkspace(
   const loading = ref(true)
   const error = ref('')
   const element = ref<InspectElement | null>(null)
+  const reviewElements = useReviewElements(context, currentPage, frame, mode, loading)
   const inspectTools = useInspectTools(
     context,
     currentPage,
@@ -93,6 +96,7 @@ export function useWorkspace(
     }
   }
   function captureAnchor(shape: ReviewAnchor['shape']) {
+    reviewElements.clear()
     anchorCommand('capture', shape)
   }
   function locateAnchor(anchor: ReviewAnchor) {
@@ -103,12 +107,31 @@ export function useWorkspace(
     }
     anchorCommand('locate', anchor)
   }
-  function clearAnchor() {
+  function clearGeometry() {
     if (!frame.value?.contentWindow || loading.value) {
       anchorStatus.value = undefined
       return
     }
     anchorCommand('clear')
+  }
+  function clearAnchor() {
+    reviewElements.clear()
+    clearGeometry()
+  }
+  function captureElement() {
+    clearGeometry()
+    mode.value = 'preview'
+    sendMode()
+    reviewElements.captureElement()
+  }
+  function locateElement(target: ReviewElementTarget) {
+    clearGeometry()
+    mode.value = 'preview'
+    sendMode()
+    reviewElements.locateElement(target)
+  }
+  function clearElement() {
+    reviewElements.clear()
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   const media = window.matchMedia('(max-width: 760px)')
@@ -118,6 +141,7 @@ export function useWorkspace(
   }
   const toggleTitle = computed(() => t(navVisible.value ? 'proto.hidePages' : 'proto.showPages'))
   function load() {
+    reviewElements.reset()
     inspectTools.reset()
     clearTimeout(anchorTimer)
     anchorGeneration++
@@ -159,8 +183,10 @@ export function useWorkspace(
     anchorChannel = secureId()
     anchorGeneration = 0
     anchorCommand('ready')
+    reviewElements.documentLoaded()
   }
   function failed() {
+    reviewElements.reset()
     inspectTools.reset()
     clearTimeout(timer)
     loading.value = false
@@ -168,6 +194,7 @@ export function useWorkspace(
   }
   // Opaque origin alone is not identity: accept messages only from this prototype frame tree.
   function receive(event: MessageEvent<unknown>) {
+    reviewElements.receive(event)
     inspectTools.receive(event)
     // Geometry is root-only; recursive inspect messages retain their separate established policy.
     if (
@@ -215,12 +242,16 @@ export function useWorkspace(
   })
   // Reauthorization can replace a same-URL context; invalidate tools without inventing an iframe load.
   watch(context, () => {
+    reviewElements.clear()
     inspectTools.reset()
     if (mode.value === 'inspect' && !loading.value) inspectTools.ready()
   })
   watch(mode, () => {
     inspectTools.reset()
-    if (mode.value === 'inspect') clearAnchor()
+    if (mode.value === 'inspect') {
+      reviewElements.cancelCapture()
+      clearGeometry()
+    }
     element.value = null
     inspectorOpen.value = false
     sendMode()
@@ -241,6 +272,11 @@ export function useWorkspace(
     ...location,
     anchorStatus,
     anchorCapture,
+    elementStatus: reviewElements.status,
+    elementCapture: reviewElements.capture,
+    captureElement,
+    locateElement,
+    clearElement,
     captureAnchor,
     locateAnchor,
     clearAnchor,

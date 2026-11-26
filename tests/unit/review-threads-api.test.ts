@@ -413,3 +413,40 @@ it('adds create-only anchor to JSON and multipart request parts while preserving
       ),
   ).toBe(true)
 })
+
+it('keeps create-only nested element metadata in JSON and multipart without introducing member credentials', async () => {
+  const elementTarget = {
+    space: 'frame-element-v1' as const,
+    frames: [{ elementId: 'frame', resourcePath: 'nested/child.html' }],
+    elementId: 'action',
+    tagName: 'button',
+    textHint: 'Send',
+    viewportWidth: 800,
+    viewportHeight: 600,
+  }
+  const input = {
+    revisionId: 'r1',
+    pageId: 'page',
+    text: 'Element feedback',
+    clientRequestId: 'element-key',
+    elementTarget,
+  }
+  await publicReviewThreadsApi.create(grant, input, 'csrf')
+  const first = vi.mocked(fetch).mock.calls[0]![1]!
+  expect(JSON.parse(String(first.body))).toEqual({ ...input, accessKey: 'access' })
+  expect(first.headers).not.toHaveProperty('X-Access-Token')
+  await publicReviewThreadsApi.createImage(
+    grant,
+    input,
+    new File(['png'], 'private.png', { type: 'image/png' }),
+    'csrf',
+  )
+  const second = vi.mocked(fetch).mock.calls[1]![1]!
+  const form = second.body as FormData
+  expect([...form.keys()]).toEqual(['request', 'image'])
+  expect(JSON.parse(await blobText(form.get('request') as Blob))).toEqual({
+    ...input,
+    accessKey: 'access',
+  })
+  expect(second.headers).not.toHaveProperty('X-Access-Token')
+})

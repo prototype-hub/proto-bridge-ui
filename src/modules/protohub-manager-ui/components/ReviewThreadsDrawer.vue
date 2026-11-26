@@ -16,7 +16,13 @@ import {
 import { ArrowLeftOutlined, PaperClipOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { useI18n } from 'vue-i18n'
 import LoadState from '@/shared/components/LoadState.vue'
-import type { ReviewPage, ReviewAnchor, ReviewThread, ReviewThreadState } from '../types'
+import type {
+  ReviewPage,
+  ReviewAnchor,
+  ReviewElementTarget,
+  ReviewThread,
+  ReviewThreadState,
+} from '../types'
 import type { ReviewThreadsController } from '../hooks/useReviewThreads'
 const props = defineProps<{
   open: boolean
@@ -34,6 +40,8 @@ const emit = defineEmits<{
   copyThread: [event: MouseEvent]
   captureAnchor: [shape: ReviewAnchor['shape']]
   locateAnchor: [anchor: ReviewAnchor]
+  captureElement: []
+  locateElement: [target: ReviewElementTarget]
   overview: []
   associate: []
   associationFocusRestored: []
@@ -55,6 +63,7 @@ const guarded = computed(
     !!state.text.value ||
     !!state.imageFile.value ||
     !!state.anchor.value ||
+    !!state.elementTarget.value ||
     state.hasPendingRequest.value ||
     assignment.editing.value ||
     assignment.unknown.value,
@@ -66,7 +75,13 @@ async function show(next: 'list' | 'detail') {
     const trigger = props.restoreAssociationFocus
       ? content.value?.querySelector<HTMLElement>('[data-association-trigger]')
       : undefined
-    ;(trigger || (next === 'list' ? listHeading : taskHeading).value)?.focus()
+    const target =
+      next === 'list'
+        ? listHeading.value
+        : taskHeading.value ||
+          content.value?.querySelector<HTMLElement>('textarea:not(:disabled)') ||
+          content.value?.querySelector<HTMLElement>('button:not(:disabled)')
+    ;(trigger || target)?.focus()
     if (props.restoreAssociationFocus) emit('associationFocusRestored')
   }
 }
@@ -236,6 +251,7 @@ function selectImage(event: Event) {
             <p>{{ t('proto.feedbackPageHint') }}</p>
             <p>{{ t('proto.anchorHint') }}</p>
             <p>{{ t('proto.anchorSnapshotHint') }}</p>
+            <p>{{ t('proto.elementSnapshotHint') }}</p>
             <p>{{ t('proto.feedbackPlainText') }}</p>
             <p>{{ t('proto.feedbackImageHint') }}</p>
           </div>
@@ -305,12 +321,9 @@ function selectImage(event: Event) {
               >{{ t('common.refresh') }}</a-button
             >
           </nav>
-          <div class="feedback-task-summary">
+          <div v-if="state.selectedId.value" class="feedback-task-summary">
             <h3 ref="taskHeading" class="feedback-task-heading" tabindex="-1">
-              {{
-                state.selected.value?.summary ||
-                t(state.selectedId.value ? 'proto.feedbackDetail' : 'proto.feedbackNew')
-              }}
+              {{ state.selected.value?.summary || t('proto.feedbackDetail') }}
             </h3>
             <a-tag
               v-if="state.selected.value"
@@ -414,6 +427,13 @@ function selectImage(event: Event) {
               />
             </template>
             <template v-if="mode === 'detail' && state.selected.value">
+              <div v-if="state.selected.value.elementTarget" class="feedback-anchor-link">
+                <a-button
+                  :disabled="state.busy.value || state.loading.value"
+                  @click="emit('locateElement', state.selected.value.elementTarget)"
+                  >{{ t('proto.elementLocate') }}</a-button
+                >
+              </div>
               <div v-if="state.selected.value.anchor" class="feedback-anchor-link">
                 <a-button
                   :disabled="state.busy.value || state.loading.value"
@@ -718,15 +738,35 @@ function selectImage(event: Event) {
             class="anchor-draft"
             :aria-label="t('proto.anchorTitle')"
           >
-            <span class="feedback-muted">{{ t('proto.anchorTitle') }}</span>
-            <div class="feedback-status-actions">
+            <div class="feedback-position-choices">
+              <a-button :disabled="state.busy.value" @click="emit('captureElement')">{{
+                t(state.elementTarget.value ? 'proto.elementReplace' : 'proto.elementSelect')
+              }}</a-button>
+              <details class="feedback-area-options">
+                <summary>{{ t('proto.elementMarkArea') }}</summary>
+                <div class="feedback-status-actions">
+                  <a-button
+                    v-for="shape in ['point', 'rect', 'ellipse'] as const"
+                    :key="shape"
+                    size="small"
+                    :disabled="state.busy.value"
+                    @click="emit('captureAnchor', shape)"
+                    >{{ t(`proto.anchor${shape}`) }}</a-button
+                  >
+                </div>
+              </details>
+            </div>
+            <div v-if="state.elementTarget.value" class="feedback-anchor-selected">
+              <span role="status">{{
+                t('proto.elementAttached', {
+                  name: state.elementTarget.value.textHint || t('proto.elementUnnamed'),
+                })
+              }}</span>
               <a-button
-                v-for="shape in ['point', 'rect', 'ellipse'] as const"
-                :key="shape"
-                size="small"
+                type="link"
                 :disabled="state.busy.value"
-                @click="emit('captureAnchor', shape)"
-                >{{ t(`proto.anchor${shape}`) }}</a-button
+                @click="state.selectElementTarget()"
+                >{{ t('proto.anchorRemove') }}</a-button
               >
             </div>
             <div v-if="state.anchor.value" class="feedback-anchor-selected">
@@ -879,10 +919,29 @@ function selectImage(event: Event) {
   font-size: var(--text-small);
 }
 .feedback-help summary,
-.feedback-more summary {
+.feedback-more summary,
+.feedback-area-options summary {
   cursor: pointer;
   width: fit-content;
   padding-block: var(--space-1);
+}
+.feedback-position-choices {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.feedback-area-options summary {
+  min-height: 32px;
+  display: list-item;
+  padding: var(--space-1) var(--space-2);
+}
+.feedback-area-options summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.feedback-area-options[open] .feedback-status-actions {
+  margin-top: var(--space-2);
 }
 .feedback-help-copy {
   display: grid;

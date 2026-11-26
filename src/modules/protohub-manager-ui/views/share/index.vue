@@ -18,7 +18,12 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
+import type {
+  ReviewPage,
+  ReviewAnchor,
+  ReviewElementTarget,
+  ReviewThread,
+} from '@/modules/protohub-manager-ui/types'
 import ReviewThreadsDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsDrawer.vue'
 import ReviewThreadsOverviewDrawer from '@/modules/protohub-manager-ui/components/ReviewThreadsOverviewDrawer.vue'
 import {
@@ -98,6 +103,7 @@ const navigationGuarded = computed(
     !!feedback.text.value ||
     !!feedback.imageFile.value ||
     !!feedback.anchor.value ||
+    !!feedback.elementTarget.value ||
     feedback.hasPendingRequest.value ||
     feedback.assignment.editing.value ||
     feedback.assignment.unknown.value,
@@ -118,6 +124,22 @@ function capturedAnchor(anchor?: ReviewAnchor) {
   if (anchor) feedback.selectAnchor(anchor)
   feedbackOpen.value = true
   drawing.value = false
+}
+function captureElement() {
+  if (!feedback.isPublic.value || feedback.selectedId.value || feedback.busy.value) return
+  drawing.value = true
+  feedbackOpen.value = false
+  workspace.value?.captureElement()
+}
+function capturedElement(target?: ReviewElementTarget) {
+  if (target) feedback.selectElementTarget(target)
+  feedbackOpen.value = true
+  drawing.value = false
+}
+function locateElement(target: ReviewElementTarget) {
+  if (!feedback.readable.value || feedback.selected.value?.elementTarget !== target) return
+  feedbackOpen.value = false
+  workspace.value?.locateElement(target)
 }
 function locateAnchor(anchor: ReviewAnchor) {
   if (
@@ -212,6 +234,7 @@ watch(
         :anchor-epoch="feedback.anchorEpoch.value"
         @runtime-ready="visit.opened"
         @anchor-capture="capturedAnchor"
+        @element-capture="capturedElement"
         @page-change="selectedPage = $event"
         ><template #actions>
           <a-button
@@ -303,6 +326,8 @@ watch(
     @close="threadLocation.close"
     @authenticate="authenticate()"
     @capture-anchor="captureAnchor"
+    @capture-element="captureElement"
+    @locate-element="locateElement"
     @locate-anchor="locateAnchor"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
     @overview="overviewOpen = true"

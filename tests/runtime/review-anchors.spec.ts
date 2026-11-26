@@ -52,6 +52,9 @@ async function authenticate(page: Page, locale: Locale = 'zh') {
   await expect(discussion).toBeVisible()
 }
 async function draw(page: Page, shape: ReviewAnchor['shape'], locale: Locale = 'zh') {
+  const areas = drawer(page, locale).locator('.feedback-area-options')
+  if (!(await areas.evaluate((node) => (node as HTMLDetailsElement).open)))
+    await areas.locator('summary').click()
   await drawer(page, locale)
     .getByRole('button', { name: words(locale)[`anchor${shape}`], exact: true })
     .click()
@@ -294,6 +297,7 @@ test('root navigation and hash changes cannot attach geometry to the shell selec
   await frame(page).locator('#navigate').click()
   await expect(frame(page).locator('body')).toBeVisible()
   await page.getByRole('button', { name: words().feedback, exact: true }).click()
+  await discussion.locator('.feedback-area-options summary').click()
   await discussion.getByRole('button', { name: words().anchorpoint, exact: true }).click()
   await expect(discussion).toBeVisible()
   await expect(page.getByText(words().anchorUnavailable, { exact: true })).toBeVisible()

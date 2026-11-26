@@ -16,6 +16,7 @@ import type {
   ReviewMessage,
   Project,
   ReviewAnchor,
+  ReviewElementTarget,
 } from '@/modules/protohub-manager-ui/types'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { permissionKey } from '@/shared/auth/provider'
@@ -758,6 +759,7 @@ it('cancels a new-draft filter confirmation on immediate Escape without closing 
   expect(state.imageFile.value).toBe(image)
   await click(protoLocales.zh.feedbackContinue)
   expect(area.get('textarea').element.value).toBe('Keep this new draft')
+  expect(area.get('textarea').element).toBe(document.activeElement)
   await area.get('textarea').trigger('keydown', { key: 'Escape', code: 'Escape', keyCode: 27 })
   expect(wrapper.emitted('close')).toHaveLength(1)
 })
@@ -1967,4 +1969,165 @@ it('emits afterClose only when the drawer exit completes in its closed state', a
   await wrapper.setProps({ open: false })
   drawer.vm.$emit('afterOpenChange', false)
   expect(wrapper.emitted('afterClose')).toHaveLength(1)
+})
+
+const elementDraft: ReviewElementTarget = {
+  space: 'frame-element-v1',
+  frames: [{ elementId: 'embeddedPage', resourcePath: 'nested/child.html' }],
+  elementId: 'submitAction',
+  tagName: 'button',
+  textHint: 'Send request',
+  viewportWidth: 800,
+  viewportHeight: 600,
+}
+it('replaces geometry with an isolated element snapshot and removes only position from the draft', async () => {
+  const { state } = setup()
+  await flushPromises()
+  const image = file()
+  state.text.value = 'Keep this question'
+  state.selectImage(image)
+  state.selectAnchor(anchorDraft)
+  const source = structuredClone(elementDraft)
+  state.selectElementTarget(source)
+  source.frames[0]!.resourcePath = 'changed.html'
+  expect(state.anchor.value).toBeUndefined()
+  expect(state.elementTarget.value).toEqual(elementDraft)
+  state.selectElementTarget({ ...elementDraft, elementId: '' })
+  expect(state.elementTarget.value).toEqual(elementDraft)
+  state.selectElementTarget()
+  expect(state.elementTarget.value).toBeUndefined()
+  expect(state.text.value).toBe('Keep this question')
+  expect(state.imageFile.value).toBe(image)
+  state.selectElementTarget(elementDraft)
+  state.selectAnchor(anchorDraft)
+  expect(state.elementTarget.value).toBeUndefined()
+  expect(state.anchor.value).toEqual(anchorDraft)
+})
+it.each([false, true])(
+  'keeps an unknown element %s-image create payload and key independent of the later draft',
+  async (withImage) => {
+    const { state, identity } = setup()
+    await flushPromises()
+    state.text.value = 'Original element question'
+    const image = withImage ? file() : undefined
+    if (image) state.selectImage(image)
+    state.selectElementTarget(elementDraft)
+    const api = withImage ? publicReviewThreadsApi.createImage : publicReviewThreadsApi.create
+    vi.mocked(api).mockRejectedValueOnce(new TypeError('unknown'))
+    await state.send()
+    const first = vi.mocked(api).mock.calls[0]![1]
+    expect(first.elementTarget).toEqual(elementDraft)
+    expect(first).not.toHaveProperty('anchor')
+    identity.value = undefined
+    await flushPromises()
+    expect(state.elementTarget.value).toEqual(elementDraft)
+    identity.value = context()
+    await flushPromises()
+    state.selectElementTarget({ ...elementDraft, elementId: 'laterAction' })
+    state.text.value = 'Later question'
+    await state.retry()
+    expect(vi.mocked(api).mock.calls[1]![1]).toEqual(first)
+    expect(vi.mocked(api).mock.calls[1]![1].elementTarget).not.toBe(first.elementTarget)
+    expect(state.elementTarget.value?.elementId).toBe('laterAction')
+    expect(state.text.value).toBe('Later question')
+    expect(state.imageFile.value).toBe(image)
+    expect(state.selectedId.value).toBeUndefined()
+  },
+)
+it('clears element positions on actor/page changes and never adds them to member top-level drafts', async () => {
+  const { state, target, identity } = setup()
+  await flushPromises()
+  state.selectElementTarget(elementDraft)
+  identity.value = { ...context(), session: { ...context().session!, guestId: 'other' } }
+  await flushPromises()
+  expect(state.elementTarget.value).toBeUndefined()
+  state.selectElementTarget(elementDraft)
+  target.value = { ...publicScope(), page: { ...page, pageId: 'other' } }
+  await flushPromises()
+  expect(state.elementTarget.value).toBeUndefined()
+  const member = setup(memberScope()).state
+  await flushPromises()
+  member.selectElementTarget(elementDraft)
+  expect(member.elementTarget.value).toBeUndefined()
+})
+it('offers element capture, replacement and removal while keeping the draft on capture cancellation', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.text.value = 'Draft question'
+  const wrapper = mount(ReviewThreadsDrawer, {
+    props: { open: true, page, state },
+    global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+  })
+  wrappers.push(wrapper)
+  expect(wrapper.find('.feedback-task-summary').exists()).toBe(false)
+  expect(wrapper.get('label[for="review-feedback-text"]').text()).toBe(protoLocales.zh.feedbackNew)
+  const button = () =>
+    wrapper
+      .findAll('button')
+      .find(
+        (b) =>
+          b.text() === protoLocales.zh.elementSelect || b.text() === protoLocales.zh.elementReplace,
+      )!
+  await button().trigger('click')
+  expect(wrapper.emitted('captureElement')).toHaveLength(1)
+  state.selectElementTarget(elementDraft)
+  await flushPromises()
+  expect(button().text()).toBe(protoLocales.zh.elementReplace)
+  await button().trigger('click')
+  // Starting or cancelling runtime capture emits no replacement target to this state.
+  expect(state.elementTarget.value).toEqual(elementDraft)
+  expect(state.text.value).toBe('Draft question')
+  const remove = wrapper.findAll('button').find((b) => b.text() === protoLocales.zh.anchorRemove)!
+  await remove.trigger('click')
+  expect(state.elementTarget.value).toBeUndefined()
+  expect(state.text.value).toBe('Draft question')
+})
+it.each([publicScope, memberScope])(
+  'locates a stored element in existing visitor/member detail without exposing capture editing',
+  async (scope) => {
+    const stored = { ...thread(), elementTarget: structuredClone(elementDraft) }
+    for (const api of [publicReviewThreadsApi, reviewThreadsApi])
+      vi.mocked(api.detail).mockResolvedValue(stored)
+    const { state } = setup(scope())
+    await flushPromises()
+    state.choose(state.threads.value[0])
+    await flushPromises()
+    const wrapper = mount(ReviewThreadsDrawer, {
+      props: { open: true, page, state },
+      global: { plugins: [i18n], stubs: { ADrawer: { template: '<div><slot /></div>' } } },
+    })
+    wrappers.push(wrapper)
+    const locate = wrapper
+      .findAll('button')
+      .find((b) => b.text() === protoLocales.zh.elementLocate)!
+    expect(locate).toBeDefined()
+    await locate.trigger('click')
+    expect(wrapper.emitted('locateElement')?.[0]).toEqual([stored.elementTarget])
+    expect(
+      wrapper.findAll('button').some((button) => button.text() === protoLocales.zh.elementSelect),
+    ).toBe(false)
+  },
+)
+
+it('reuses a create key for an equivalent reselected element despite incoming property order', async () => {
+  const { state } = setup()
+  await flushPromises()
+  state.text.value = 'Same element'
+  state.selectElementTarget(elementDraft)
+  vi.mocked(publicReviewThreadsApi.create).mockRejectedValueOnce(new TypeError('unknown'))
+  await state.send()
+  const first = vi.mocked(publicReviewThreadsApi.create).mock.calls[0]![1]
+  state.selectElementTarget({
+    viewportHeight: 600,
+    textHint: 'Send request',
+    tagName: 'button',
+    frames: [{ resourcePath: 'nested/child.html', elementId: 'embeddedPage' }],
+    space: 'frame-element-v1',
+    viewportWidth: 800,
+    elementId: 'submitAction',
+  })
+  await state.send()
+  expect(vi.mocked(publicReviewThreadsApi.create).mock.calls[1]![1]).toEqual(first)
+  expect(state.elementTarget.value).toBeUndefined()
+  expect(state.selectedId.value).toBe('t1')
 })

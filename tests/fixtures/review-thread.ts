@@ -1,5 +1,6 @@
 import { associatedAccess } from './review-association'
 import { isReviewAnchor } from '../../src/modules/protohub-manager-ui/utils/review-anchor'
+import { isReviewElementTarget } from '../../src/modules/protohub-manager-ui/utils/review-element'
 import { randomUUID, randomBytes, createHash } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
 import type {
@@ -141,6 +142,14 @@ export function threadResponse(
   const initial = suffix === '' || suffix === '/_with-image'
   if (initial && input.anchor != null && !isReviewAnchor(input.anchor)) {
     send(res, 400, null, 'Invalid anchor')
+    return
+  }
+  if (
+    initial &&
+    input.elementTarget != null &&
+    (input.anchor != null || !isReviewElementTarget(input.elementTarget))
+  ) {
+    send(res, 400, null, 'Invalid element position')
     return
   }
   const [, rawId, action, query] = suffix.split('/')
@@ -344,6 +353,10 @@ export function threadResponse(
         summary: text.slice(0, 200),
         anchor:
           input.anchor == null ? null : (structuredClone(input.anchor) as ReviewThread['anchor']),
+        elementTarget:
+          input.elementTarget == null
+            ? null
+            : (structuredClone(input.elementTarget) as ReviewThread['elementTarget']),
         authorName: guest!.identity.displayName,
         authorCompany: guest!.identity.company,
         verificationLevel: guest!.identity.verificationLevel,

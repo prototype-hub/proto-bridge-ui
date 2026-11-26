@@ -10,6 +10,7 @@ import type {
   ReviewContext,
   ReviewThreadState,
   ReviewAnchor,
+  ReviewElementTarget,
 } from '../types'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '../routes/permissions'
@@ -19,6 +20,7 @@ import { copyText } from '@/shared/utils/feedback'
 import { secureId } from '@/shared/utils/secure-id'
 import { useReviewAssignment } from './useReviewAssignment'
 import { isReviewAnchor } from '../utils/review-anchor'
+import { isReviewElementTarget, cloneReviewElementTarget } from '../utils/review-element'
 import { t } from '@/shared/i18n'
 
 export type ReviewThreadScope =
@@ -39,12 +41,22 @@ export function useReviewThreads(
     text = ref(''),
     visibility = ref<ReviewMessage['visibility']>('public')
   const detail = shallowRef<ReviewThread>()
+  const elementTarget = shallowRef<ReviewElementTarget>()
   const anchor = shallowRef<ReviewAnchor>(),
     anchorEpoch = ref(0)
   function selectAnchor(value?: ReviewAnchor) {
     if (busy.value || selectedId.value || !isPublic.value) return
     if (value && !isReviewAnchor(value)) return
     anchor.value = value ? { ...value } : undefined
+    if (value) elementTarget.value = undefined
+    if (!unknown.value) pending.value = undefined
+    anchorEpoch.value++
+  }
+  function selectElementTarget(value?: ReviewElementTarget) {
+    if (busy.value || selectedId.value || !isPublic.value) return
+    if (value && !isReviewElementTarget(value)) return
+    elementTarget.value = value ? cloneReviewElementTarget(value) : undefined
+    if (value) anchor.value = undefined
     if (!unknown.value) pending.value = undefined
     anchorEpoch.value++
   }
@@ -81,6 +93,7 @@ export function useReviewThreads(
       file?: File
       visibility: ReviewMessage['visibility']
       anchor?: ReviewAnchor
+      elementTarget?: ReviewElementTarget
     }
   }>()
   const hasPendingRequest = computed(() => !!pending.value)
@@ -265,6 +278,7 @@ export function useReviewThreads(
     imageView.value = { messageId, error: t('proto.feedbackImageUnavailable') }
   }
   function clearDraft() {
+    elementTarget.value = undefined
     anchor.value = undefined
     anchorEpoch.value++
     text.value = ''
@@ -471,6 +485,9 @@ export function useReviewThreads(
       file: imageFile.value,
       visibility: visibility.value,
       anchor: anchor.value,
+      elementTarget: elementTarget.value
+        ? cloneReviewElementTarget(elementTarget.value)
+        : undefined,
     }
     const file = !state ? draft.file : undefined
     const body = draft.text.trim()
@@ -490,6 +507,7 @@ export function useReviewThreads(
         state ? '' : target.kind === 'member' ? draft.visibility : 'public',
         ...(file ? [imageSequence] : []),
         ...(!thread && !state && draft.anchor ? [draft.anchor] : []),
+        ...(!thread && !state && draft.elementTarget ? [draft.elementTarget] : []),
       ])
     if (pending.value?.semantic !== semantic)
       pending.value = {
@@ -507,7 +525,8 @@ export function useReviewThreads(
       text.value === draft.text &&
       imageFile.value === draft.file &&
       visibility.value === draft.visibility &&
-      anchor.value === draft.anchor
+      anchor.value === draft.anchor &&
+      JSON.stringify(elementTarget.value) === JSON.stringify(draft.elementTarget)
     controller?.abort()
     controller = request
     busy.value = true
@@ -541,6 +560,9 @@ export function useReviewThreads(
           clientRequestId: receipt.clientRequestId,
           ...(!thread && target.kind === 'public' && draft.anchor
             ? { anchor: { ...draft.anchor } }
+            : {}),
+          ...(!thread && target.kind === 'public' && draft.elementTarget
+            ? { elementTarget: cloneReviewElementTarget(draft.elementTarget) }
             : {}),
         }
         if (target.kind === 'public' && !thread) {
@@ -697,6 +719,8 @@ export function useReviewThreads(
   return {
     assignment,
     anchor,
+    elementTarget,
+    selectElementTarget,
     anchorEpoch,
     selectAnchor,
     imageFile,

@@ -12,7 +12,12 @@ import {
   useReviewThreads,
   type ReviewThreadScope,
 } from '@/modules/protohub-manager-ui/hooks/useReviewThreads'
-import type { ReviewPage, ReviewAnchor, ReviewThread } from '@/modules/protohub-manager-ui/types'
+import type {
+  ReviewPage,
+  ReviewAnchor,
+  ReviewElementTarget,
+  ReviewThread,
+} from '@/modules/protohub-manager-ui/types'
 import CopyInventoryDrawer from '@/modules/protohub-manager-ui/components/CopyInventoryDrawer.vue'
 import FunctionalSpecsSidebar from '@/modules/protohub-manager-ui/components/FunctionalSpecsSidebar.vue'
 import ViewportChecksDrawer from '@/modules/protohub-manager-ui/components/ViewportChecksDrawer.vue'
@@ -240,6 +245,7 @@ const navigationGuarded = computed(
     !!feedback.text.value ||
     !!feedback.imageFile.value ||
     !!feedback.anchor.value ||
+    !!feedback.elementTarget.value ||
     feedback.hasPendingRequest.value ||
     feedback.assignment.editing.value ||
     feedback.assignment.unknown.value,
@@ -250,6 +256,11 @@ async function viewOverview(thread: ReviewThread) {
   else overview.error.value = t('proto.feedbackInvalidTarget')
 }
 const workspace = ref<InstanceType<typeof PrototypeWorkspace>>()
+function locateElement(target: ReviewElementTarget) {
+  if (!feedback.readable.value || feedback.selected.value?.elementTarget !== target) return
+  feedbackOpen.value = false
+  workspace.value?.locateElement(target)
+}
 function locateAnchor(anchor: ReviewAnchor) {
   if (
     !feedback.readable.value ||
@@ -458,6 +469,7 @@ function locateAnchor(anchor: ReviewAnchor) {
     @close="closeFeedback"
     @after-close="afterFeedbackClose"
     @locate-anchor="locateAnchor"
+    @locate-element="locateElement"
     @copy-thread="threadLocation.copy(feedback.selected.value, $event)"
     @overview="overviewOpen = true"
   />
