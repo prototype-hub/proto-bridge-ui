@@ -47,6 +47,14 @@ const RevisionMaterialsPanel = defineAsyncComponent(
 const PageDeliveryDrawer = defineAsyncComponent(
   () => import('../project/components/PageDeliveryDrawer.vue'),
 )
+const DeliveryDocumentWorkspace = defineAsyncComponent(
+  () => import('../../components/DeliveryDocumentWorkspace.vue'),
+)
+const documentOpen = ref(false)
+function closeDocument() {
+  documentOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const deliveryPageId = ref<string>()
 function openDelivery() {
   if (assetsAllowed.value && selectedPage.value) deliveryPageId.value = selectedPage.value.pageId
@@ -117,6 +125,7 @@ watch(assetsAllowed, (allowed) => {
       materialsOpen.value =
       functionalOpen.value =
         false
+    documentOpen.value = false
     deliveryPageId.value = undefined
   }
 })
@@ -310,6 +319,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                       :title="t('proto.searchNewWindow')"
                       >{{ t('proto.searchThisRevision') }}</router-link
                     ></a-menu-item
+                  ><a-menu-item key="delivery-document" @click="documentOpen = true">{{
+                    t('proto.deliveryDocument')
+                  }}</a-menu-item
                   ><a-menu-item key="delivery" :disabled="!selectedPage" @click="openDelivery">{{
                     t('proto.pageDelivery')
                   }}</a-menu-item
@@ -384,6 +396,13 @@ function locateAnchor(anchor: ReviewAnchor) {
       @close="closeMaterials"
     />
   </a-drawer>
+  <delivery-document-workspace
+    v-if="documentOpen && assetsAllowed && project && revision && data"
+    :project="project"
+    :revision="revision"
+    :context="data"
+    @close="closeDocument"
+  />
   <viewport-checks-drawer
     v-if="viewportOpen && assetsAllowed && project && revision && data"
     :project="project"

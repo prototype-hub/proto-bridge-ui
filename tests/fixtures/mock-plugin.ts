@@ -1,3 +1,4 @@
+import { resetDeliveryDocuments, deliveryDocumentResponse } from './delivery-document'
 import { resetFunctionalSpecs, functionalSpecResponse } from './functional-spec'
 import { fixtureDiagnostics } from './diagnostics'
 import { resetPageDeliveries, pageDeliveryResponse } from './page-delivery'
@@ -287,6 +288,7 @@ function reset() {
   resetPageDeliveries()
   resetCopyInventories()
   resetFunctionalSpecs()
+  resetDeliveryDocuments()
   resetViewportChecks()
   resetMaterials()
   resetReview()
@@ -994,6 +996,18 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, result ? 200 : 400, result, result ? undefined : 'Invalid search request')
     return true
   }
+  if (
+    deliveryDocumentResponse(
+      path,
+      method,
+      method === 'GET' ? Object.fromEntries(url.searchParams) : data,
+      revisions,
+      revisionPages,
+      res,
+      send,
+    )
+  )
+    return true
   if (materialsResponse(req, res, path, method, data, bytes, revisions, member, now(), send))
     return true
   if (
