@@ -31,6 +31,19 @@ const RevisionAssetsPanel = defineAsyncComponent(
 const RevisionMaterialsPanel = defineAsyncComponent(
   () => import('../../../components/RevisionMaterialsPanel.vue'),
 )
+const RevisionApprovalPanel = defineAsyncComponent(
+  () => import('../../../components/RevisionApprovalPanel.vue'),
+)
+const approvalRevision = shallowRef<Revision>()
+const approvalPanel = ref<InstanceType<typeof RevisionApprovalPanel>>()
+async function closeApproval() {
+  if (approvalPanel.value && !(await approvalPanel.value.canLeave())) return
+  finishApproval()
+}
+function finishApproval() {
+  approvalRevision.value = undefined
+  void nextTick(() => assetsTrigger?.focus())
+}
 const emit = defineEmits<{
   close: []
   preview: [version: Version, revisionId: string]
@@ -60,7 +73,8 @@ async function closeMaterials() {
   void nextTick(() => assetsTrigger?.focus())
 }
 function closeDrawer() {
-  if (qualityRevision.value) closeQuality()
+  if (approvalRevision.value) void closeApproval()
+  else if (qualityRevision.value) closeQuality()
   else if (materialsRevision.value) void closeMaterials()
   else if (assetsRevision.value) closeAssets()
   else emit('close')
@@ -91,6 +105,7 @@ function closeAssets() {
 watch(
   () => [open.value, props.version?.id],
   () => {
+    approvalRevision.value = undefined
     selected.value = []
     qualityRevision.value = undefined
     qualityTrigger = undefined
@@ -131,17 +146,28 @@ const columns = computed(() => [
     :open="open"
     :title="
       t(
-        materialsRevision
-          ? 'proto.materials'
-          : assetsRevision
-            ? 'proto.originalAssets'
-            : 'proto.revisionHistory',
+        approvalRevision
+          ? 'proto.approvalTitle'
+          : materialsRevision
+            ? 'proto.materials'
+            : assetsRevision
+              ? 'proto.originalAssets'
+              : 'proto.revisionHistory',
       )
     "
     :width="assetsRevision || materialsRevision ? 'min(1100px, 100vw)' : 'min(800px, 100vw)'"
-    :mask-closable="!materialsRevision"
+    :closable="!approvalRevision"
+    :keyboard="!approvalPanel?.blocked"
+    :mask-closable="!materialsRevision && !approvalPanel?.blocked"
     @close="closeDrawer"
   >
+    <revision-approval-panel
+      v-if="approvalRevision"
+      ref="approvalPanel"
+      :project="project"
+      :revision="approvalRevision"
+      @close="finishApproval"
+    />
     <revision-materials-panel
       v-if="materialsRevision"
       ref="materialsPanel"
@@ -159,7 +185,7 @@ const columns = computed(() => [
       @close="closeAssets"
     />
     <section
-      v-show="!assetsRevision && !materialsRevision"
+      v-show="!assetsRevision && !materialsRevision && !approvalRevision"
       role="dialog"
       aria-modal="true"
       :aria-label="t('proto.revisionHistory')"
@@ -225,6 +251,9 @@ const columns = computed(() => [
                   >{{ t('proto.pageResources') }} <down-outlined aria-hidden="true" /></a-button
                 ><template #overlay
                   ><a-menu
+                    ><a-menu-item key="approval" @click="approvalRevision = record">{{
+                      t('proto.approvalTitle')
+                    }}</a-menu-item
                     ><a-menu-item key="delivery" @click="emit('pageDelivery', record)">{{
                       t('proto.pageDelivery')
                     }}</a-menu-item

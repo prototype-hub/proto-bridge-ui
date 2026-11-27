@@ -1,3 +1,8 @@
+import {
+  resetRevisionApprovals,
+  revisionApprovalResponse,
+  approvalStatus,
+} from './revision-approval'
 import { resetDeliveryDocuments, deliveryDocumentResponse } from './delivery-document'
 import { resetFunctionalSpecs, functionalSpecResponse } from './functional-spec'
 import { fixtureDiagnostics } from './diagnostics'
@@ -285,6 +290,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
 function reset() {
   licenseStatus = fixtureLicense()
   resetWorkItems()
+  resetRevisionApprovals()
   resetPageDeliveries()
   resetCopyInventories()
   resetFunctionalSpecs()
@@ -776,6 +782,27 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       return true
     }
+    if (suffix === '/approval/context' && method === 'POST') {
+      const revision = revisions.get(String(data.revisionId))
+      if (
+        !revision ||
+        revision.versionId !== record.versionId ||
+        (record.revisionMode === 'fixed' && revision.id !== record.revisionId) ||
+        data.accessKey !== `access-${record.configVersion}-${revision.id}`
+      )
+        send(res, 404, null, 'Grant unavailable')
+      else {
+        const status = approvalStatus(revision)
+        send(res, 200, {
+          revisionId: revision.id,
+          approved: status.approved,
+          published: status.published,
+          approvedAt: status.approval?.createTime || null,
+          publishedAt: status.publication?.createTime || null,
+        })
+      }
+      return true
+    }
     if (suffix !== '' && suffix !== '/verify' && !suffix.startsWith('/review/')) {
       send(res, 404, null, 'Unknown share endpoint')
       return true
@@ -1054,6 +1081,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       now(),
     )
   )
+    return true
+  if (revisionApprovalResponse(path, method, data, member, token, revisions, res, send, now()))
     return true
   if (
     pageDeliveryResponse(

@@ -1,3 +1,4 @@
+import { revisionApprovalLocales } from './revision-approval'
 import { deliveryDocumentLocales } from './delivery-document'
 import { functionalSpecLocales } from './functional-spec'
 import { diagnosticsLocales } from './diagnostics'
@@ -10,6 +11,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...revisionApprovalLocales.zh,
     ...functionalSpecLocales.zh,
     ...deliveryDocumentLocales.zh,
     ...diagnosticsLocales.zh,
@@ -843,6 +845,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...revisionApprovalLocales.en,
     ...functionalSpecLocales.en,
     ...deliveryDocumentLocales.en,
     ...diagnosticsLocales.en,
