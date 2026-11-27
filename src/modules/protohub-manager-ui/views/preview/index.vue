@@ -2,7 +2,9 @@
 defineOptions({ name: 'PreviewView' })
 import LoadState from '@/shared/components/LoadState.vue'
 import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { demoTarget } from '../../utils/demo-script'
+import type { DemoScriptScope } from '../../types/demo-script'
 import { searchTool } from '../../utils/search'
 import { useSession } from '@/app/stores/session'
 import { usePermissions } from '@/shared/auth/provider'
@@ -90,6 +92,7 @@ async function closeMaterials() {
 }
 const { t } = useI18n()
 const route = useRoute(),
+  router = useRouter(),
   session = useSession(),
   permissions = usePermissions()
 const feedbackOpen = ref(false),
@@ -148,6 +151,43 @@ watch(assetsAllowed, (allowed) => {
     deliveryPageId.value = undefined
   }
 })
+const DemoScriptsWorkspace = defineAsyncComponent(
+  () => import('../../components/DemoScriptsWorkspace.vue'),
+)
+const demoOpen = ref(false)
+const demoScope = computed<DemoScriptScope | undefined>(() =>
+  assetsAllowed.value && project.value && revision.value && data.value && session.user?.id
+    ? {
+        kind: 'member',
+        actorId: session.user.id,
+        project: project.value,
+        revision: revision.value,
+        context: data.value,
+      }
+    : undefined,
+)
+const demoLocation = computed(() => demoTarget(route.query))
+watch(
+  [demoLocation, demoScope],
+  ([target, scope]) => {
+    if (!scope) demoOpen.value = false
+    else if (target && target.revisionId === scope.context.revisionId) demoOpen.value = true
+  },
+  { immediate: true },
+)
+async function closeDemo() {
+  demoOpen.value = false
+  if (
+    route.query.tool === 'demo' ||
+    route.query.scriptId !== undefined ||
+    route.query.stepId !== undefined
+  ) {
+    const { tool: _tool, scriptId: _scriptId, stepId: _stepId, ...query } = route.query
+    await router.replace({ path: route.path, query })
+  }
+  await nextTick()
+  assetsTrigger.value?.$el.focus()
+}
 const requestedTool = computed(() => searchTool(route.query))
 const initialTool = requestedTool.value,
   initialRevision = route.query.revisionId,
@@ -289,6 +329,12 @@ function locateAnchor(anchor: ReviewAnchor) {
 <template>
   <div class="fullscreen">
     <a-alert
+      v-if="demoLocation === null"
+      type="error"
+      show-icon
+      :message="t('proto.demoInvalidTarget')"
+    />
+    <a-alert
       v-if="invalidSearchSource"
       type="error"
       show-icon
@@ -347,6 +393,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                   ><a-menu-item key="approval" @click="approvalOpen = true">{{
                     t('proto.approvalTitle')
                   }}</a-menu-item
+                  ><a-menu-item key="demo" @click="demoOpen = true">{{
+                    t('proto.demoScripts')
+                  }}</a-menu-item
                   ><a-menu-item key="delivery-document" @click="documentOpen = true">{{
                     t('proto.deliveryDocument')
                   }}</a-menu-item
@@ -402,6 +451,12 @@ function locateAnchor(anchor: ReviewAnchor) {
         /></div
     ></load-state>
   </div>
+  <demo-scripts-workspace
+    v-if="demoOpen && demoScope"
+    :scope="demoScope"
+    :initial-target="demoLocation || undefined"
+    @close="closeDemo"
+  />
   <a-drawer
     :open="materialsOpen && assetsAllowed"
     :title="t('proto.materials')"

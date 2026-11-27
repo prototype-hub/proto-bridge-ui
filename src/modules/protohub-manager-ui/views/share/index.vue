@@ -9,6 +9,9 @@ import {
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch, defineAsyncComponent, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { demoTarget } from '../../utils/demo-script'
+import type { DemoScriptScope } from '../../types/demo-script'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
 import { useReviewIdentity } from './hooks/useReviewIdentity'
@@ -37,6 +40,40 @@ const { t } = useI18n()
 // Capture and clean before workspace setup can canonicalize its page link and drop the fragment.
 const invitation = useShareInvitation()
 const { resource, task, password, verify } = usePublicShare()
+const route = useRoute(),
+  router = useRouter()
+const DemoScriptsWorkspace = defineAsyncComponent(
+  () => import('../../components/DemoScriptsWorkspace.vue'),
+)
+const demoOpen = ref(false),
+  demoTrigger = ref<{ $el: HTMLElement }>()
+const demoLocation = computed(() => demoTarget(route.query))
+const demoScope = computed<DemoScriptScope | undefined>(() =>
+  resource.data.value.share?.accessKey && resource.data.value.context
+    ? { kind: 'public', share: resource.data.value.share, context: resource.data.value.context }
+    : undefined,
+)
+watch(
+  [demoLocation, demoScope],
+  ([target, scope]) => {
+    if (!scope) demoOpen.value = false
+    else if (target && target.revisionId === scope.context.revisionId) demoOpen.value = true
+  },
+  { immediate: true },
+)
+async function closeDemo() {
+  demoOpen.value = false
+  if (
+    route.query.tool === 'demo' ||
+    route.query.scriptId !== undefined ||
+    route.query.stepId !== undefined
+  ) {
+    const { tool: _tool, scriptId: _scriptId, stepId: _stepId, ...query } = route.query
+    await router.replace({ path: route.path, query })
+  }
+  await nextTick()
+  demoTrigger.value?.$el.focus()
+}
 const ReviewIdentityDrawer = defineAsyncComponent(
   () => import('./components/ReviewIdentityDrawer.vue'),
 )
@@ -62,6 +99,7 @@ watch(
   () => [share.value?.token, share.value?.revisionId, share.value?.accessKey],
   () => {
     approvalOpen.value = false
+    demoOpen.value = !!(demoLocation.value && demoScope.value)
   },
 )
 const visit = useShareVisit(share)
@@ -227,6 +265,12 @@ watch(
 <template>
   <div class="fullscreen">
     <a-alert
+      v-if="demoLocation === null"
+      type="error"
+      show-icon
+      :message="t('proto.demoInvalidTarget')"
+    />
+    <a-alert
       v-if="threadLocation.invalid.value"
       type="error"
       show-icon
@@ -252,6 +296,9 @@ watch(
         @element-capture="capturedElement"
         @page-change="selectedPage = $event"
         ><template #actions>
+          <a-button v-if="demoScope" ref="demoTrigger" @click="demoOpen = true">{{
+            t('proto.demoScripts')
+          }}</a-button>
           <a-button
             v-if="share?.accessKey && share.revisionId"
             ref="approvalTrigger"
@@ -326,6 +373,12 @@ watch(
       </main></load-state
     >
   </div>
+  <demo-scripts-workspace
+    v-if="demoOpen && demoScope"
+    :scope="demoScope"
+    :initial-target="demoLocation || undefined"
+    @close="closeDemo"
+  />
   <public-approval-drawer
     v-if="approvalOpen && share?.accessKey"
     :share="share"
