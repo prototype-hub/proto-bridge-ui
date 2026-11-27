@@ -161,3 +161,7 @@ export function functionalSpecResponse(
   send(res, 404, null, 'Not found')
   return true
 }
+
+export function traceDescriptions() {
+  return [...records.values()].flat()
+}

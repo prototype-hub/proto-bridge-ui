@@ -1,3 +1,4 @@
+import { resetPageTrace, pageTraceResponse } from './page-trace'
 import {
   resetRevisionApprovals,
   revisionApprovalResponse,
@@ -298,6 +299,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
 function reset() {
   resetProjectOrganization()
   licenseStatus = fixtureLicense()
+  resetPageTrace()
   resetWorkItems()
   resetRevisionApprovals()
   resetPageDeliveries()
@@ -1083,6 +1085,10 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     )
     return true
   }
+  if (
+    pageTraceResponse(path, method, data, member, token, revisions, revisionPages, res, send, now())
+  )
+    return true
   if (path === '/prototype-hub/search/_query' && method === 'POST') {
     const result = searchResponse(data, revisions, activeProject, activeVersion, member)
     send(res, result ? 200 : 400, result, result ? undefined : 'Invalid search request')
