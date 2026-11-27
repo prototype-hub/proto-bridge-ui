@@ -63,6 +63,43 @@ const RevisionApprovalPanel = defineAsyncComponent(
 const PageTraceWorkspace = defineAsyncComponent(
   () => import('../../components/PageTraceWorkspace.vue'),
 )
+const CodeMappingsWorkspace = defineAsyncComponent(
+  () => import('../../components/CodeMappingsWorkspace.vue'),
+)
+const codeMappingsOpen = ref(false)
+const codeMappingLocation = ref<{ revisionId: string; pageId: string; anchor: ReviewAnchor }>()
+function closeCodeMappings() {
+  codeMappingsOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
+/** Geometry remains local; only the existing fixed revision/page identities enter navigation. */
+async function locateCodeMapping(value: { pageId: string; anchor: ReviewAnchor }) {
+  if (!assetsAllowed.value || !data.value?.revisionId || !revision.value || !project.value) return
+  codeMappingsOpen.value = false
+  functionalOpen.value = false
+  if (selectedPage.value?.pageId === value.pageId) {
+    await nextTick()
+    workspace.value?.locateAnchor(value.anchor)
+    return
+  }
+  codeMappingLocation.value = { ...value, revisionId: data.value.revisionId }
+  await router.replace({
+    path: route.path,
+    query: { revisionId: data.value.revisionId, pageId: value.pageId },
+  })
+}
+function runtimeReady() {
+  functionalPanel.value?.runtimeReady()
+  const pending = codeMappingLocation.value
+  if (!pending) return
+  codeMappingLocation.value = undefined
+  if (
+    assetsAllowed.value &&
+    pending.revisionId === data.value?.revisionId &&
+    selectedPage.value?.pageId === pending.pageId
+  )
+    workspace.value?.locateAnchor(pending.anchor)
+}
 const traceOpen = ref(false)
 function closeTrace() {
   traceOpen.value = false
@@ -155,6 +192,8 @@ watch(assetsAllowed, (allowed) => {
       functionalOpen.value =
         false
     traceOpen.value = false
+    codeMappingsOpen.value = false
+    codeMappingLocation.value = undefined
     approvalOpen.value = false
     documentOpen.value = false
     deliveryPageId.value = undefined
@@ -375,7 +414,7 @@ function locateAnchor(anchor: ReviewAnchor) {
           :anchor-epoch="feedback.anchorEpoch.value"
           @page-change="selectedPage = $event"
           @anchor-capture="functionalPanel?.receiveAnchor($event)"
-          @runtime-ready="functionalPanel?.runtimeReady()"
+          @runtime-ready="runtimeReady"
         >
           <template #actions
             ><a-dropdown v-if="assetsAllowed" :trigger="['click']"
@@ -399,6 +438,11 @@ function locateAnchor(anchor: ReviewAnchor) {
                       :title="t('proto.searchNewWindow')"
                       >{{ t('proto.searchThisRevision') }}</router-link
                     ></a-menu-item
+                  ><a-menu-item
+                    key="code-mappings"
+                    :disabled="!selectedPage"
+                    @click="codeMappingsOpen = true"
+                    >{{ t('proto.codeMappings') }}</a-menu-item
                   ><a-menu-item key="trace" @click="traceOpen = true">{{
                     t('proto.traceTitle')
                   }}</a-menu-item
@@ -463,6 +507,18 @@ function locateAnchor(anchor: ReviewAnchor) {
         /></div
     ></load-state>
   </div>
+  <code-mappings-workspace
+    v-if="codeMappingsOpen && assetsAllowed && project && revision && data && session.user?.id"
+    :scope="{
+      actorId: session.user.id,
+      project,
+      revision,
+      context: data,
+      initialPage: selectedPage,
+    }"
+    @close="closeCodeMappings"
+    @locate="locateCodeMapping"
+  />
   <page-trace-workspace
     v-if="traceOpen && assetsAllowed && project && revision && data && session.user?.id"
     :scope="{
