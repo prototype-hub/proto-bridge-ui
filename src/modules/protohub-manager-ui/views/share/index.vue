@@ -8,7 +8,7 @@ import {
   Alert as AAlert,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { computed, ref, watch, defineAsyncComponent } from 'vue'
+import { computed, ref, watch, defineAsyncComponent, nextTick } from 'vue'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
 import { useReviewIdentity } from './hooks/useReviewIdentity'
@@ -40,6 +40,15 @@ const { resource, task, password, verify } = usePublicShare()
 const ReviewIdentityDrawer = defineAsyncComponent(
   () => import('./components/ReviewIdentityDrawer.vue'),
 )
+const PublicApprovalDrawer = defineAsyncComponent(
+  () => import('../../components/PublicApprovalDrawer.vue'),
+)
+const approvalOpen = ref(false),
+  approvalTrigger = ref<{ $el: HTMLElement }>()
+function closeApproval() {
+  approvalOpen.value = false
+  void nextTick(() => approvalTrigger.value?.$el.focus())
+}
 const identityOpen = ref(false),
   feedbackOpen = ref(false),
   overviewOpen = ref(false),
@@ -49,6 +58,12 @@ const identityOpen = ref(false),
 const selectedPage = ref<ReviewPage>()
 const reviewToolBlocked = ref(false)
 const share = computed(() => resource.data.value.share)
+watch(
+  () => [share.value?.token, share.value?.revisionId, share.value?.accessKey],
+  () => {
+    approvalOpen.value = false
+  },
+)
 const visit = useShareVisit(share)
 const identity = useReviewIdentity(
   share,
@@ -238,6 +253,12 @@ watch(
         @page-change="selectedPage = $event"
         ><template #actions>
           <a-button
+            v-if="share?.accessKey && share.revisionId"
+            ref="approvalTrigger"
+            @click="approvalOpen = true"
+            >{{ t('proto.approvalTitle') }}</a-button
+          >
+          <a-button
             v-if="share?.reviewEnabled && share.revisionMode === 'fixed'"
             type="primary"
             :disabled="!selectedPage"
@@ -305,6 +326,11 @@ watch(
       </main></load-state
     >
   </div>
+  <public-approval-drawer
+    v-if="approvalOpen && share?.accessKey"
+    :share="share"
+    @close="closeApproval"
+  />
   <review-identity-drawer
     v-if="identityOpen"
     :state="identity"

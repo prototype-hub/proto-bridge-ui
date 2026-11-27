@@ -55,6 +55,19 @@ const PageDeliveryDrawer = defineAsyncComponent(
 const DeliveryDocumentWorkspace = defineAsyncComponent(
   () => import('../../components/DeliveryDocumentWorkspace.vue'),
 )
+const RevisionApprovalPanel = defineAsyncComponent(
+  () => import('../../components/RevisionApprovalPanel.vue'),
+)
+const approvalOpen = ref(false)
+const approvalPanel = ref<InstanceType<typeof RevisionApprovalPanel>>()
+async function closeApproval() {
+  if (approvalPanel.value && !(await approvalPanel.value.canLeave())) return
+  finishApproval()
+}
+function finishApproval() {
+  approvalOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const documentOpen = ref(false)
 function closeDocument() {
   documentOpen.value = false
@@ -130,6 +143,7 @@ watch(assetsAllowed, (allowed) => {
       materialsOpen.value =
       functionalOpen.value =
         false
+    approvalOpen.value = false
     documentOpen.value = false
     deliveryPageId.value = undefined
   }
@@ -330,6 +344,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                       :title="t('proto.searchNewWindow')"
                       >{{ t('proto.searchThisRevision') }}</router-link
                     ></a-menu-item
+                  ><a-menu-item key="approval" @click="approvalOpen = true">{{
+                    t('proto.approvalTitle')
+                  }}</a-menu-item
                   ><a-menu-item key="delivery-document" @click="documentOpen = true">{{
                     t('proto.deliveryDocument')
                   }}</a-menu-item
@@ -405,6 +422,23 @@ function locateAnchor(anchor: ReviewAnchor) {
           : undefined
       "
       @close="closeMaterials"
+    />
+  </a-drawer>
+  <a-drawer
+    :open="approvalOpen && assetsAllowed"
+    :title="t('proto.approvalTitle')"
+    width="min(800px, 100vw)"
+    :closable="false"
+    :keyboard="!approvalPanel?.blocked"
+    :mask-closable="!approvalPanel?.blocked"
+    @close="closeApproval"
+  >
+    <revision-approval-panel
+      v-if="approvalOpen && assetsAllowed"
+      ref="approvalPanel"
+      :project="project"
+      :revision="revision"
+      @close="finishApproval"
     />
   </a-drawer>
   <delivery-document-workspace
