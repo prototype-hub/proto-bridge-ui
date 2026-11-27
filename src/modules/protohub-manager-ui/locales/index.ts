@@ -1,3 +1,4 @@
+import { codeMappingLocales } from './code-mapping'
 import { pageTraceLocales } from './page-trace'
 import { revisionApprovalLocales } from './revision-approval'
 import { projectOrganizationLocales } from './project-organization'
@@ -14,6 +15,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...codeMappingLocales.zh,
     ...pageTraceLocales.zh,
     ...projectOrganizationLocales.zh,
     ...demoScriptLocales.zh,
@@ -851,6 +853,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...codeMappingLocales.en,
     ...pageTraceLocales.en,
     ...projectOrganizationLocales.en,
     ...demoScriptLocales.en,

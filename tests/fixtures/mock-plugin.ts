@@ -1,3 +1,4 @@
+import { resetCodeMappings, codeMappingResponse } from './code-mapping'
 import { resetPageTrace, pageTraceResponse } from './page-trace'
 import {
   resetRevisionApprovals,
@@ -300,6 +301,7 @@ function reset() {
   resetProjectOrganization()
   licenseStatus = fixtureLicense()
   resetPageTrace()
+  resetCodeMappings()
   resetWorkItems()
   resetRevisionApprovals()
   resetPageDeliveries()
@@ -1085,6 +1087,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     )
     return true
   }
+  if (
+    codeMappingResponse(
+      path,
+      method,
+      data,
+      member,
+      token,
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
   if (
     pageTraceResponse(path, method, data, member, token, revisions, revisionPages, res, send, now())
   )
