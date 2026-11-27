@@ -8,6 +8,7 @@ defineProps<{
   loading: boolean
   error: string
   kind: 'projects' | 'versions'
+  compact?: boolean
 }>()
 const emit = defineEmits<{ retry: [] }>()
 const { t } = useI18n()
@@ -33,7 +34,11 @@ const { t } = useI18n()
       </div>
       <div v-if="$slots.actions" class="capacity-actions"><slot name="actions" /></div>
     </div>
-    <p v-if="kind === 'projects'" class="capacity-counting muted">
+    <details v-if="kind === 'projects' && compact" class="capacity-counting muted">
+      <summary>{{ t('proto.capacityCounting') }}</summary>
+      <p>{{ t('proto.capacity.projectsCounting') }}</p>
+    </details>
+    <p v-else-if="kind === 'projects'" class="capacity-counting muted">
       {{ t('proto.capacity.projectsCounting') }}
     </p>
     <a-alert v-if="!loading && (error || !capacity)" type="warning" show-icon>

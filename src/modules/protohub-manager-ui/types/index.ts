@@ -7,8 +7,34 @@ export interface PrototypeListQuery {
   sortOrder?: 'asc' | 'desc'
 }
 export type PrototypeListSort = 'createTime:desc' | 'createTime:asc' | 'name:asc' | 'name:desc'
+export interface ProjectListQuery extends PrototypeListQuery {
+  archived?: boolean | null
+  groupName?: string | null
+  tag?: string | null
+  favoriteOnly?: boolean
+}
+export interface ProjectOrganizationDraft {
+  groupName: string
+  tags: string[]
+  archived: boolean
+}
+export interface ProjectOrganizationInput extends ProjectOrganizationDraft {
+  expectedVersion: number
+  clientRequestId: string
+}
+export interface ProjectFavoriteInput {
+  favorite: boolean
+  expectedVersion: number
+  clientRequestId: string
+}
 
 export interface Project {
+  groupName: string
+  tags: string[]
+  archivedTime: number | null
+  organizationVersion: number
+  favorite: boolean
+  favoriteVersion: number
   deletedTime?: number | null
   id: string
   name: string

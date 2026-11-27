@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { createPinia } from 'pinia'
+import { projectTestPinia } from '../fixtures/project-session'
 import { usePrototypeList } from '@/modules/protohub-manager-ui/views/project/hooks/usePrototypeList'
 import { useProjectDetail } from '@/modules/protohub-manager-ui/views/project/hooks/useProjectDetail'
 import { request } from '@/shared/api/client'
@@ -31,12 +31,13 @@ function deferred<T>() {
 }
 function renderList(
   fetcher: (query: PrototypeListQuery, options: RequestOptions) => Promise<PageResult<string>>,
+  canLoad: () => boolean = () => true,
 ) {
   let list!: ReturnType<typeof usePrototypeList<string>>
   const wrapper = mount(
     defineComponent({
       setup() {
-        list = usePrototypeList(fetcher)
+        list = usePrototypeList(fetcher, undefined, canLoad)
         return () => h('div')
       },
     }),
@@ -47,6 +48,27 @@ function renderList(
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
   vi.resetAllMocks()
+})
+it('keeps mounted project state and query unchanged while organization recovery protects reloads', async () => {
+  let allowed = true
+  const fetcher = vi.fn(async () => pageResult(['project'], 30))
+  const { list } = renderList(fetcher, () => allowed)
+  await list.resource.load()
+  allowed = false
+  list.keyword.value = 'draft search'
+  await list.search()
+  await list.reset()
+  await list.changeSort('name:asc')
+  await list.page(2, 10)
+  await list.resource.load()
+  expect(fetcher).toHaveBeenCalledOnce()
+  expect(list.resource.data.value).toEqual(['project'])
+  expect(list.pagination).toMatchObject({ current: 1, pageSize: 20, total: 30 })
+  expect(list.sort.value).toBe('createTime:desc')
+  expect(list.keyword.value).toBe('draft search')
+  allowed = true
+  await list.resource.load()
+  expect(fetcher).toHaveBeenCalledTimes(2)
 })
 
 it('submits trimmed literal names only on search, resetting page and preserving the selected sort', async () => {
@@ -191,7 +213,7 @@ it('isolates a late paged version response after changing parent project and res
       }),
       {
         global: {
-          plugins: [router, createPinia()],
+          plugins: [router, projectTestPinia()],
           provide: { [permissionKey]: { can: () => true } },
         },
       },

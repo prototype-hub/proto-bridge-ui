@@ -35,6 +35,12 @@ const selected: Revision = {
   createdAt: 1,
 }
 const project: Project = {
+  groupName: '',
+  tags: [],
+  archivedTime: null,
+  organizationVersion: 0,
+  favorite: false,
+  favoriteVersion: 0,
   id: 'p1',
   name: 'Project',
   createdBy: 'u1',

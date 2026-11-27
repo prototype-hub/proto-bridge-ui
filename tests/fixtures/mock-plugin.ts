@@ -17,12 +17,19 @@ import { fixtureStatistics } from './statistics'
 import { fixtureLicense, fixtureAcceptedLicense, fixtureLicenseDocument } from './license'
 import { licenseFingerprint } from '../../src/modules/protohub-manager-ui/utils/license'
 import { ownerProjectAccess } from './project-access'
+import {
+  resetProjectOrganization,
+  organizationProject,
+  filterProjectOrganization,
+  projectOrganizationFixture,
+} from './project-organization'
 import { systemMenus } from './system-menu'
 import { settings, stores, userTypes } from './system-data'
 import { identityResponse } from './identity-handler'
 import { systemResponse } from './system-handler'
 import { resetSystem } from './system-data'
 import { createHash } from 'node:crypto'
+import { brandingUploadImages } from './images'
 import { readFileSync } from 'node:fs'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -289,6 +296,7 @@ const creationReceiptKey = (req: IncomingMessage, path: string) => {
   return typeof key === 'string' ? `${req.headers['x-access-token']}:${path}:${key}` : undefined
 }
 function reset() {
+  resetProjectOrganization()
   licenseStatus = fixtureLicense()
   resetWorkItems()
   resetRevisionApprovals()
@@ -568,6 +576,28 @@ function multipartFields(bytes: Buffer, contentType: string) {
 }
 export async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url || '/', 'http://localhost')
+  if (url.pathname === '/__test/project-cover.png') {
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
+    res.end(brandingUploadImages.background)
+    return true
+  }
+  if (url.pathname === '/__test/project-organization' && req.method === 'POST') {
+    const template = projects.find((item) => item.id === 'p1')!
+    projects = [
+      template,
+      ...Array.from({ length: 25 }, (_, index) => ({
+        ...template,
+        id: `org-${index}`,
+        name: `Organization fixture ${String(index).padStart(2, '0')}`,
+        groupName: `Group ${String(index).padStart(2, '0')}`,
+        tags: ['common'],
+        favorite: false,
+        favoriteVersion: 0,
+      })),
+    ]
+    send(res, 200, true)
+    return true
+  }
   const path = url.pathname.replace(/^\/api/, '')
   const method = req.method || 'GET'
   if (url.pathname === '/__test/reset') {
@@ -1021,7 +1051,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   }
   if (
     (projectScope &&
-      !['_query', '_usage', '_ownership-migration'].includes(projectScope) &&
+      !['_query', '_usage', '_ownership-migration', '_organization'].includes(projectScope) &&
       !activeProject(decodeURIComponent(projectScope))) ||
     (versionScope &&
       !['_query', '_usage'].includes(versionScope) &&
@@ -1030,6 +1060,27 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     (shareScope && (!scopedShare || !activeVersion(scopedShare.versionId)))
   ) {
     send(res, 404, null, 'Resource unavailable')
+    return true
+  }
+  const organizationResult = projectOrganizationFixture(
+    path,
+    method,
+    data,
+    member ? 'u2' : 'u1',
+    projects.filter((item) => activeProject(item.id)),
+    !member ||
+      projectMembers
+        .get(projectScope || '')
+        ?.some((item) => item.userId === 'u2' && item.role === 'editor') === true,
+    now,
+  )
+  if (organizationResult) {
+    send(
+      res,
+      organizationResult.status,
+      organizationResult.result,
+      organizationResult.status >= 400 ? 'Organization request rejected' : undefined,
+    )
     return true
   }
   if (path === '/prototype-hub/search/_query' && method === 'POST') {
@@ -1133,6 +1184,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   if (
     member &&
     method !== 'GET' &&
+    !['/prototype-hub/projects/_query', '/prototype-hub/versions/_query'].includes(path) &&
     path !== '/menu/user-own/tree' &&
     !path.endsWith('/preview-session')
   ) {
@@ -1235,7 +1287,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       res,
       200,
       prototypePage(
-        projects.filter((item) => activeProject(item.id)),
+        filterProjectOrganization(
+          projects.filter((item) => activeProject(item.id)),
+          data,
+          member ? 'u2' : 'u1',
+        ),
         data,
       ),
     )
@@ -1254,7 +1310,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(
       res,
       200,
-      projects.filter((item) => activeProject(item.id)),
+      projects
+        .filter((item) => activeProject(item.id))
+        .map((item) => organizationProject(item, member ? 'u2' : 'u1')),
     )
   else if (path === '/prototype-hub/projects/_usage' && method === 'GET')
     send(res, 200, {
@@ -1283,6 +1341,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
           id: String(++counter),
           name,
           description,
+          cover: typeof data.cover === 'string' ? data.cover : '',
           createdBy: 'admin',
           createdAt: now(),
           updatedAt: now(),
@@ -1337,7 +1396,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
         deletedProjects.set(id, now())
         revokeResourceAccess(id)
       }
-      send(res, 200, value)
+      send(res, 200, organizationProject(value, member ? 'u2' : 'u1'))
     }
   } else if (path === '/prototype-hub/versions')
     send(

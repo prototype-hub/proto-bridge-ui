@@ -8,6 +8,9 @@ import type {
   ProjectMember,
   MemberCandidate,
   OwnershipMigration,
+  ProjectListQuery,
+  ProjectOrganizationInput,
+  ProjectFavoriteInput,
 } from '../types'
 const segment = encodeURIComponent
 export const projectsApi = {
@@ -28,8 +31,30 @@ export const projectsApi = {
       )
     ).result,
   /** Query only the current user's authorized projects; legacy list keeps its array contract. */
-  query: async (query: PrototypeListQuery, options?: RequestOptions) =>
+  query: async (query: ProjectListQuery, options?: RequestOptions) =>
     (await request.post<PageResult<Project>>('/prototype-hub/projects/_query', query, options))
+      .result,
+  organizationOptions: async (
+    input: { kind: 'group' | 'tag'; keyword?: string; pageIndex: number; pageSize: number },
+    options?: RequestOptions,
+  ) =>
+    (
+      await request.post<PageResult<string>>(
+        '/prototype-hub/projects/_organization/options',
+        input,
+        options,
+      )
+    ).result,
+  organization: async (id: string, input: ProjectOrganizationInput, options?: RequestOptions) =>
+    (
+      await request.put<Project>(
+        `/prototype-hub/projects/${segment(id)}/_organization`,
+        input,
+        options,
+      )
+    ).result,
+  favorite: async (id: string, input: ProjectFavoriteInput, options?: RequestOptions) =>
+    (await request.put<Project>(`/prototype-hub/projects/${segment(id)}/_favorite`, input, options))
       .result,
   list: async (options?: RequestOptions) =>
     (await request.get<Project[]>('/prototype-hub/projects', undefined, options)).result,

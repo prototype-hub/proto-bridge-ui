@@ -2,7 +2,7 @@ import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, ref } from 'vue'
-import { createPinia } from 'pinia'
+import { projectTestPinia } from '../fixtures/project-session'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { request } from '@/shared/api/client'
 import { ApiError } from '@/shared/api/errors'
@@ -77,7 +77,7 @@ async function render(
     {
       props: actualPage && page === 'projects' ? { recycled } : {},
       global: {
-        plugins: [createPinia(), router, i18n],
+        plugins: [projectTestPinia(), router, i18n],
         provide: { [permissionKey]: { can } },
         stubs: { ProjectDialog: true, UploadDialog: true, ShareDialog: true },
       },

@@ -1,3 +1,5 @@
+import { permissionKey } from '@/shared/auth/provider'
+import { projectTestPinia } from '../fixtures/project-session'
 import { ownerProjectAccess } from '../fixtures/project-access'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
@@ -37,6 +39,12 @@ async function renderProjects() {
           return () => h('div')
         },
       }),
+      {
+        global: {
+          plugins: [projectTestPinia()],
+          provide: { [permissionKey]: { can: () => true } },
+        },
+      },
     ),
   )
   await flushPromises()

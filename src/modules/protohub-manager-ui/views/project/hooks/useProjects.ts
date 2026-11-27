@@ -1,56 +1,110 @@
-import { ref, onMounted, onScopeDispose, watch, type Ref } from 'vue'
+import { ref, reactive, onMounted, onScopeDispose, watch, type Ref } from 'vue'
 import { projectsApi } from '@/modules/protohub-manager-ui/api'
 import { createCreationIntent } from '@/modules/protohub-manager-ui/utils/creation-intent'
 import { useResource } from '@/shared/composables/useResource'
 import { useTask } from '@/shared/composables/useTask'
 import { saved, deleted } from '@/shared/utils/feedback'
 import { ApiError } from '@/shared/api/errors'
-import type { ProjectInput, Project, ProjectUsage } from '@/modules/protohub-manager-ui/types'
+import type {
+  ProjectInput,
+  Project,
+  ProjectUsage,
+  ProjectListQuery,
+} from '@/modules/protohub-manager-ui/types'
+import { useProjectActor } from './useProjectActor'
 import { usePrototypeList } from './usePrototypeList'
 import { usePermissions } from '@/shared/auth/provider'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
-export function useProjects(trash: Ref<boolean> = ref(false)) {
+export function useProjects(
+  trash: Ref<boolean> = ref(false),
+  canReload: () => boolean = () => true,
+) {
   const restoredProject = ref<Project>()
   const permissions = usePermissions()
   let generation = 0
+  const filters = reactive<
+    Pick<ProjectListQuery, 'archived' | 'groupName' | 'tag' | 'favoriteOnly'>
+  >({ archived: false, groupName: undefined, tag: undefined, favoriteOnly: false })
   const list = usePrototypeList<Project>(
-    (query, options) => (trash.value ? projectsApi.deleted : projectsApi.query)(query, options),
+    async (query, options) => {
+      const epoch = actor.requirePermission(p.project.query)
+      const result = await (trash.value
+        ? projectsApi.deleted(query, options)
+        : projectsApi.query({ ...query, ...filters }, options))
+      if (!actor.current(epoch)) throw new ApiError('Project access unavailable', 403)
+      return result
+    },
     () => {
       if (editId.value) {
         open.value = false
         editId.value = ''
       }
     },
+    canReload,
   )
   const { resource } = list
-  const usage = useResource<ProjectUsage | undefined>(
-    (signal) => projectsApi.usage({ signal, silent: true }),
-    undefined,
-  )
+  const usage = useResource<ProjectUsage | undefined>(async (signal) => {
+    const epoch = actor.requirePermission(p.project.query)
+    const result = await projectsApi.usage({ signal, silent: true })
+    if (!actor.current(epoch)) throw new ApiError('Project access unavailable', 403)
+    return result
+  }, undefined)
   const intent = createCreationIntent()
   const task = useTask()
   const open = ref(false)
   const editId = ref('')
   const form = ref<ProjectInput>({ name: '', description: '' })
+  const actor = useProjectActor(() => {
+    generation++
+    open.value = false
+    form.value = { name: '', description: '' }
+    list.resetScope()
+    usage.data.value = undefined
+    resetFilters()
+  })
+  function resetFilters() {
+    Object.assign(filters, {
+      archived: false,
+      groupName: undefined,
+      tag: undefined,
+      favoriteOnly: false,
+    })
+  }
+  async function resetSearch() {
+    if (!canReload()) return
+    resetFilters()
+    await list.reset()
+  }
+  async function filter(patch: Partial<typeof filters>) {
+    if (!canReload()) return
+    Object.assign(filters, patch)
+    await list.search()
+  }
   function loadUsage() {
     usage.data.value = undefined
     return usage.load()
   }
   async function refresh() {
+    if (!canReload()) return
     await Promise.all([resource.load(), loadUsage()])
   }
   function edit(project?: Project) {
-    if (trash.value) return
+    if (trash.value || !actor.current()) return
     generation++
     if (project && !projectAllows(project, 'edit')) return
     intent.reset()
     task.error.value = ''
     editId.value = project?.id || ''
-    form.value = { name: project?.name || '', description: project?.description || '' }
+    form.value = {
+      name: project?.name || '',
+      description: project?.description || '',
+      cover: project?.cover || '',
+    }
     open.value = true
   }
   async function save(draft: ProjectInput = form.value) {
+    if (!actor.current()) return
     if (
       editId.value &&
       !projectAllows(
@@ -62,7 +116,14 @@ export function useProjects(trash: Ref<boolean> = ref(false)) {
     const submitted = generation
     await task.run(async () => {
       try {
-        const input = { ...draft, name: draft.name.trim(), description: draft.description?.trim() }
+        const input = {
+          ...draft,
+          ...(editId.value && draft.cover === undefined && form.value.cover
+            ? { cover: form.value.cover }
+            : {}),
+          name: draft.name.trim(),
+          description: draft.description?.trim(),
+        }
         await (editId.value
           ? projectsApi.update(editId.value, input)
           : projectsApi.create(input, {
@@ -70,12 +131,12 @@ export function useProjects(trash: Ref<boolean> = ref(false)) {
                 'Idempotency-Key': intent.key([input.name, input.description, input.cover]),
               },
             }))
-        if (submitted !== generation) return
+        if (submitted !== generation || !actor.current()) return
         saved()
         open.value = false
         await refresh()
       } catch (cause) {
-        if (submitted === generation) throw cause
+        if (submitted === generation && actor.current()) throw cause
       }
     })
   }
@@ -163,7 +224,9 @@ export function useProjects(trash: Ref<boolean> = ref(false)) {
     form,
     search: list.keyword,
     submitSearch: list.search,
-    resetSearch: list.reset,
+    resetSearch,
+    filters,
+    filter,
     sort: list.sort,
     changeSort: list.changeSort,
     pagination: list.pagination,
