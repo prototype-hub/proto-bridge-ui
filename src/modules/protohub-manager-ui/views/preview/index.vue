@@ -60,6 +60,14 @@ const DeliveryDocumentWorkspace = defineAsyncComponent(
 const RevisionApprovalPanel = defineAsyncComponent(
   () => import('../../components/RevisionApprovalPanel.vue'),
 )
+const PageTraceWorkspace = defineAsyncComponent(
+  () => import('../../components/PageTraceWorkspace.vue'),
+)
+const traceOpen = ref(false)
+function closeTrace() {
+  traceOpen.value = false
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
 const approvalOpen = ref(false)
 const approvalPanel = ref<InstanceType<typeof RevisionApprovalPanel>>()
 async function closeApproval() {
@@ -146,6 +154,7 @@ watch(assetsAllowed, (allowed) => {
       materialsOpen.value =
       functionalOpen.value =
         false
+    traceOpen.value = false
     approvalOpen.value = false
     documentOpen.value = false
     deliveryPageId.value = undefined
@@ -390,6 +399,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                       :title="t('proto.searchNewWindow')"
                       >{{ t('proto.searchThisRevision') }}</router-link
                     ></a-menu-item
+                  ><a-menu-item key="trace" @click="traceOpen = true">{{
+                    t('proto.traceTitle')
+                  }}</a-menu-item
                   ><a-menu-item key="approval" @click="approvalOpen = true">{{
                     t('proto.approvalTitle')
                   }}</a-menu-item
@@ -451,6 +463,17 @@ function locateAnchor(anchor: ReviewAnchor) {
         /></div
     ></load-state>
   </div>
+  <page-trace-workspace
+    v-if="traceOpen && assetsAllowed && project && revision && data && session.user?.id"
+    :scope="{
+      actorId: session.user.id,
+      project,
+      revision,
+      context: data,
+      initialPage: selectedPage,
+    }"
+    @close="closeTrace"
+  />
   <demo-scripts-workspace
     v-if="demoOpen && demoScope"
     :scope="demoScope"

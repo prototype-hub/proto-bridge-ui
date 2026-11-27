@@ -138,3 +138,7 @@ export function workItemResponse(
   send(res, 200, row)
   return true
 }
+
+export function traceWorkItems() {
+  return [...rows.values()]
+}

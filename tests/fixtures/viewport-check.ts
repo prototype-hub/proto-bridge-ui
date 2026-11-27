@@ -164,3 +164,7 @@ export function viewportCheckResponse(
   send(res, 404, null, 'Not found')
   return true
 }
+
+export function traceChecks() {
+  return [...checks.values()].flat()
+}
