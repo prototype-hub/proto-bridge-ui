@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h, ref } from 'vue'
-import { createPinia } from 'pinia'
+import { projectTestPinia } from '../fixtures/project-session'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { request } from '@/shared/api/client'
 import { ApiError } from '@/shared/api/errors'
@@ -209,7 +209,7 @@ async function renderPage(grants: string[], path = '/custom/recycle') {
   await router.push(path)
   const wrapper = mount(RecycleView, {
     global: {
-      plugins: [createPinia(), router, i18n],
+      plugins: [projectTestPinia(), router, i18n],
       provide: {
         [permissionKey]: {
           can: (value: string | string[]) => typeof value === 'string' && grants.includes(value),
@@ -270,7 +270,7 @@ it.each(['projectId=p1&projectId=p2', 'projectId=%20%20%20', 'projectId=', 'proj
 it.each([true, false])(
   'compatibly routes old version recycle links only through a granted menu (%s)',
   async (granted) => {
-    const pinia = createPinia()
+    const pinia = projectTestPinia()
     useSession(pinia).menus = [
       {
         id: 'recycle',

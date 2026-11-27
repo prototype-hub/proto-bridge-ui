@@ -1,4 +1,5 @@
 import { revisionApprovalLocales } from './revision-approval'
+import { projectOrganizationLocales } from './project-organization'
 import { demoScriptLocales } from './demo-script'
 import { deliveryDocumentLocales } from './delivery-document'
 import { functionalSpecLocales } from './functional-spec'
@@ -12,6 +13,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...projectOrganizationLocales.zh,
     ...demoScriptLocales.zh,
     ...revisionApprovalLocales.zh,
     ...functionalSpecLocales.zh,
@@ -643,7 +645,7 @@ export const protoLocales = {
     capacity: {
       projectsScope: '实例项目容量',
       projectsCounting:
-        '包含项目管理和回收站中的项目；到期自动永久清理数据和文件成功后才释放额度。',
+        '包含活动、归档和回收站中的项目；到期自动永久清理数据和文件成功后才释放额度。',
       versionsScope: '当前项目版本容量',
       used: '已用 {used} / {limit}',
       remaining: '还可新增 {count} 个',
@@ -847,6 +849,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...projectOrganizationLocales.en,
     ...demoScriptLocales.en,
     ...revisionApprovalLocales.en,
     ...functionalSpecLocales.en,
@@ -1559,7 +1562,7 @@ export const protoLocales = {
     capacity: {
       projectsScope: 'Instance project capacity',
       projectsCounting:
-        'Includes active and recycled projects. Quota is released only after automatic permanent cleanup of data and files succeeds.',
+        'Includes active, archived and recycled projects. Quota is released only after automatic permanent cleanup of data and files succeeds.',
       versionsScope: 'Version capacity in this project',
       used: 'Used {used} / {limit}',
       remaining: '{count} more available',

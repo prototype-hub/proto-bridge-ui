@@ -27,6 +27,9 @@ import { extensions } from '@/app/modules/extensions'
 import type { Revision, Version } from '@/modules/protohub-manager-ui/types'
 import { projectAllows } from '@/modules/protohub-manager-ui/utils/project-access'
 import ProjectMembersDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectMembersDialog.vue'
+import ProjectOrganizationActions from '../components/ProjectOrganizationActions.vue'
+import ProjectCover from '../components/ProjectCover.vue'
+import ProjectMetadata from '../components/ProjectMetadata.vue'
 const RevisionHistoryDrawer = defineAsyncComponent(
   () => import('@/modules/protohub-manager-ui/views/project/components/RevisionHistoryDrawer.vue'),
 )
@@ -87,6 +90,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const session = useSession()
+const organizationProtected = ref(false)
 const {
   resource,
   usage,
@@ -108,7 +112,7 @@ const {
   upload,
   preview,
   remove,
-} = useProjectDetail()
+} = useProjectDetail(() => !organizationProtected.value)
 // Navigation must not retain an open management scope from the previous project.
 watch(
   () => resource.data.value.project?.id,
@@ -177,7 +181,14 @@ watch(
     @back="router.push(projectListLocation(router, session.menus, route.query))"
     ><template #actions
       ><a-space wrap
-        ><router-link
+        ><project-organization-actions
+          v-if="resource.data.value.project"
+          class="project-detail-organization"
+          :project="resource.data.value.project"
+          @protect="organizationProtected = $event"
+          @changed="(value) => (resource.data.value = { ...resource.data.value, project: value })"
+        />
+        <router-link
           v-if="session.can(p.version.query) && resource.data.value.project"
           :to="{
             name: 'PrototypeHub-search',
@@ -199,6 +210,23 @@ watch(
         ></a-space
       ></template
     >
+    <div
+      v-if="
+        resource.data.value.project &&
+        (resource.data.value.project.cover ||
+          resource.data.value.project.groupName ||
+          resource.data.value.project.tags?.length ||
+          resource.data.value.project.archivedTime != null)
+      "
+      class="project-identity-summary"
+    >
+      <project-cover
+        v-if="resource.data.value.project.cover"
+        :value="resource.data.value.project.cover"
+        :name="resource.data.value.project.name"
+      />
+      <project-metadata :project="resource.data.value.project" />
+    </div>
     <p v-if="resource.data.value.project?.description" class="project-summary">
       {{ resource.data.value.project.description }}
     </p>
@@ -207,6 +235,7 @@ watch(
     </p>
     <prototype-list-toolbar
       v-model:keyword="search"
+      :inert="organizationProtected || undefined"
       :sort="sort"
       :loading="resource.loading.value"
       @search="submitSearch"
@@ -246,7 +275,11 @@ watch(
       :loading="resource.loading.value"
       :error="resource.error.value"
       @retry="resource.load"
-      ><div ref="shareEntries" class="panel stack project-versions-panel">
+      ><div
+        ref="shareEntries"
+        class="panel stack project-versions-panel"
+        :inert="organizationProtected || undefined"
+      >
         <div class="version-list-heading">
           <h2 ref="listHeading" tabindex="-1">{{ t('proto.versions') }}</h2>
           <span class="muted">{{ t('proto.listResults', { count: pagination.total }) }}</span>
@@ -410,6 +443,31 @@ watch(
   /></page-container>
 </template>
 <style scoped>
+.project-detail-page :deep(.pro-page-header) {
+  position: relative;
+}
+.project-detail-organization {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-6);
+}
+.project-detail-organization :deep(.organization-feedback) {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 100;
+  width: min(300px, calc(100vw - 32px));
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.project-identity-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
 .project-summary {
   margin: calc(-1 * var(--space-2)) 0 var(--space-4);
   color: var(--color-muted);

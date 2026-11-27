@@ -4,6 +4,7 @@ import { projectsApi, versionsApi } from '@/modules/protohub-manager-ui/api'
 import { applicationUrl } from '@/modules/protohub-manager-ui/utils/urls'
 import { useResource } from '@/shared/composables/useResource'
 import { usePrototypeList } from './usePrototypeList'
+import { useProjectActor } from './useProjectActor'
 import { useTask } from '@/shared/composables/useTask'
 import { deleted } from '@/shared/utils/feedback'
 import { ApiError } from '@/shared/api/errors'
@@ -19,7 +20,7 @@ import type {
   Project,
   VersionUsage,
 } from '@/modules/protohub-manager-ui/types'
-export function useProjectDetail() {
+export function useProjectDetail(canReload: () => boolean = () => true) {
   const route = useRoute()
   const router = useRouter()
   const id = computed(() => (typeof route.params.id === 'string' ? route.params.id : ''))
@@ -33,13 +34,20 @@ export function useProjectDetail() {
   const shareVersion = ref<Version>()
   const historyVersion = ref<Version>()
   const membersOpen = ref(false)
-  const usage = useResource<VersionUsage | undefined>(
-    (signal) =>
-      !!id.value && !legacyRecycle.value && permissions.can(p.version.query)
-        ? versionsApi.usage(id.value, { signal, silent: true })
-        : Promise.resolve(undefined),
-    undefined,
-  )
+  const actor = useProjectActor(() => {
+    generation++
+    project.value = undefined
+    list.resetScope()
+    uploadOpen.value = membersOpen.value = false
+    shareVersion.value = historyVersion.value = undefined
+    usage.data.value = undefined
+  })
+  const usage = useResource<VersionUsage | undefined>(async (signal) => {
+    if (!id.value || legacyRecycle.value || !permissions.can(p.version.query)) return undefined
+    const epoch = actor.requirePermission(p.project.query)
+    const result = await versionsApi.usage(id.value, { signal, silent: true })
+    return actor.current(epoch) ? result : undefined
+  }, undefined)
   const project = shallowRef<Project>()
   const list = usePrototypeList<Version>(
     async (query, options) => {
@@ -47,8 +55,10 @@ export function useProjectDetail() {
         return { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
       try {
         const projectId = id.value
+        const actorEpoch = actor.requirePermission(p.project.query)
         const loaded = await projectsApi.get(projectId, options)
-        if (options.signal?.aborted) return { data: [], total: 0, pageIndex: 0, pageSize: 20 }
+        if (options.signal?.aborted || !actor.current(actorEpoch))
+          return { data: [], total: 0, pageIndex: 0, pageSize: 20 }
         if (loaded.id !== projectId) throw new Error(t('proto.projectUnavailable'))
         project.value = loaded
         if (!projectAllows(loaded, 'manageMembers')) membersOpen.value = false
@@ -56,6 +66,7 @@ export function useProjectDetail() {
         const versions = permissions.can(p.version.query)
           ? await versionsApi.query(projectId, query, options)
           : { data: [], total: 0, pageIndex: 0, pageSize: query.pageSize || 20 }
+        if (!actor.current(actorEpoch)) return { data: [], total: 0, pageIndex: 0, pageSize: 20 }
         if (versions.data.some((version) => version.projectId !== loaded.id))
           throw new Error(t('proto.projectUnavailable'))
         return versions
@@ -74,6 +85,7 @@ export function useProjectDetail() {
       shareVersion.value = undefined
       historyVersion.value = undefined
     },
+    canReload,
   )
   const resource = {
     ...list.resource,
@@ -90,15 +102,22 @@ export function useProjectDetail() {
     return usage.load()
   }
   async function refresh() {
+    if (!canReload()) return
     await Promise.all([resource.load(), loadUsage()])
   }
   function upload(version?: Version) {
-    if (!projectAllows(resource.data.value.project, 'edit') || version?.migrationRequired) return
+    if (
+      !actor.current() ||
+      !projectAllows(resource.data.value.project, 'edit') ||
+      version?.migrationRequired
+    )
+      return
     uploadContext.value = { projectId: id.value, version }
     uploadOpen.value = true
   }
   function preview(version: Version, revisionId?: string) {
     if (
+      !actor.current() ||
       !projectAllows(resource.data.value.project, 'read') ||
       version.projectId !== id.value ||
       version.migrationRequired
@@ -118,7 +137,7 @@ export function useProjectDetail() {
     )
   }
   async function remove(key: string) {
-    if (!projectAllows(resource.data.value.project, 'edit')) return
+    if (!actor.current() || !projectAllows(resource.data.value.project, 'edit')) return
     const submitted = generation
     await task.run(async () => {
       try {

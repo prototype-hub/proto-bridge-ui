@@ -7,6 +7,7 @@ import type { PrototypeListQuery, PrototypeListSort } from '@/modules/protohub-m
 export function usePrototypeList<T>(
   fetcher: (query: PrototypeListQuery, options: RequestOptions) => Promise<PageResult<T>>,
   beforeLoad: () => void = () => {},
+  canLoad: () => boolean = () => true,
 ) {
   const keyword = ref('')
   const sort = ref<PrototypeListSort>('createTime:desc')
@@ -48,23 +49,31 @@ export function usePrototypeList<T>(
     pagination.total = result.total
     return result.data
   }, [])
+  const load = resource.load
+  resource.load = async () => {
+    if (canLoad()) await load()
+  }
 
   /** Explicit submit keeps typing local and resets the page before the remote name search. */
   async function search() {
+    if (!canLoad()) return
     submittedKeyword = keyword.value.trim()
     pagination.current = 1
     await resource.load()
   }
   async function reset() {
+    if (!canLoad()) return
     keyword.value = ''
     await search()
   }
   async function changeSort(value: PrototypeListSort) {
+    if (!canLoad()) return
     sort.value = value
     pagination.current = 1
     await resource.load()
   }
   async function page(current: number, size: number) {
+    if (!canLoad()) return
     pagination.current = size === pagination.pageSize ? current : 1
     pagination.pageSize = size
     await resource.load()

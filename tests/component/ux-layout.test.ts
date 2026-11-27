@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, ref } from 'vue'
-import { createPinia } from 'pinia'
+import { projectTestPinia } from '../fixtures/project-session'
 import { hookHarness } from '../fixtures/hook-harness'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { request } from '@/shared/api/client'
@@ -92,7 +92,7 @@ async function listPage(
     ],
   })
   await router.push(path)
-  const pinia = createPinia()
+  const pinia = projectTestPinia()
   useSession(pinia).menus = [
     {
       id: 'recycle',

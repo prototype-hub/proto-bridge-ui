@@ -1,7 +1,8 @@
 <script setup lang="ts">
 defineOptions({ name: 'ProjectsView' })
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { computed, ref, toRef, watch } from 'vue'
+import { computed, nextTick, reactive, ref, toRef, watch } from 'vue'
+import type { Project } from '@/modules/protohub-manager-ui/types'
 import {
   Pagination as APagination,
   Card as ACard,
@@ -19,6 +20,10 @@ import { useI18n } from 'vue-i18n'
 import { useProjects } from '@/modules/protohub-manager-ui/views/project/hooks/useProjects'
 import { protoPermissions as p } from '@/modules/protohub-manager-ui/routes/permissions'
 import PrototypeListToolbar from '@/modules/protohub-manager-ui/views/project/components/PrototypeListToolbar.vue'
+import ProjectListToolbar from './components/ProjectListToolbar.vue'
+import ProjectOrganizationActions from './components/ProjectOrganizationActions.vue'
+import ProjectCover from './components/ProjectCover.vue'
+import ProjectMetadata from './components/ProjectMetadata.vue'
 import ProjectDialog from '@/modules/protohub-manager-ui/views/project/components/ProjectDialog.vue'
 import CapacityNotice from '@/modules/protohub-manager-ui/views/project/components/CapacityNotice.vue'
 import PermissionButton from '@/shared/components/PermissionButton.vue'
@@ -37,6 +42,8 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const session = useSession()
+const protectedProjects = reactive(new Set<string>())
+const organizationProtected = computed(() => protectedProjects.size > 0)
 const {
   resource,
   trash,
@@ -53,12 +60,14 @@ const {
   resetSearch,
   sort,
   changeSort,
+  filters,
+  filter,
   pagination,
   page,
   edit,
   save,
   remove,
-} = useProjects(toRef(props, 'recycled'))
+} = useProjects(toRef(props, 'recycled'), () => !organizationProtected.value)
 const versionRecycle = computed(() =>
   restoredProject.value
     ? recycleListLocation(router, session.menus, restoredProject.value.id)
@@ -69,8 +78,31 @@ function openDetail(id: string) {
 }
 const creationAction = ref<HTMLElement>()
 const listHeading = ref<HTMLElement>()
+const projectGrid = ref<HTMLElement>()
+function protectProject(id: string, value: boolean) {
+  if (value) protectedProjects.add(id)
+  else protectedProjects.delete(id)
+}
+async function organizationChanged(value: Project, kind: 'organization' | 'favorite') {
+  resource.data.value = resource.data.value.map((project) =>
+    project.id === value.id ? value : project,
+  )
+  // The completed request may reload scoped counts; unresolved drafts and keys keep their cards mounted.
+  await nextTick()
+  await refresh()
+  await nextTick()
+  const actions = Array.from(
+    projectGrid.value?.querySelectorAll<HTMLElement>('.project-organization-actions') || [],
+  ).find((node) => node.dataset.projectId === value.id)
+  ;(
+    actions?.querySelector<HTMLButtonElement>(
+      kind === 'favorite' ? '.project-favorite' : '.project-organization-menu-trigger',
+    ) || listHeading.value
+  )?.focus()
+}
 let returnToCreation = false
 function createProject() {
+  if (organizationProtected.value) return
   returnToCreation = true
   edit()
 }
@@ -112,19 +144,24 @@ watch(
         ></template
       >
     </a-alert>
-    <prototype-list-toolbar
+    <component
+      :is="trash ? PrototypeListToolbar : ProjectListToolbar"
       v-model:keyword="search"
       :sort="sort"
+      :filters="filters"
       :loading="resource.loading.value"
-      @search="submitSearch"
-      @reset="resetSearch"
-      @sort="changeSort"
-      @refresh="refresh" />
+      :disabled="organizationProtected"
+      @search="!organizationProtected && submitSearch()"
+      @reset="!organizationProtected && resetSearch()"
+      @sort="!organizationProtected && changeSort($event)"
+      @filter="!organizationProtected && filter($event)"
+      @refresh="!organizationProtected && refresh()" />
     <capacity-notice
       :capacity="usage.data.value?.projects"
       :loading="usage.loading.value"
       :error="usage.error.value"
       kind="projects"
+      :compact="!trash"
       @retry="loadUsage"
     >
       <template v-if="!trash" #actions>
@@ -134,6 +171,7 @@ watch(
             type="primary"
             :disabled="
               usage.loading.value ||
+              organizationProtected ||
               !!usage.error.value ||
               usage.data.value?.projects.canCreate !== true
             "
@@ -154,7 +192,7 @@ watch(
       :error="resource.error.value"
       :empty="!resource.data.value.length"
       @retry="resource.load"
-      ><div class="project-grid">
+      ><div ref="projectGrid" class="project-grid">
         <a-card
           v-for="project in resource.data.value"
           :key="project.id"
@@ -168,12 +206,21 @@ watch(
           @keydown.space.self.prevent="!trash && openDetail(project.id)"
           ><article class="project-card-content">
             <header class="project-card-header">
-              <span class="project-icon" aria-hidden="true"><folder-open-outlined /></span
+              <project-cover v-if="project.cover" :value="project.cover" :name="project.name" />
+              <span v-else class="project-icon" aria-hidden="true"><folder-open-outlined /></span
               ><span class="project-name">{{ project.name }}</span>
+              <project-organization-actions
+                v-if="!trash"
+                :project="project"
+                :blocked="organizationProtected && !protectedProjects.has(project.id)"
+                @protect="protectProject(project.id, $event)"
+                @changed="organizationChanged"
+              />
             </header>
             <div class="project-description">
               <text-ellipsis :text="project.description" />
             </div>
+            <project-metadata v-if="!trash" :project="project" />
             <footer class="project-card-footer">
               <span class="project-updated muted">
                 <clock-circle-outlined />
@@ -208,6 +255,7 @@ watch(
                   :label="t('common.edit')"
                   :icon="EditOutlined"
                   :permission="p.project.save"
+                  :disabled="organizationProtected"
                   @action="edit(project)"
                 />
                 <action-button
@@ -216,7 +264,7 @@ watch(
                   :icon="DeleteOutlined"
                   :permission="p.project.delete"
                   danger
-                  :disabled="task.busy.value"
+                  :disabled="task.busy.value || organizationProtected"
                   :confirm="t('proto.projectDeleteConfirm')"
                   @action="remove(project.id)"
                 />
@@ -228,7 +276,8 @@ watch(
       v-if="pagination.total"
       v-bind="pagination"
       class="project-pagination"
-      @change="page" />
+      :disabled="organizationProtected"
+      @change="(current, size) => !organizationProtected && page(current, size)" />
     <project-dialog
       :open="open"
       :form="form"
@@ -294,9 +343,13 @@ watch(
 }
 .project-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   min-width: 0;
   gap: var(--space-3);
+}
+.project-card-header :deep(.project-organization-actions) {
+  max-width: 100%;
 }
 .project-icon {
   display: inline-flex;

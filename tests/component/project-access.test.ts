@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h, ref } from 'vue'
 import { Modal, Form, Select } from 'ant-design-vue'
-import { createPinia } from 'pinia'
+import { projectTestPinia } from '../fixtures/project-session'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { request } from '@/shared/api/client'
 import { ApiError } from '@/shared/api/errors'
@@ -113,7 +113,7 @@ async function detailPage(
   })
   const wrapper = mount(ui ? ProjectDetail : harness, {
     global: {
-      plugins: [createPinia(), router, i18n],
+      plugins: [projectTestPinia(), router, i18n],
       provide: { [permissionKey]: { can } },
       stubs: {
         UploadDialog: true,
