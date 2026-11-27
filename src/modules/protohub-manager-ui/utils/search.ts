@@ -1,4 +1,5 @@
 import { previewIdentity } from './preview-location'
+import { demoTarget } from './demo-script'
 import type { PrototypeSearchResult, SearchScope } from '../types/search'
 
 /** Only opaque scope IDs and a controlled tool marker may enter a source URL. */
@@ -29,6 +30,8 @@ export function searchSourceLocation(row: PrototypeSearchResult) {
 export function searchTool(
   query: Record<string, unknown>,
 ): 'copy' | 'materials' | null | undefined {
+  // Demo links have their own strict parser and unavailable state.
+  if (demoTarget(query) !== undefined) return undefined
   if (query.tool === undefined) return query.materialId === undefined ? undefined : null
   if (query.threadId !== undefined) return null
   if (query.tool !== 'copy' && query.tool !== 'materials') return null

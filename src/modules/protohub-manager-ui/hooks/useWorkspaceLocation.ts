@@ -12,6 +12,7 @@ import {
 import { copyText } from '@/shared/utils/feedback'
 import { t } from '@/shared/i18n'
 import { searchTool } from '../utils/search'
+import { demoQuery, demoTarget } from '../utils/demo-script'
 
 /** Keep page navigation in the app route; runtime grants and credentials never enter copied links. */
 export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: WorkspacePane) {
@@ -48,7 +49,12 @@ export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: Work
       else delete result[pageKey]
       return result
     }
-    return { revisionId: context.value.revisionId, ...(id ? { pageId: id } : {}) }
+    const demo = demoTarget(route.query)
+    return {
+      revisionId: context.value.revisionId,
+      ...(id ? { pageId: id } : {}),
+      ...(demo && demo.revisionId === context.value.revisionId ? demoQuery(demo) : {}),
+    }
   }
   watch(
     [context, () => route.path, () => route.query[pageKey], () => route.query[revisionKey]],
@@ -58,6 +64,10 @@ export function useWorkspaceLocation(context: Ref<WorkspaceContext>, pane?: Work
       currentPage.value = ''
       if (context.value.locationPath && context.value.locationPath !== route.path) {
         error.value = t('proto.invalidPageTarget')
+        return
+      }
+      if (!pane && demoTarget(route.query) === null) {
+        error.value = t('proto.demoInvalidTarget')
         return
       }
       const requestedRevision = previewIdentity(route.query[revisionKey])

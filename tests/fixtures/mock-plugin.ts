@@ -4,6 +4,7 @@ import {
   approvalStatus,
 } from './revision-approval'
 import { resetDeliveryDocuments, deliveryDocumentResponse } from './delivery-document'
+import { resetDemoScripts, demoScriptResponse, publicDemoScriptResponse } from './demo-script'
 import { resetFunctionalSpecs, functionalSpecResponse } from './functional-spec'
 import { fixtureDiagnostics } from './diagnostics'
 import { resetPageDeliveries, pageDeliveryResponse } from './page-delivery'
@@ -295,6 +296,7 @@ function reset() {
   resetCopyInventories()
   resetFunctionalSpecs()
   resetDeliveryDocuments()
+  resetDemoScripts()
   resetViewportChecks()
   resetMaterials()
   resetReview()
@@ -803,6 +805,18 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
       }
       return true
     }
+    if (suffix.startsWith('/demo-scripts')) {
+      const revision = revisions.get(String(data.revisionId))
+      if (
+        !revision ||
+        revision.versionId !== record.versionId ||
+        (record.revisionMode === 'fixed' && revision.id !== record.revisionId) ||
+        data.accessKey !== `access-${record.configVersion}-${revision.id}`
+      )
+        send(res, 404, null, 'Grant unavailable')
+      else publicDemoScriptResponse(suffix, method, data, revision, res, send)
+      return true
+    }
     if (suffix !== '' && suffix !== '/verify' && !suffix.startsWith('/review/')) {
       send(res, 404, null, 'Unknown share endpoint')
       return true
@@ -1023,6 +1037,21 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     send(res, result ? 200 : 400, result, result ? undefined : 'Invalid search request')
     return true
   }
+  if (
+    demoScriptResponse(
+      path,
+      method,
+      data,
+      member,
+      token,
+      revisions,
+      revisionPages,
+      res,
+      send,
+      now(),
+    )
+  )
+    return true
   if (
     deliveryDocumentResponse(
       path,

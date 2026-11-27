@@ -107,6 +107,36 @@ it('retains a validated exact material source when adding the default page, but 
   expect(router.currentRoute.value.query).toEqual({ revisionId: 'r1', pageId: 'detail' })
 })
 
+it('keeps only valid demo identities through canonical page addition and explicit tree navigation', async () => {
+  const { state, router } = await setup(
+    '/preview/p1/v1?tool=demo&revisionId=r1&scriptId=script1&stepId=step1&narration=private',
+  )
+  expect(router.currentRoute.value.query).toEqual({
+    tool: 'demo',
+    revisionId: 'r1',
+    pageId: 'home',
+    scriptId: 'script1',
+    stepId: 'step1',
+  })
+  state.select('nested/details.html', 'detail')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toEqual({
+    tool: 'demo',
+    revisionId: 'r1',
+    pageId: 'detail',
+    scriptId: 'script1',
+    stepId: 'step1',
+  })
+})
+it('does not canonicalize a mixed demo target into an apparently usable default page', async () => {
+  const { state, router } = await setup(
+    '/share/open?tool=demo&revisionId=r1&scriptId=s1&stepId=one&materialId=private',
+  )
+  expect(state.error.value).toBeTruthy()
+  expect(state.selectedPage.value).toBeUndefined()
+  expect(router.currentRoute.value.query.materialId).toBe('private')
+})
+
 it('keeps two comparison namespaces independent and copies their pair without runtime grants', async () => {
   const leftContext = ref({ ...context(), locationPath: '/compare/p1/v1' })
   const rightContext = ref({ ...context(), revisionId: 'r2', locationPath: '/compare/p1/v1' })

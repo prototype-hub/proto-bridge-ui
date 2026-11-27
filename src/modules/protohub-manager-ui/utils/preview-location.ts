@@ -12,6 +12,8 @@ export function reviewThreadTarget(
   query: Record<string, unknown>,
 ): ReviewThreadTarget | null | undefined {
   if (query.threadId === undefined) return undefined
+  if (query.tool === 'demo' || query.scriptId !== undefined || query.stepId !== undefined)
+    return null
   const revisionId = previewIdentity(query.revisionId),
     pageId = previewIdentity(query.pageId),
     threadId = query.threadId
