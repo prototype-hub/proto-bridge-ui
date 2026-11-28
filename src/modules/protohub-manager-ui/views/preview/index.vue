@@ -5,6 +5,7 @@ import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { demoTarget } from '../../utils/demo-script'
 import type { DemoScriptScope } from '../../types/demo-script'
+import type { StudyScope } from '../../types/usability-study'
 import type { DesignTokenScope } from '../../types/design-token-package'
 import { previewIdentity } from '../../utils/preview-location'
 import { searchTool } from '../../utils/search'
@@ -46,13 +47,22 @@ import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/usePreview'
 import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
+const studiesOpen = ref(false)
+const studyScope = shallowRef<StudyScope>()
+function revokeStudies() {
+  studiesOpen.value = false
+  studyScope.value = undefined
+}
 const tokenPackagesOpen = ref(false)
 const tokenPackageScope = shallowRef<DesignTokenScope>()
 function revokeTokenPackages() {
   tokenPackagesOpen.value = false
   tokenPackageScope.value = undefined
 }
-const { data, project, revision, loading, error, expired, load } = usePreview(revokeTokenPackages)
+const { data, project, revision, loading, error, expired, load } = usePreview(() => {
+  revokeTokenPackages()
+  revokeStudies()
+})
 const RevisionAssetsPanel = defineAsyncComponent(
   () => import('../../components/RevisionAssetsPanel.vue'),
 )
@@ -275,6 +285,70 @@ watch(assetsAllowed, (allowed) => {
     deliveryPageId.value = undefined
   }
 })
+const UsabilityStudiesWorkspace = defineAsyncComponent(
+  () => import('../../components/UsabilityStudiesWorkspace.vue'),
+)
+function openStudies() {
+  if (!assetsAllowed.value || !project.value || !revision.value || !data.value || !session.user?.id)
+    return
+  studyScope.value = {
+    kind: 'member',
+    actorId: session.user.id,
+    project: project.value,
+    revision: revision.value,
+    context: data.value,
+  }
+  studiesOpen.value = true
+}
+function closeStudies() {
+  revokeStudies()
+  void nextTick(() => assetsTrigger.value?.$el.focus())
+}
+// Runtime grants can expire without invalidating the member's revision-scoped unsaved study.
+watch(
+  () =>
+    [
+      session.user?.id,
+      String(route.params.projectId),
+      String(route.params.versionId),
+      previewIdentity(route.query.revisionId),
+      permissions.can(p.version.query),
+      project.value,
+      revision.value,
+      data.value,
+    ] as const,
+  (
+    [actor, projectId, versionId, revisionId, canQuery, currentProject, currentRevision, context],
+    previous,
+  ) => {
+    const fixed = studyScope.value
+    if (fixed?.kind !== 'member') return
+    if (
+      actor !== fixed.actorId ||
+      projectId !== fixed.project.id ||
+      versionId !== fixed.revision.versionId ||
+      revisionId === null ||
+      (revisionId !== undefined && revisionId !== fixed.revision.id) ||
+      (revisionId === undefined && previous?.[3] !== undefined) ||
+      !canQuery ||
+      (currentProject &&
+        (currentProject.id !== fixed.project.id || !projectAllows(currentProject, 'read'))) ||
+      (currentRevision &&
+        (currentRevision.id !== fixed.revision.id ||
+          currentRevision.projectId !== fixed.project.id ||
+          currentRevision.versionId !== fixed.revision.versionId))
+    )
+      revokeStudies()
+    else if (currentProject || currentRevision || context)
+      studyScope.value = {
+        ...fixed,
+        project: currentProject || fixed.project,
+        revision: currentRevision || fixed.revision,
+        context: context?.revisionId === fixed.revision.id ? context : fixed.context,
+      }
+  },
+  { flush: 'sync' },
+)
 const DemoScriptsWorkspace = defineAsyncComponent(
   () => import('../../components/DemoScriptsWorkspace.vue'),
 )
@@ -527,6 +601,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                   ><a-menu-item key="approval" @click="approvalOpen = true">{{
                     t('proto.approvalTitle')
                   }}</a-menu-item
+                  ><a-menu-item key="studies" @click="openStudies">{{
+                    t('proto.studies')
+                  }}</a-menu-item
                   ><a-menu-item key="demo" @click="demoOpen = true">{{
                     t('proto.demoScripts')
                   }}</a-menu-item
@@ -615,6 +692,11 @@ function locateAnchor(anchor: ReviewAnchor) {
       initialPage: selectedPage,
     }"
     @close="closeTrace"
+  />
+  <usability-studies-workspace
+    v-if="studiesOpen && studyScope"
+    :scope="studyScope"
+    @close="closeStudies"
   />
   <demo-scripts-workspace
     v-if="demoOpen && demoScope"
