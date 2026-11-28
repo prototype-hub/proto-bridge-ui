@@ -8,10 +8,11 @@ import {
   Alert as AAlert,
 } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { computed, ref, watch, defineAsyncComponent, nextTick } from 'vue'
+import { computed, ref, shallowRef, watch, defineAsyncComponent, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { demoTarget } from '../../utils/demo-script'
 import type { DemoScriptScope } from '../../types/demo-script'
+import type { StudyScope } from '../../types/usability-study'
 import { usePublicShare } from '@/modules/protohub-manager-ui/views/share/hooks/usePublicShare'
 import { useShareInvitation } from './hooks/useShareInvitation'
 import { useReviewIdentity } from './hooks/useReviewIdentity'
@@ -42,6 +43,60 @@ const invitation = useShareInvitation()
 const { resource, task, password, verify } = usePublicShare()
 const route = useRoute(),
   router = useRouter()
+const UsabilityStudiesWorkspace = defineAsyncComponent(
+  () => import('../../components/UsabilityStudiesWorkspace.vue'),
+)
+const studiesOpen = ref(false),
+  studyScope = shallowRef<StudyScope>(),
+  studyTrigger = ref<{ $el: HTMLElement }>(),
+  studyWorkspace = ref<{ focusHeading: () => Promise<void> }>()
+function openStudies() {
+  const { share, context } = resource.data.value
+  if (!share?.reviewEnabled || !share.accessKey || !context) return
+  studyScope.value = { kind: 'public', share, context }
+  studiesOpen.value = true
+}
+function closeStudies() {
+  studiesOpen.value = false
+  studyScope.value = undefined
+  void nextTick(() => studyTrigger.value?.$el.focus())
+}
+watch(
+  () => [String(route.params.token), route.query.revisionId] as const,
+  ([token, revision]) => {
+    const fixed = studyScope.value
+    if (
+      fixed?.kind === 'public' &&
+      (token !== fixed.share.token ||
+        (revision !== undefined && revision !== fixed.share.revisionId))
+    )
+      closeStudies()
+  },
+  { flush: 'sync' },
+)
+watch(
+  () => resource.data.value,
+  ({ share, context }) => {
+    const fixed = studyScope.value
+    if (fixed?.kind !== 'public' || !share) return
+    if (
+      !share.reviewEnabled ||
+      share.token !== fixed.share.token ||
+      share.accessKey !== fixed.share.accessKey ||
+      share.revisionId !== fixed.share.revisionId
+    )
+      closeStudies()
+    else studyScope.value = { kind: 'public', share, context: context || fixed.context }
+  },
+  { flush: 'sync' },
+)
+async function closeIdentity() {
+  identityOpen.value = false
+  if (studiesOpen.value) {
+    await nextTick()
+    await studyWorkspace.value?.focusHeading()
+  }
+}
 const DemoScriptsWorkspace = defineAsyncComponent(
   () => import('../../components/DemoScriptsWorkspace.vue'),
 )
@@ -104,8 +159,21 @@ watch(
 )
 const visit = useShareVisit(share)
 const identity = useReviewIdentity(
-  share,
-  computed(() => identityOpen.value || feedbackOpen.value || overviewOpen.value || drawing.value),
+  computed(
+    () =>
+      share.value ||
+      (studiesOpen.value && studyScope.value?.kind === 'public'
+        ? studyScope.value.share
+        : undefined),
+  ),
+  computed(
+    () =>
+      studiesOpen.value ||
+      identityOpen.value ||
+      feedbackOpen.value ||
+      overviewOpen.value ||
+      drawing.value,
+  ),
   invitation.invitation,
 )
 const feedbackScope = computed<ReviewThreadScope | undefined>(() =>
@@ -289,6 +357,7 @@ watch(
       ><prototype-workspace
         v-if="invitation.ready.value && resource.data.value.context"
         ref="workspace"
+        class="share-workspace"
         :context="resource.data.value.context"
         :anchor-epoch="feedback.anchorEpoch.value"
         @runtime-ready="visit.opened"
@@ -296,6 +365,12 @@ watch(
         @element-capture="capturedElement"
         @page-change="selectedPage = $event"
         ><template #actions>
+          <a-button
+            v-if="share?.reviewEnabled && share.accessKey && resource.data.value.context"
+            ref="studyTrigger"
+            @click="openStudies"
+            >{{ t('proto.studies') }}</a-button
+          >
           <a-button v-if="demoScope" ref="demoTrigger" @click="demoOpen = true">{{
             t('proto.demoScripts')
           }}</a-button>
@@ -373,6 +448,15 @@ watch(
       </main></load-state
     >
   </div>
+  <usability-studies-workspace
+    v-if="studiesOpen && studyScope"
+    ref="studyWorkspace"
+    :scope="studyScope"
+    :identity="identity.context.value"
+    :suspended="identityOpen"
+    @close="closeStudies"
+    @authenticate="openIdentity"
+  />
   <demo-scripts-workspace
     v-if="demoOpen && demoScope"
     :scope="demoScope"
@@ -387,11 +471,12 @@ watch(
   <review-identity-drawer
     v-if="identityOpen"
     :state="identity"
+    :z-index="studiesOpen ? 1300 : undefined"
     :return-to-feedback="returnToFeedback"
     :return-to-overview="returnToOverview"
     :open="identityOpen"
     :invitation="invitation.invitation.value"
-    @close="identityOpen = false"
+    @close="closeIdentity"
     @feedback="returnFeedback"
     @invitation-used="invitation.abandon"
     @abandon-invitation="invitation.abandon"
@@ -435,6 +520,14 @@ watch(
 </template>
 
 <style scoped>
+@container prototype-workspace (min-width: 1101px) {
+  .share-workspace :deep(.workspace-header) {
+    grid-template-columns: minmax(280px, 1fr) auto minmax(0, auto);
+  }
+  .share-workspace :deep(.workspace-actions) {
+    flex-wrap: wrap;
+  }
+}
 .share-password-shell {
   max-height: 100dvh;
   overflow-y: auto;
