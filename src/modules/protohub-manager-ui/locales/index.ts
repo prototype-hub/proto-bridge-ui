@@ -1,3 +1,4 @@
+import { designTokenPackageLocales } from './design-token-package'
 import { codeMappingLocales } from './code-mapping'
 import { pageTraceLocales } from './page-trace'
 import { revisionApprovalLocales } from './revision-approval'
@@ -15,6 +16,7 @@ import { reviewAssociationLocales } from './review-associations'
 import { inspectToolLocales } from './inspect-tools'
 export const protoLocales = {
   zh: {
+    ...designTokenPackageLocales.zh,
     ...codeMappingLocales.zh,
     ...pageTraceLocales.zh,
     ...projectOrganizationLocales.zh,
@@ -853,6 +855,7 @@ export const protoLocales = {
     className: '类名',
   },
   en: {
+    ...designTokenPackageLocales.en,
     ...codeMappingLocales.en,
     ...pageTraceLocales.en,
     ...projectOrganizationLocales.en,

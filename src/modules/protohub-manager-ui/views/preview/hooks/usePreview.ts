@@ -9,7 +9,7 @@ import { t } from '@/shared/i18n'
 import type { WorkspaceContext, Project, Revision } from '@/modules/protohub-manager-ui/types'
 
 /** Exchange a member session only on entry or an explicit retry; expiry unmounts the untrusted frame. */
-export function usePreview() {
+export function usePreview(onMemberUnavailable?: () => void) {
   const route = useRoute()
   const data = shallowRef<WorkspaceContext>()
   const project = shallowRef<Project>()
@@ -42,6 +42,7 @@ export function usePreview() {
     loading.value = true
     error.value = ''
     expired.value = false
+    let memberScopeResolved = false
     try {
       if (revisionId === null) throw new Error(t('proto.invalidPageTarget'))
       const [selectedProject, version] = await Promise.all([
@@ -54,8 +55,10 @@ export function usePreview() {
         selectedProject.id !== projectId ||
         version.projectId !== projectId ||
         !projectAllows(selectedProject, 'read')
-      )
+      ) {
+        onMemberUnavailable?.()
         throw new Error(t('proto.projectUnavailable'))
+      }
       if (version.migrationRequired) throw new Error(t('proto.revisionMigrationRequired'))
       // Resolve the current pointer once. Every subsequent read uses that immutable identity.
       const selectedRevision = revisionId
@@ -67,8 +70,11 @@ export function usePreview() {
         selectedRevision.versionId !== versionId ||
         selectedRevision.projectId !== projectId ||
         (revisionId && selectedRevision.id !== revisionId)
-      )
+      ) {
+        onMemberUnavailable?.()
         throw new Error(t('proto.projectUnavailable'))
+      }
+      memberScopeResolved = true
       const [pages, session] = await Promise.all([
         versionsApi.revisionPages(versionId, selectedRevision.id, options),
         versionsApi.revisionPreviewSession(versionId, selectedRevision.id, options),
@@ -102,6 +108,12 @@ export function usePreview() {
         (cause instanceof ApiError && cause.cancelled)
       )
         return
+      if (
+        cause instanceof ApiError &&
+        !memberScopeResolved &&
+        [401, 403, 404].includes(cause.status)
+      )
+        onMemberUnavailable?.()
       data.value = undefined
       error.value = cause instanceof Error ? cause.message : t('common.unknown')
     } finally {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 defineOptions({ name: 'PreviewView' })
 import LoadState from '@/shared/components/LoadState.vue'
-import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { demoTarget } from '../../utils/demo-script'
 import type { DemoScriptScope } from '../../types/demo-script'
+import type { DesignTokenScope } from '../../types/design-token-package'
+import { previewIdentity } from '../../utils/preview-location'
 import { searchTool } from '../../utils/search'
 import { useSession } from '@/app/stores/session'
 import { usePermissions } from '@/shared/auth/provider'
@@ -44,7 +46,13 @@ import { useI18n } from 'vue-i18n'
 import PrototypeWorkspace from '@/modules/protohub-manager-ui/components/PrototypeWorkspace.vue'
 import { usePreview } from '@/modules/protohub-manager-ui/views/preview/hooks/usePreview'
 import { useReviewThreadLocation } from '@/modules/protohub-manager-ui/hooks/useReviewThreadLocation'
-const { data, project, revision, loading, error, expired, load } = usePreview()
+const tokenPackagesOpen = ref(false)
+const tokenPackageScope = shallowRef<DesignTokenScope>()
+function revokeTokenPackages() {
+  tokenPackagesOpen.value = false
+  tokenPackageScope.value = undefined
+}
+const { data, project, revision, loading, error, expired, load } = usePreview(revokeTokenPackages)
 const RevisionAssetsPanel = defineAsyncComponent(
   () => import('../../components/RevisionAssetsPanel.vue'),
 )
@@ -66,6 +74,29 @@ const PageTraceWorkspace = defineAsyncComponent(
 const CodeMappingsWorkspace = defineAsyncComponent(
   () => import('../../components/CodeMappingsWorkspace.vue'),
 )
+const DesignTokenPackagesWorkspace = defineAsyncComponent(
+  () => import('../../components/DesignTokenPackagesWorkspace.vue'),
+)
+function openTokenPackages() {
+  if (
+    !assetsAllowed.value ||
+    !project.value ||
+    !revision.value ||
+    !session.user?.id ||
+    data.value?.revisionId !== revision.value.id
+  )
+    return
+  tokenPackageScope.value = {
+    actorId: session.user.id,
+    project: project.value,
+    revision: revision.value,
+  }
+  tokenPackagesOpen.value = true
+}
+function closeTokenPackages() {
+  revokeTokenPackages()
+  void nextTick(() => (assetsTrigger.value?.$el || reauthorizeTrigger.value?.$el)?.focus())
+}
 const codeMappingsOpen = ref(false)
 const codeMappingLocation = ref<{ revisionId: string; pageId: string; anchor: ReviewAnchor }>()
 function closeCodeMappings() {
@@ -176,12 +207,57 @@ function closeCopy() {
   void nextTick(() => assetsTrigger.value?.$el.focus())
 }
 const assetsTrigger = ref<{ $el: HTMLElement }>()
+const reauthorizeTrigger = ref<{ $el: HTMLElement }>()
 const assetsAllowed = computed(
   () =>
     !!data.value &&
     !!revision.value &&
     projectAllows(project.value, 'read') &&
     permissions.can(p.version.query),
+)
+// Member metadata keeps its exact scope when only the untrusted runtime grant expires.
+watch(
+  () =>
+    [
+      session.user?.id,
+      String(route.params.projectId),
+      String(route.params.versionId),
+      previewIdentity(route.query.revisionId),
+      permissions.can(p.version.query),
+      project.value,
+      revision.value,
+    ] as const,
+  (
+    [actorId, projectId, versionId, revisionId, canQuery, currentProject, currentRevision],
+    previous,
+  ) => {
+    const fixed = tokenPackageScope.value
+    if (!fixed) return
+    if (
+      actorId !== fixed.actorId ||
+      projectId !== fixed.project.id ||
+      versionId !== fixed.revision.versionId ||
+      revisionId === null ||
+      (revisionId !== undefined && revisionId !== fixed.revision.id) ||
+      (revisionId === undefined && previous?.[3] !== undefined) ||
+      !canQuery ||
+      (currentProject &&
+        (currentProject.id !== fixed.project.id || !projectAllows(currentProject, 'read'))) ||
+      (currentRevision &&
+        (currentRevision.id !== fixed.revision.id ||
+          currentRevision.projectId !== fixed.project.id ||
+          currentRevision.versionId !== fixed.revision.versionId))
+    ) {
+      revokeTokenPackages()
+    } else if (currentProject || currentRevision) {
+      tokenPackageScope.value = {
+        actorId: fixed.actorId,
+        project: currentProject || fixed.project,
+        revision: currentRevision || fixed.revision,
+      }
+    }
+  },
+  { flush: 'sync' },
 )
 watch(assetsAllowed, (allowed) => {
   if (!allowed) {
@@ -402,7 +478,9 @@ function locateAnchor(anchor: ReviewAnchor) {
     />
     <a-alert v-if="expired" type="warning" :message="error" show-icon>
       <template #action
-        ><a-button @click="load">{{ t('proto.reauthorizePreview') }}</a-button></template
+        ><a-button ref="reauthorizeTrigger" @click="load">{{
+          t('proto.reauthorizePreview')
+        }}</a-button></template
       >
     </a-alert>
     <load-state v-else :loading="loading" :error="error" @retry="load"
@@ -461,6 +539,9 @@ function locateAnchor(anchor: ReviewAnchor) {
                   ><a-menu-item key="materials" @click="materialsOpen = true">{{
                     t('proto.materials')
                   }}</a-menu-item
+                  ><a-menu-item key="design-token-packages" @click="openTokenPackages">{{
+                    t('proto.tokenPackages')
+                  }}</a-menu-item
                   ><a-menu-item key="copy" :disabled="!selectedPage" @click="openCopy">{{
                     t('proto.copyInventory')
                   }}</a-menu-item
@@ -507,6 +588,11 @@ function locateAnchor(anchor: ReviewAnchor) {
         /></div
     ></load-state>
   </div>
+  <design-token-packages-workspace
+    v-if="tokenPackagesOpen && tokenPackageScope"
+    :scope="tokenPackageScope"
+    @close="closeTokenPackages"
+  />
   <code-mappings-workspace
     v-if="codeMappingsOpen && assetsAllowed && project && revision && data && session.user?.id"
     :scope="{
